@@ -1,7 +1,12 @@
+#include <complex>
 #include <memory>
 
 template<std::size_t N>
 concept power_of_two = requires { (N & (N - 1)) == 0; };
+
+template<typename T, std::size_t PackSize>
+concept packed_floating_point = std::floating_point<T> && power_of_two<PackSize> &&
+                                requires { PackSize >= 64 / sizeof(T); };
 
 template<typename T, std::size_t PackSize>
 class packed_cx_ref
@@ -25,8 +30,7 @@ class const_packed_cx_ref
 template<typename T,
          std::size_t PackSize = 128 / sizeof(T),
          typename Allocator   = std::allocator<T>>
-    requires std::floating_point<T> && power_of_two<PackSize> &&
-             requires { PackSize >= 64 / sizeof(T); }
+    requires packed_floating_point<T, PackSize>
 class packed_cx_vector
 {
 public:
@@ -44,11 +48,30 @@ private:
 public:
     packed_cx_vector() noexcept(noexcept(allocator_type())) = default;
 
-    // explicit packed_cx_vector(size_type length)
-    //     : m_length(length), m_ptr(
-    //                             std::allocator_traits<Allocator>::allocate(num_packs(length) * PackSize * 2)){
-    //                             // TODO: set to 0
-    //                         };
+    packed_cx_vector(const allocator_type& allocator) noexcept(std::is_nothrow_copy_constructible_v<allocator_type>))
+    : m_allocator(allocator)
+    , m_length(0), m_ptr(nullptr)
+    {};
+
+    packed_cx_vector(size_type length, const allocator_type& allocator = allocator_type())
+    : m_allocator(allocator)
+    , m_length(length)
+    , m_ptr(alloc_traits::allocate(m_allocator, num_packs(length) * PackSize * 2))
+    {
+        auto a = 0;
+        // TODO: set to 0
+    };
+
+    packed_cx_vector(size_type               length,
+                     std::complex<real_type> value,
+                     const allocator_type&   allocator = allocator_type())
+    : m_allocator(allocator)
+    , m_length(length)
+    , m_ptr(alloc_traits::allocate(m_allocator, num_packs(length) * PackSize * 2))
+    {
+        auto a = 0;
+        // TODO: set to value
+    };
 
     packed_cx_vector(const packed_cx_vector& other)
     : m_allocator(alloc_traits::select_on_container_copy_construction(other.m_allocator))
@@ -291,4 +314,16 @@ private:
     {
         return (idx / PackSize) * PackSize * 2 + idx % PackSize;
     }
+};
+
+template<typename T, std::size_t PackSize, typename Allocator>
+    requires packed_floating_point<T, PackSize>
+class packed_cx_vector<T, PackSize, Allocator>::iterator
+{
+};
+
+template<typename T, std::size_t PackSize, typename Allocator>
+    requires packed_floating_point<T, PackSize>
+class packed_cx_vector<T, PackSize, Allocator>::const_iterator
+{
 };
