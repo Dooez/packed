@@ -38,12 +38,13 @@ public:
     using real_type      = T;
     using allocator_type = Allocator;
 
-    using size_type       = std::allocator_traits<allocator_type>::size_type;
-    using difference_type = std::allocator_traits<allocator_type>::difference_type;
+    using size_type = typename std::allocator_traits<allocator_type>::size_type;
+    using difference_type =
+        typename std::allocator_traits<allocator_type>::difference_type;
     using reference       = packed_cx_ref<T, PackSize>;
     using const_reference = const_packed_cx_ref<T, PackSize>;
-    using pointer         = std::allocator_traits<allocator_type>::pointer;
-    using const_pointer   = std::allocator_traits<allocator_type>::const_pointer;
+    using pointer         = typename std::allocator_traits<allocator_type>::pointer;
+    using const_pointer   = typename std::allocator_traits<allocator_type>::const_pointer;
 
     class iterator;
     class const_iterator;
@@ -54,7 +55,8 @@ private:
 public:
     packed_cx_vector() noexcept(noexcept(allocator_type())) = default;
 
-    packed_cx_vector(const allocator_type& allocator) noexcept(std::is_nothrow_copy_constructible_v<allocator_type>))
+    explicit packed_cx_vector(const allocator_type& allocator) noexcept(
+        std::is_nothrow_copy_constructible_v<allocator_type>)
     : m_allocator(allocator)
     , m_length(0)
     , m_ptr(nullptr)
@@ -62,7 +64,8 @@ public:
         m_length = 0;
     };
 
-    packed_cx_vector(size_type length, const allocator_type& allocator = allocator_type())
+    explicit packed_cx_vector(size_type             length,
+                              const allocator_type& allocator = allocator_type())
     : m_allocator(allocator)
     , m_length(length)
     , m_ptr(alloc_traits::allocate(m_allocator, num_packs(length) * PackSize * 2))
@@ -131,6 +134,11 @@ public:
 
     packed_cx_vector& operator=(const packed_cx_vector& other)
     {
+        if (this == &other)
+        {
+            return *this;
+        }
+
         if constexpr (alloc_traits::propagate_on_container_copy_assignment::value &&
                       !alloc_traits::is_always_equal::value)
         {
@@ -361,7 +369,7 @@ public:
     }
     reference operator[](difference_type idx) const
     {
-        auto offset = m_sub_idx + n;
+        auto offset = m_sub_idx + idx;
         auto ptr    = m_ptr + idx + (offset / PackSize) * PackSize;
         return packed_cx_ref(ptr);
     }
@@ -387,13 +395,14 @@ public:
     }
     iterator operator++(int) noexcept
     {
+        auto copy = *this;
         if (++m_sub_idx == PackSize)
         {
             m_sub_idx = 0;
             m_ptr     = m_ptr + PackSize;
         }
         ++m_ptr;
-        return *this;
+        return copy;
     }
     iterator& operator--() noexcept
     {
@@ -407,13 +416,14 @@ public:
     }
     iterator operator--(int) noexcept
     {
+        auto copy = *this;
         if (m_sub_idx == 0)
         {
             m_sub_idx = PackSize - 1;
             m_ptr     = m_ptr - PackSize;
         }
         --m_ptr;
-        return *this;
+        return copy;
     }
 
     iterator& operator+=(difference_type n)
@@ -449,12 +459,8 @@ public:
 
     difference_type operator-(const iterator& other)
     {
-
         difference_type diff = m_ptr - other.m_ptr;
-
-        diff = (diff - m_sub_idx - (PackSize - other.m_sub_idx)) / 2 + m_sub_idx + (PackSize - other.m_sub_idx);
-
-        return diff;
+        return diff - (diff / PackSize + 1) / 2 * PackSize;
     }
 
 private:
