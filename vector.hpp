@@ -1,5 +1,6 @@
 #include <complex>
 #include <memory>
+#include <vector>
 
 template<std::size_t N>
 concept power_of_two = requires { (N & (N - 1)) == 0; };
@@ -34,11 +35,16 @@ template<typename T,
 class packed_cx_vector
 {
 public:
-    using real_type       = T;
-    using allocator_type  = Allocator;
-    using size_type       = std::size_t;
+    using real_type      = T;
+    using allocator_type = Allocator;
+
+    using size_type       = std::allocator_traits<allocator_type>::size_type;
+    using difference_type = std::allocator_traits<allocator_type>::difference_type;
     using reference       = packed_cx_ref<T, PackSize>;
     using const_reference = const_packed_cx_ref<T, PackSize>;
+    using pointer         = std::allocator_traits<allocator_type>::pointer;
+    using const_pointer   = std::allocator_traits<allocator_type>::const_pointer;
+
     class iterator;
     class const_iterator;
 
@@ -50,8 +56,11 @@ public:
 
     packed_cx_vector(const allocator_type& allocator) noexcept(std::is_nothrow_copy_constructible_v<allocator_type>))
     : m_allocator(allocator)
-    , m_length(0), m_ptr(nullptr)
-    {};
+    , m_length(0)
+    , m_ptr(nullptr)
+    {
+        m_length = 0;
+    };
 
     packed_cx_vector(size_type length, const allocator_type& allocator = allocator_type())
     : m_allocator(allocator)
@@ -320,6 +329,137 @@ template<typename T, std::size_t PackSize, typename Allocator>
     requires packed_floating_point<T, PackSize>
 class packed_cx_vector<T, PackSize, Allocator>::iterator
 {
+public:
+    using real_type        = T;
+    using value_type       = void;
+    using difference_type  = packed_cx_vector::difference_type;
+    using reference        = packed_cx_vector::reference;
+    using pointer          = packed_cx_vector::pointer;
+    using iterator_concept = std::random_access_iterator_tag;
+
+    static constexpr auto pack_size = PackSize;
+
+private:
+    using alloc_traits = std::allocator_traits<Allocator>;
+
+    iterator(pointer data_ptr, difference_type offset) noexcept
+    : m_ptr(data_ptr)
+    , m_sub_idx(offset){};
+
+public:
+    iterator(const iterator& other) noexcept = default;
+    iterator(iterator&& other) noexcept      = default;
+
+    iterator& operator=(const iterator& other) noexcept = default;
+    iterator& operator=(iterator&& other) noexcept      = default;
+
+    ~iterator() = default;
+
+    reference operator*() const
+    {
+        return packed_cx_ref(m_ptr);
+    }
+    reference operator[](difference_type idx) const
+    {
+        auto offset = m_sub_idx + n;
+        auto ptr    = m_ptr + idx + (offset / PackSize) * PackSize;
+        return packed_cx_ref(ptr);
+    }
+
+    bool operator==(const iterator& other) const
+    {
+        return (m_ptr == other.m_ptr) && (m_sub_idx == other.m_sub_idx);
+    }
+    auto operator<=>(const iterator& other) const
+    {
+        return m_ptr <=> other.m_ptr;
+    }
+
+    iterator& operator++() noexcept
+    {
+        if (++m_sub_idx == PackSize)
+        {
+            m_sub_idx = 0;
+            m_ptr     = m_ptr + PackSize;
+        }
+        ++m_ptr;
+        return *this;
+    }
+    iterator operator++(int) noexcept
+    {
+        if (++m_sub_idx == PackSize)
+        {
+            m_sub_idx = 0;
+            m_ptr     = m_ptr + PackSize;
+        }
+        ++m_ptr;
+        return *this;
+    }
+    iterator& operator--() noexcept
+    {
+        if (m_sub_idx == 0)
+        {
+            m_sub_idx = PackSize - 1;
+            m_ptr     = m_ptr - PackSize;
+        }
+        --m_ptr;
+        return *this;
+    }
+    iterator operator--(int) noexcept
+    {
+        if (m_sub_idx == 0)
+        {
+            m_sub_idx = PackSize - 1;
+            m_ptr     = m_ptr - PackSize;
+        }
+        --m_ptr;
+        return *this;
+    }
+
+    iterator& operator+=(difference_type n)
+    {
+        m_sub_idx += n;
+        m_ptr = m_ptr + n + (m_sub_idx / PackSize) * PackSize;
+        m_sub_idx %= PackSize;
+        return *this;
+    }
+    iterator& operator-=(difference_type n)
+    {
+        m_sub_idx -= n;
+        m_ptr = m_ptr - n + (m_sub_idx / PackSize) * PackSize;
+        m_sub_idx %= PackSize;
+        return *this;
+    }
+
+    friend iterator operator+(iterator it, difference_type n)
+    {
+        it += n;
+        return it;
+    }
+    friend iterator operator+(difference_type n, iterator it)
+    {
+        it += n;
+        return it;
+    }
+    friend iterator operator-(iterator it, difference_type n)
+    {
+        it -= n;
+        return it;
+    }
+
+    difference_type operator-(const iterator& other)
+    {
+
+        difference_type diff = m_ptr - other.m_ptr;
+
+        diff = (diff - m_sub_idx - (PackSize - other.m_sub_idx)) / 2 + m_sub_idx + (PackSize - other.m_sub_idx);
+
+        return diff;
+    }
+
+private:
+    pointer         m_ptr;
+    difference_type m_sub_idx;
 };
 
 template<typename T, std::size_t PackSize, typename Allocator>
