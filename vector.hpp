@@ -9,14 +9,37 @@ template<typename T, std::size_t PackSize>
 concept packed_floating_point = std::floating_point<T> && power_of_two<PackSize> &&
                                 requires { PackSize >= 64 / sizeof(T); };
 
-template<typename T, std::size_t PackSize>
-class packed_cx_ref
+
+template<typename T, std::size_t PackSize, bool Const>
+class packed_cx_ptr
 {
+public:
+    packed_cx_ptr() = delete;
+
+    packed_cx_ptr(const packed_cx_ptr&) = default;
+    packed_cx_ptr(packed_cx_ptr&&) noexcept = default;
+
+    ~packed_cx_ptr() = default;
+
+    packed_cx_ptr operator=(const packed_cx_ptr&) = default;
+    packed_cx_ptr operator=(packed_cx_ptr&&) noexcept = default;
+private:
 };
 
-template<typename T, std::size_t PackSize>
-class const_packed_cx_ref
+template<typename T, std::size_t PackSize, bool Const>
+class packed_cx_ref
 {
+public:
+    packed_cx_ref() = delete;
+
+    packed_cx_ref(const packed_cx_ref&) = default;
+    packed_cx_ref(packed_cx_ref&&) noexcept = default;
+
+    ~packed_cx_ref() = default;
+
+    packed_cx_ref operator=(const packed_cx_ref&) = default;
+    packed_cx_ref operator=(packed_cx_ref&&) noexcept = default;
+private:
 };
 
 /**
@@ -34,23 +57,26 @@ template<typename T,
     requires packed_floating_point<T, PackSize>
 class packed_cx_vector
 {
+private:
+    template<bool>
+    class iterator_base;
+
+    using alloc_traits = std::allocator_traits<Allocator>;
+
 public:
+
     using real_type      = T;
     using allocator_type = Allocator;
 
-    using size_type = typename std::allocator_traits<allocator_type>::size_type;
-    using difference_type =
-        typename std::allocator_traits<allocator_type>::difference_type;
-    using reference       = packed_cx_ref<T, PackSize>;
-    using const_reference = const_packed_cx_ref<T, PackSize>;
-    using pointer         = typename std::allocator_traits<allocator_type>::pointer;
-    using const_pointer   = typename std::allocator_traits<allocator_type>::const_pointer;
+    using size_type       = typename alloc_traits::size_type;
+    using difference_type = typename alloc_traits::difference_type;
+    using reference       = packed_cx_ref<T, PackSize, false>;
+    using const_reference = packed_cx_ref<T, PackSize, true>;
+    using pointer         = packed_cx_ptr<T, PackSize, false>;
+    using const_pointer   = packed_cx_ptr<T, PackSize, true>;
 
-    class iterator;
-    class const_iterator;
-
-private:
-    using alloc_traits = std::allocator_traits<allocator_type>;
+    using iterator       = iterator_base<false>;
+    using const_iterator = iterator_base<true>;
 
 public:
     packed_cx_vector() noexcept(noexcept(allocator_type())) = default;
@@ -59,10 +85,7 @@ public:
         std::is_nothrow_copy_constructible_v<allocator_type>)
     : m_allocator(allocator)
     , m_length(0)
-    , m_ptr(nullptr)
-    {
-        m_length = 0;
-    };
+    , m_ptr(nullptr){};
 
     explicit packed_cx_vector(size_type             length,
                               const allocator_type& allocator = allocator_type())
@@ -335,14 +358,15 @@ private:
 
 template<typename T, std::size_t PackSize, typename Allocator>
     requires packed_floating_point<T, PackSize>
-class packed_cx_vector<T, PackSize, Allocator>::iterator
+template<bool Const>
+class packed_cx_vector<T, PackSize, Allocator>::iterator_base
 {
 public:
     using real_type        = T;
     using value_type       = void;
     using difference_type  = packed_cx_vector::difference_type;
-    using reference        = packed_cx_vector::reference;
-    using pointer          = packed_cx_vector::pointer;
+    using reference        = packed_cx_ref<T, PackSize, Const>;
+    using pointer          = packed_cx_ref<T, PackSize, Const>;
     using iterator_concept = std::random_access_iterator_tag;
 
     static constexpr auto pack_size = PackSize;
@@ -350,40 +374,40 @@ public:
 private:
     using alloc_traits = std::allocator_traits<Allocator>;
 
-    iterator(pointer data_ptr, difference_type offset) noexcept
+    iterator_base(pointer data_ptr, difference_type offset) noexcept
     : m_ptr(data_ptr)
     , m_sub_idx(offset){};
 
 public:
-    iterator(const iterator& other) noexcept = default;
-    iterator(iterator&& other) noexcept      = default;
+    iterator_base(const iterator_base& other) noexcept = default;
+    iterator_base(iterator_base&& other) noexcept      = default;
 
-    iterator& operator=(const iterator& other) noexcept = default;
-    iterator& operator=(iterator&& other) noexcept      = default;
+    iterator_base& operator=(const iterator_base& other) noexcept = default;
+    iterator_base& operator=(iterator_base&& other) noexcept      = default;
 
-    ~iterator() = default;
+    ~iterator_base() = default;
 
     reference operator*() const
     {
-        return packed_cx_ref(m_ptr);
+        return reference(m_ptr);
     }
     reference operator[](difference_type idx) const
     {
         auto offset = m_sub_idx + idx;
         auto ptr    = m_ptr + idx + (offset / PackSize) * PackSize;
-        return packed_cx_ref(ptr);
+        return reference(ptr);
     }
 
-    bool operator==(const iterator& other) const
+    bool operator==(const iterator_base& other) const
     {
         return (m_ptr == other.m_ptr) && (m_sub_idx == other.m_sub_idx);
     }
-    auto operator<=>(const iterator& other) const
+    auto operator<=>(const iterator_base& other) const
     {
         return m_ptr <=> other.m_ptr;
     }
 
-    iterator& operator++() noexcept
+    iterator_base& operator++() noexcept
     {
         if (++m_sub_idx == PackSize)
         {
@@ -393,7 +417,7 @@ public:
         ++m_ptr;
         return *this;
     }
-    iterator operator++(int) noexcept
+    iterator_base operator++(int) noexcept
     {
         auto copy = *this;
         if (++m_sub_idx == PackSize)
@@ -404,7 +428,7 @@ public:
         ++m_ptr;
         return copy;
     }
-    iterator& operator--() noexcept
+    iterator_base& operator--() noexcept
     {
         if (m_sub_idx == 0)
         {
@@ -414,7 +438,7 @@ public:
         --m_ptr;
         return *this;
     }
-    iterator operator--(int) noexcept
+    iterator_base operator--(int) noexcept
     {
         auto copy = *this;
         if (m_sub_idx == 0)
@@ -426,14 +450,14 @@ public:
         return copy;
     }
 
-    iterator& operator+=(difference_type n)
+    iterator_base& operator+=(difference_type n)
     {
         m_sub_idx += n;
         m_ptr = m_ptr + n + (m_sub_idx / PackSize) * PackSize;
         m_sub_idx %= PackSize;
         return *this;
     }
-    iterator& operator-=(difference_type n)
+    iterator_base& operator-=(difference_type n)
     {
         m_sub_idx -= n;
         m_ptr = m_ptr - n + (m_sub_idx / PackSize) * PackSize;
@@ -441,23 +465,23 @@ public:
         return *this;
     }
 
-    friend iterator operator+(iterator it, difference_type n)
+    friend iterator_base operator+(iterator_base it, difference_type n)
     {
         it += n;
         return it;
     }
-    friend iterator operator+(difference_type n, iterator it)
+    friend iterator_base operator+(difference_type n, iterator_base it)
     {
         it += n;
         return it;
     }
-    friend iterator operator-(iterator it, difference_type n)
+    friend iterator_base operator-(iterator_base it, difference_type n)
     {
         it -= n;
         return it;
     }
 
-    difference_type operator-(const iterator& other)
+    difference_type operator-(const iterator_base& other)
     {
         difference_type diff = m_ptr - other.m_ptr;
         return diff - (diff / PackSize + 1) / 2 * PackSize;
@@ -466,10 +490,4 @@ public:
 private:
     pointer         m_ptr;
     difference_type m_sub_idx;
-};
-
-template<typename T, std::size_t PackSize, typename Allocator>
-    requires packed_floating_point<T, PackSize>
-class packed_cx_vector<T, PackSize, Allocator>::const_iterator
-{
 };
