@@ -9,10 +9,6 @@ template<typename T, std::size_t PackSize>
 concept packed_floating_point = std::floating_point<T> && power_of_two<PackSize> &&
                                 requires { PackSize >= 64 / sizeof(T); };
 
-
-// template<typename T, std::size_t PackSize, typename Allocator, bool Const>
-// class packed_cx_ptr;
-
 template<typename T, std::size_t PackSize, typename Allocator, bool Const>
 class packed_cx_ref;
 
@@ -304,6 +300,15 @@ public:
         }
     }
 
+    iterator begin()
+    {
+        return iterator(m_ptr, 0);
+    }
+
+    const_iterator begin() const
+    {
+        return const_iterator(m_ptr, 0);
+    }
 
 private:
     [[no_unique_address]] allocator_type m_allocator{};
@@ -336,6 +341,8 @@ template<typename T, std::size_t PackSize, typename Allocator>
 template<bool Const>
 class packed_cx_vector<T, PackSize, Allocator>::iterator_base
 {
+    friend class packed_cx_vector<T, PackSize, Allocator>;
+
 public:
     using real_type       = T;
     using real_pointer    = packed_cx_vector::real_pointer;
@@ -357,6 +364,11 @@ private:
 public:
     iterator_base() = default;
 
+    iterator_base(const iterator_base<false>& other) noexcept
+        requires requires { Const; }
+    : m_ptr(other.m_ptr)
+    , m_sub_idx(other.m_sub_idx){};
+
     iterator_base(const iterator_base& other) noexcept = default;
     iterator_base(iterator_base&& other) noexcept      = default;
 
@@ -365,6 +377,10 @@ public:
 
     ~iterator_base() = default;
 
+    value_type value() const
+    {
+        return {*m_ptr, *(m_ptr + PackSize)};
+    }
     reference operator*() const
     {
         return reference(m_ptr);
@@ -470,47 +486,6 @@ private:
     real_pointer    m_ptr     = nullptr;
     difference_type m_sub_idx = 0;
 };
-//
-// template<typename T, std::size_t PackSize, typename Allocator, bool Const>
-// class packed_cx_ptr
-// {
-//     using real_pointer    = typename std::allocator_traits<Allocator>::pointer;
-//     using reference       = packed_cx_ref<T, PackSize, Allocator, false>;
-//     using const_reference = packed_cx_ref<T, PackSize, Allocator, true>;
-//
-// public:
-//     packed_cx_ptr() = delete;
-//
-//     packed_cx_ptr(const packed_cx_ptr&)     = default;
-//     packed_cx_ptr(packed_cx_ptr&&) noexcept = default;
-//
-//     ~packed_cx_ptr() = default;
-//
-//     packed_cx_ptr operator=(const packed_cx_ptr&)     = delete;
-//     packed_cx_ptr operator=(packed_cx_ptr&&) noexcept = delete;
-//
-//     reference operator*()
-//         requires requires { !Const }
-//     {
-//         return reference(m_ptr);
-//     }
-//     const_reference operator*()
-//     {
-//         return const_reference(m_ptr);
-//     }
-//
-//
-// private:
-//     packed_cx_ptr(real_pointer ptr)
-//     : m_ptr(ptr){};
-//     real_pointer m_ptr;
-//
-//     friend class reference;
-//     friend class const_reference;
-//     friend class packed_cx_vector<T, PackSize, Allocator>;
-//     friend class packed_cx_vector<T, PackSize, Allocator>::iterator;
-//     friend class packed_cx_vector<T, PackSize, Allocator>::const_iterator;
-// };
 
 template<typename T, std::size_t PackSize, typename Allocator, bool Const>
 class packed_cx_ref
@@ -518,15 +493,13 @@ class packed_cx_ref
 private:
     using real_value   = T;
     using real_pointer = typename std::allocator_traits<Allocator>::pointer;
-    // using pointer       = packed_cx_ptr<T, PackSize, Allocator, false>;
-    // using const_pointer = packed_cx_ptr<T, PackSize, Allocator, true>;
     packed_cx_ref(real_pointer ptr)
     : m_ptr(ptr){};
 
 public:
     packed_cx_ref() = delete;
 
-    packed_cx_ref(const packed_cx_ref&)     = default;
+    packed_cx_ref(const packed_cx_ref&)     = delete;
     packed_cx_ref(packed_cx_ref&&) noexcept = default;
 
     ~packed_cx_ref() = default;
@@ -572,9 +545,5 @@ public:
 private:
     real_pointer m_ptr{};
 
-    // friend class pointer;
-    // friend class const_pointer;
     friend class packed_cx_vector<T, PackSize, Allocator>;
-    // friend class packed_cx_vector<T, PackSize, Allocator>::iterator;
-    // friend class packed_cx_vector<T, PackSize, Allocator>::const_iterator;
 };
