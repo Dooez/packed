@@ -308,6 +308,16 @@ public:
         return const_iterator(m_ptr, 0);
     }
 
+    iterator end()
+    {
+        return iterator(m_ptr + m_length, m_length % PackSize);
+    }
+
+    const_iterator end() const
+    {
+        return const_iterator(m_ptr + m_length, m_length % PackSize);
+    }
+
 private:
     [[no_unique_address]] allocator_type m_allocator{};
 
@@ -491,15 +501,17 @@ class packed_cx_ref
 {
     friend class packed_cx_vector<T, PackSize, Allocator>;
 
-private:
+
+public:
     using real_type    = T;
     using real_pointer = typename std::allocator_traits<Allocator>::pointer;
+    using value_type   = std::complex<real_type>;
+
+private:
     packed_cx_ref(real_pointer ptr)
     : m_ptr(ptr){};
 
 public:
-    using value_type = std::complex<real_type>;
-
     packed_cx_ref() = delete;
 
     packed_cx_ref(const packed_cx_ref&)     = delete;
