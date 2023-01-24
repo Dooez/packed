@@ -43,8 +43,6 @@ public:
     using difference_type = typename alloc_traits::difference_type;
     using reference       = packed_cx_ref<T, PackSize, Allocator, false>;
     using const_reference = packed_cx_ref<T, PackSize, Allocator, true>;
-    // using pointer         = packed_cx_ptr<T, PackSize, Allocator, false>;
-    // using const_pointer   = packed_cx_ptr<T, PackSize, Allocator, true>;
 
     using iterator       = iterator_base<false>;
     using const_iterator = iterator_base<true>;
@@ -312,8 +310,9 @@ public:
 
 private:
     [[no_unique_address]] allocator_type m_allocator{};
-    size_type                            m_length = 0;
-    typename alloc_traits::pointer       m_ptr    = nullptr;
+
+    size_type    m_length = 0;
+    real_pointer m_ptr{};
 
     void deallocate()
     {
@@ -483,20 +482,24 @@ public:
     }
 
 private:
-    real_pointer    m_ptr     = nullptr;
+    real_pointer    m_ptr{};
     difference_type m_sub_idx = 0;
 };
 
 template<typename T, std::size_t PackSize, typename Allocator, bool Const>
 class packed_cx_ref
 {
+    friend class packed_cx_vector<T, PackSize, Allocator>;
+
 private:
-    using real_value   = T;
+    using real_type    = T;
     using real_pointer = typename std::allocator_traits<Allocator>::pointer;
     packed_cx_ref(real_pointer ptr)
     : m_ptr(ptr){};
 
 public:
+    using value_type = std::complex<real_type>;
+
     packed_cx_ref() = delete;
 
     packed_cx_ref(const packed_cx_ref&)     = delete;
@@ -505,45 +508,26 @@ public:
     ~packed_cx_ref() = default;
 
     template<typename U>
-        requires std::is_convertible_v<U, std::complex<T>>
+        requires std::is_convertible_v<U, value_type>
     packed_cx_ref operator=(const U& other)
         requires requires { !Const; }
     {
-        auto tmp            = static_cast<std::complex<T>>(other);
+        auto tmp            = static_cast<value_type>(other);
         *m_ptr              = tmp.real();
         *(m_ptr + PackSize) = tmp.imag();
         return *this;
     }
 
-    operator std::complex<real_value>() const
+    operator value_type() const
     {
-        return std::complex<real_value>(*m_ptr, *(m_ptr + PackSize));
+        return value_type(*m_ptr, *(m_ptr + PackSize));
     }
-    std::complex<real_value> value() const
+    value_type value() const
     {
         return *this;
     }
 
-    //     template<bool OConst>
-    //     packed_cx_ref operator=(const packed_cx_ref<T, PackSize, Allocator, OConst>& other)
-    //         requires requires { !Const; }
-    //     {
-    //         *m_ptr              = *other.m_ptr;
-    //         *(m_ptr + PackSize) = *(other.m_ptr + PackSize);
-    //         return *this;
-    //     }
-    //
-    //     template<bool OConst>
-    //     packed_cx_ref operator=(packed_cx_ref<T, PackSize, Allocator, OConst>&& other)
-    //         requires requires { !Const; }
-    //     {
-    //         *m_ptr              = *other.m_ptr;
-    //         *(m_ptr + PackSize) = *(other.m_ptr + PackSize);
-    //         return *this;
-    //     }
 
 private:
     real_pointer m_ptr{};
-
-    friend class packed_cx_vector<T, PackSize, Allocator>;
 };
