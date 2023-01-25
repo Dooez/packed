@@ -1,16 +1,8 @@
+#include "vector_util.hpp"
+
 #include <complex>
 #include <memory>
 #include <vector>
-
-template<std::size_t N>
-concept power_of_two = requires { (N & (N - 1)) == 0; };
-
-template<typename T, std::size_t PackSize>
-concept packed_floating_point = std::floating_point<T> && power_of_two<PackSize> &&
-                                requires { PackSize >= 64 / sizeof(T); };
-
-template<typename T, std::size_t PackSize, typename Allocator, bool Const>
-class packed_cx_ref;
 
 /**
  * @brief Vector of complex floating point values.
@@ -21,7 +13,6 @@ class packed_cx_ref;
  * @tparam PackSize number of complex values in pack default is 32/16 for float/double
  * @tparam Allocator
  */
-
 template<typename T,
          std::size_t PackSize = 128 / sizeof(T),
          typename Allocator   = std::allocator<T>>
@@ -240,8 +231,6 @@ public:
         return m_allocator;
     }
 
-    // void set(std::complex<T> z);
-
     [[nodiscard]] reference operator[](size_type idx)
     {
         auto p_idx = packed_idx(idx);
@@ -353,12 +342,11 @@ class packed_cx_vector<T, PackSize, Allocator>::iterator_base
     friend class packed_cx_vector<T, PackSize, Allocator>;
 
 public:
-    using real_type       = T;
-    using real_pointer    = packed_cx_vector::real_pointer;
-    using difference_type = packed_cx_vector::difference_type;
-    using reference       = packed_cx_ref<T, PackSize, Allocator, Const>;
-    using value_type      = std::complex<T>;
-    // using pointer          = packed_cx_ref<T, PackSize, Allocator, Const>;
+    using real_type        = T;
+    using real_pointer     = packed_cx_vector::real_pointer;
+    using difference_type  = packed_cx_vector::difference_type;
+    using reference        = packed_cx_ref<T, PackSize, Allocator, Const>;
+    using value_type       = std::complex<T>;
     using iterator_concept = std::random_access_iterator_tag;
 
     static constexpr auto pack_size = PackSize;
@@ -473,6 +461,11 @@ public:
         return m_idx - other.m_idx;
     }
 
+    bool aligned()
+    {
+        return m_idx % PackSize == 0;
+    }
+
 private:
     real_pointer    m_ptr{};
     difference_type m_idx = 0;
@@ -483,20 +476,26 @@ class packed_cx_ref
 {
     friend class packed_cx_vector<T, PackSize, Allocator>;
 
-
 public:
-    using real_type    = T;
-    using real_pointer = typename std::allocator_traits<Allocator>::pointer;
-    using value_type   = std::complex<real_type>;
+    using real_type = T;
+    using pointer   = typename std::conditional<
+        Const,
+        typename std::allocator_traits<Allocator>::const_pointer,
+        typename std::allocator_traits<Allocator>::pointer>::type;
+    using value_type = std::complex<real_type>;
 
 private:
-    packed_cx_ref(real_pointer ptr)
+    packed_cx_ref(pointer ptr)
     : m_ptr(ptr){};
 
 public:
     packed_cx_ref() = delete;
 
-    packed_cx_ref(const packed_cx_ref&)     = delete;
+    packed_cx_ref(const packed_cx_ref<T, PackSize, Allocator, false>& other)
+        requires requires { Const; }
+    : m_ptr(other.m_ptr){};
+
+    packed_cx_ref(const packed_cx_ref&)     = default;
     packed_cx_ref(packed_cx_ref&&) noexcept = default;
 
     ~packed_cx_ref() = default;
@@ -521,7 +520,11 @@ public:
         return *this;
     }
 
+    pointer operator&()
+    {
+        return m_ptr;
+    }
 
 private:
-    real_pointer m_ptr{};
+    pointer m_ptr{};
 };
