@@ -310,12 +310,12 @@ public:
 
     iterator end()
     {
-        return iterator(m_ptr + m_length, m_length % PackSize);
+        return iterator(m_ptr + m_length, m_length);
     }
 
     const_iterator end() const
     {
-        return const_iterator(m_ptr + m_length, m_length % PackSize);
+        return const_iterator(m_ptr + m_length, m_length);
     }
 
 private:
@@ -366,9 +366,9 @@ public:
 private:
     using alloc_traits = std::allocator_traits<Allocator>;
 
-    iterator_base(real_pointer data_ptr, difference_type offset) noexcept
+    iterator_base(real_pointer data_ptr, difference_type index) noexcept
     : m_ptr(data_ptr)
-    , m_sub_idx(offset){};
+    , m_idx(index){};
 
 public:
     iterator_base() = default;
@@ -376,7 +376,7 @@ public:
     iterator_base(const iterator_base<false>& other) noexcept
         requires requires { Const; }
     : m_ptr(other.m_ptr)
-    , m_sub_idx(other.m_sub_idx){};
+    , m_idx(other.m_idx){};
 
     iterator_base(const iterator_base& other) noexcept = default;
     iterator_base(iterator_base&& other) noexcept      = default;
@@ -396,14 +396,12 @@ public:
     }
     reference operator[](difference_type idx) const
     {
-        auto offset = m_sub_idx + idx;
-        auto ptr    = m_ptr + idx + (offset / PackSize) * PackSize;
-        return reference(ptr);
+        return *(*this + idx);
     }
 
     bool operator==(const iterator_base& other) const
     {
-        return (m_ptr == other.m_ptr) && (m_sub_idx == other.m_sub_idx);
+        return (m_ptr == other.m_ptr) && (m_idx == other.m_idx);
     }
     auto operator<=>(const iterator_base& other) const
     {
@@ -412,10 +410,9 @@ public:
 
     iterator_base& operator++() noexcept
     {
-        if (++m_sub_idx == PackSize)
+        if (++m_idx % PackSize == 0)
         {
-            m_sub_idx = 0;
-            m_ptr     = m_ptr + PackSize;
+            m_ptr += PackSize;
         }
         ++m_ptr;
         return *this;
@@ -423,49 +420,35 @@ public:
     iterator_base operator++(int) noexcept
     {
         auto copy = *this;
-        if (++m_sub_idx == PackSize)
-        {
-            m_sub_idx = 0;
-            m_ptr     = m_ptr + PackSize;
-        }
-        ++m_ptr;
+        ++*this;
         return copy;
     }
     iterator_base& operator--() noexcept
     {
-        if (m_sub_idx == 0)
+        if (m_idx % PackSize == 0)
         {
-            m_sub_idx = PackSize - 1;
-            m_ptr     = m_ptr - PackSize;
-        }
+            m_ptr -= PackSize;
+        };
+        --m_idx;
         --m_ptr;
         return *this;
     }
     iterator_base operator--(int) noexcept
     {
         auto copy = *this;
-        if (m_sub_idx == 0)
-        {
-            m_sub_idx = PackSize - 1;
-            m_ptr     = m_ptr - PackSize;
-        }
-        --m_ptr;
+        --*this;
         return copy;
     }
 
     iterator_base& operator+=(difference_type n)
     {
-        m_sub_idx += n;
-        m_ptr = m_ptr + n + (m_sub_idx / PackSize) * PackSize;
-        m_sub_idx %= PackSize;
+        m_ptr = m_ptr + n + (m_idx % PackSize + n) / PackSize * PackSize;
+        m_idx += n;
         return *this;
     }
     iterator_base& operator-=(difference_type n)
     {
-        m_sub_idx -= n;
-        m_ptr = m_ptr - n + (m_sub_idx / PackSize) * PackSize;
-        m_sub_idx %= PackSize;
-        return *this;
+        return (*this) += -n;
     }
 
     friend iterator_base operator+(iterator_base it, difference_type n)
@@ -487,13 +470,12 @@ public:
     template<bool OConst>
     difference_type operator-(const iterator_base<OConst>& other) const
     {
-        difference_type diff = m_ptr - other.m_ptr;
-        return diff - (diff / PackSize + 1) / 2 * PackSize;
+        return m_idx - other.m_idx;
     }
 
 private:
     real_pointer    m_ptr{};
-    difference_type m_sub_idx = 0;
+    difference_type m_idx = 0;
 };
 
 template<typename T, std::size_t PackSize, typename Allocator, bool Const>
