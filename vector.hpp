@@ -245,12 +245,12 @@ public:
     [[nodiscard]] reference operator[](size_type idx)
     {
         auto p_idx = packed_idx(idx);
-        return {m_ptr[p_idx]};
+        return {m_ptr + p_idx};
     }
     [[nodiscard]] const_reference operator[](size_type idx) const
     {
         auto p_idx = packed_idx(idx);
-        return {m_ptr[p_idx]};
+        return {m_ptr + p_idx};
     }
 
     [[nodiscard]] reference at(size_type idx)
@@ -262,7 +262,7 @@ public:
                                     std::to_string(m_length) + std::string(")"));
         }
         auto p_idx = packed_idx(idx);
-        return {m_ptr[p_idx]};
+        return {m_ptr + p_idx};
     }
     [[nodiscard]] const_reference at(size_type idx) const
     {
@@ -273,7 +273,7 @@ public:
                                     std::to_string(m_length) + std::string(")"));
         }
         auto p_idx = packed_idx(idx);
-        return {m_ptr[p_idx]};
+        return {m_ptr + p_idx};
     }
 
     [[nodiscard]] size_type size() const
@@ -310,12 +310,12 @@ public:
 
     iterator end()
     {
-        return iterator(m_ptr + m_length, m_length);
+        return iterator(m_ptr + packed_idx(m_length), m_length);
     }
 
     const_iterator end() const
     {
-        return const_iterator(m_ptr + m_length, m_length);
+        return const_iterator(m_ptr + packed_idx(m_length), m_length);
     }
 
 private:
@@ -341,7 +341,7 @@ private:
     }
     static constexpr auto packed_idx(size_type idx) -> size_type
     {
-        return (idx / PackSize) * PackSize * 2 + idx % PackSize;
+        return idx + idx / PackSize * PackSize;
     }
 };
 
@@ -503,7 +503,7 @@ public:
 
     template<typename U>
         requires std::is_convertible_v<U, value_type>
-    packed_cx_ref operator=(const U& other)
+    packed_cx_ref& operator=(const U& other)
         requires requires { !Const; }
     {
         auto tmp            = static_cast<value_type>(other);

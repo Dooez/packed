@@ -10,16 +10,27 @@ int main()
     std::vector<float> vovo(12);
 
     packed_cx_vector<float> v_def{};
-    packed_cx_vector<float> v_def_2{};
+    packed_cx_vector<float> v_def_2(127);
     swap(v_def, v_def_2);
     v_def.swap(v_def_2);
+    packed_cx_vector<float> v_def_3(127);
 
     asd<packed_cx_vector<float>::iterator>();
-    auto it = v_def.begin();
-    auto a = it.value();
-    auto it2 = vovo.begin();
-    auto b = *it2;
-    // packed_cx_vector<float> v_int{123};
+
+    auto val_x = 0;
+    for (auto val : v_def_3)
+    {
+        val = val_x;
+        val_x += 1;
+    }
+
+
+    for (uint i = 0; i < v_def_3.size(); ++i)
+    {
+        std::cout << v_def_3[i].value() << "\n";
+    }
+    std::cout << "\n";
+
     std::cout << "Hello world\n";
     return 0;
 }
