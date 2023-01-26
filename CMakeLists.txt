@@ -10,9 +10,13 @@ if( CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR )
     set_target_properties(packed PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED True)
 
     add_executable(test_vector tests/test_vector.cpp)
+    add_executable(test_op tests/test_op.cpp)
     target_link_libraries(test_vector PUBLIC packed)
+    target_link_libraries(test_op PUBLIC packed)
     set_target_properties(test_vector PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED True)
-
+    set_target_properties(test_op PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED True)
+    target_compile_options(test_vector PRIVATE -save-temps -march=native)
+    target_compile_options(test_op PRIVATE -save-temps -march=native)
     ENABLE_TESTING()
 
     add_test(NAME test_vector COMMAND test_vector)
