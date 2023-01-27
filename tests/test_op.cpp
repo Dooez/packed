@@ -7,3 +7,8 @@ void set_te()
 
     set(v_def_2.begin(), v_def_2.end(), 1);
 }
+
+int main()
+{
+    return 0;
+}

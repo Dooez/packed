@@ -197,7 +197,6 @@ public:
         deallocate();
     };
 
-
     void swap(packed_cx_vector& other) noexcept(
         alloc_traits::propagate_on_container_swap::value&&
             std::is_nothrow_move_constructible_v<allocator_type> ||
@@ -223,7 +222,7 @@ public:
         first.swap(second);
     }
 
-    allocator_type get_allocator() const
+    [[nodiscard]] allocator_type get_allocator() const
     {
         return m_allocator;
     }
@@ -284,22 +283,22 @@ public:
         }
     }
 
-    iterator begin()
+    [[nodiscard]] iterator begin()
     {
         return iterator(m_ptr, 0);
     }
 
-    const_iterator begin() const
+    [[nodiscard]] const_iterator begin() const
     {
         return const_iterator(m_ptr, 0);
     }
 
-    iterator end()
+    [[nodiscard]] iterator end()
     {
         return iterator(m_ptr + packed_idx(m_length), m_length);
     }
 
-    const_iterator end() const
+    [[nodiscard]] const_iterator end() const
     {
         return const_iterator(m_ptr + packed_idx(m_length), m_length);
     }
@@ -370,24 +369,24 @@ public:
 
     ~packed_iterator() = default;
 
-    value_type value() const
+    [[nodiscard]] value_type value() const
     {
         return {*m_ptr, *(m_ptr + PackSize)};
     }
-    reference operator*() const
+    [[nodiscard]] reference operator*() const
     {
         return reference(m_ptr);
     }
-    reference operator[](difference_type idx) const
+    [[nodiscard]] reference operator[](difference_type idx) const
     {
         return *(*this + idx);
     }
 
-    bool operator==(const packed_iterator& other) const
+    [[nodiscard]] bool operator==(const packed_iterator& other) const
     {
         return (m_ptr == other.m_ptr) && (m_idx == other.m_idx);
     }
-    auto operator<=>(const packed_iterator& other) const
+    [[nodiscard]] auto operator<=>(const packed_iterator& other) const
     {
         return m_ptr <=> other.m_ptr;
     }
@@ -435,30 +434,30 @@ public:
         return (*this) += -n;
     }
 
-    friend packed_iterator operator+(packed_iterator it, difference_type n)
+    [[nodiscard]] friend packed_iterator operator+(packed_iterator it, difference_type n)
     {
         it += n;
         return it;
     }
-    friend packed_iterator operator+(difference_type n, packed_iterator it)
+    [[nodiscard]] friend packed_iterator operator+(difference_type n, packed_iterator it)
     {
         it += n;
         return it;
     }
-    friend packed_iterator operator-(packed_iterator it, difference_type n)
+    [[nodiscard]] friend packed_iterator operator-(packed_iterator it, difference_type n)
     {
         it -= n;
         return it;
     }
 
     template<bool OConst>
-    difference_type
+    [[nodiscard]] difference_type
     operator-(const packed_iterator<T, PackSize, Allocator, OConst>& other) const
     {
         return m_idx - other.m_idx;
     }
 
-    bool aligned()
+    [[nodiscard]] bool aligned() const
     {
         return m_idx % PackSize == 0;
     }
@@ -467,18 +466,18 @@ public:
      *
      * @return packed_iterator
      */
-    packed_iterator align_before()
+    [[nodiscard]] packed_iterator align_lower() const
     {
         return *this - m_idx % PackSize;
     }
     /**
-     * @brief Return aligned iterator bigger then this itertator;
+     * @brief Return aligned iterator not smaller then this itertator;
      *
      * @return packed_iterator
      */
-    packed_iterator align_after()
+    [[nodiscard]] packed_iterator align_upper() const
     {
-        return *this + PackSize - m_idx % PackSize;
+        return m_idx % PackSize == 0 ? *this : *this + PackSize - m_idx % PackSize;
     }
 
 private:
@@ -528,16 +527,16 @@ public:
         return *this;
     }
 
-    operator value_type() const
+    [[nodiscard]] operator value_type() const
     {
         return value_type(*m_ptr, *(m_ptr + PackSize));
     }
-    value_type value() const
+    [[nodiscard]] value_type value() const
     {
         return *this;
     }
 
-    pointer operator&()
+    [[nodiscard]] pointer operator&()
     {
         return m_ptr;
     }

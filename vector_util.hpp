@@ -53,6 +53,43 @@ void copy(typename Vec::const_iterator first,
     }
 };
 
+template<typename T, std::size_t PackSize, typename Allocator>
+void set(packed_iterator<T, PackSize, Allocator, false> first,    //
+         packed_iterator<T, PackSize, Allocator, false> last,     //
+         std::complex<T>                                value)
+{
+    constexpr uint reg_size = 32;
+
+    const auto re_256 = _mm256_broadcast_ss(&reinterpret_cast<T(&)[2]>(value)[0]);
+    const auto im_256 = _mm256_broadcast_ss(&reinterpret_cast<T(&)[2]>(value)[1]);
+    const auto re_128 = _mm256_castps256_ps128(re_256);
+    const auto im_128 = _mm256_castps256_ps128(im_256);
+
+    while (first < first.align_upper())
+    {
+        auto ptr = &(*first);
+        _mm_store_ss(ptr, re_128);
+        _mm_store_ss(ptr + PackSize, im_128);
+        ++first;
+    }
+    while (first < last.align_lower())
+    {
+        auto ptr = &(*first);
+        for (uint i = 0; i < PackSize / (reg_size / sizeof(T)); ++i)
+        {
+            _mm256_storeu_ps(ptr + (reg_size / sizeof(T)) * i, re_256);
+            _mm256_storeu_ps(ptr + (reg_size / sizeof(T)) * i + PackSize, im_256);
+        }
+        first += PackSize;
+    }
+    while (first < last)
+    {
+        auto ptr = &(*first);
+        _mm_store_ss(ptr, re_128);
+        _mm_store_ss(ptr + PackSize, im_128);
+        ++first;
+    }
+};
 template<typename T, std::size_t PackSize, typename Allocator, typename U>
     requires std::convertible_to<U, std::complex<T>>
 void set(packed_iterator<T, PackSize, Allocator, false> first,    //
@@ -60,23 +97,6 @@ void set(packed_iterator<T, PackSize, Allocator, false> first,    //
          U                                              value)
 {
     auto value_cx = std::complex<T>(value);
-    auto value_re = _mm256_broadcast_ss(&reinterpret_cast<T(&)[2]>(value_cx)[0]);
-    auto value_im = _mm256_broadcast_ss(&reinterpret_cast<T(&)[2]>(value_cx)[1]);
-    while (!first.aligned() && first < last)
-    {
-        *first++ = value;
-    }
-    while (first < last.align_before())
-    {
-        auto* ptr = &(*first);
-        _mm256_storeu_ps(ptr, value_re);
-        _mm256_storeu_ps(ptr + PackSize, value_im);
-        first += 32 / sizeof(T);
-    }
-    while (first < last)
-    {
-        *first++ = value;
-    }
+    set(first, last, value_cx);
 };
-
 #endif
