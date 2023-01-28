@@ -1,16 +1,8 @@
+#include "vector_util.hpp"
+
 #include <complex>
 #include <memory>
 #include <vector>
-
-template<std::size_t N>
-concept power_of_two = requires { (N & (N - 1)) == 0; };
-
-template<typename T, std::size_t PackSize>
-concept packed_floating_point = std::floating_point<T> && power_of_two<PackSize> &&
-                                requires { PackSize >= 64 / sizeof(T); };
-
-template<typename T, std::size_t PackSize, typename Allocator, bool Const>
-class packed_cx_ref;
 
 /**
  * @brief Vector of complex floating point values.
@@ -21,7 +13,6 @@ class packed_cx_ref;
  * @tparam PackSize number of complex values in pack default is 32/16 for float/double
  * @tparam Allocator
  */
-
 template<typename T,
          std::size_t PackSize = 128 / sizeof(T),
          typename Allocator   = std::allocator<T>>
@@ -29,9 +20,6 @@ template<typename T,
 class packed_cx_vector
 {
 private:
-    template<bool>
-    class iterator_base;
-
     using alloc_traits = std::allocator_traits<Allocator>;
 
 public:
@@ -44,8 +32,8 @@ public:
     using reference       = packed_cx_ref<T, PackSize, Allocator, false>;
     using const_reference = packed_cx_ref<T, PackSize, Allocator, true>;
 
-    using iterator       = iterator_base<false>;
-    using const_iterator = iterator_base<true>;
+    using iterator       = packed_iterator<T, PackSize, Allocator, false>;
+    using const_iterator = packed_iterator<T, PackSize, Allocator, true>;
 
 public:
     packed_cx_vector() noexcept(noexcept(allocator_type())) = default;
@@ -66,9 +54,11 @@ public:
         // TODO: set to 0
     };
 
-    packed_cx_vector(size_type               length,
-                     std::complex<real_type> value,
-                     const allocator_type&   allocator = allocator_type())
+    template<typename U>
+        requires std::is_convertible_v<U, std::complex<real_type>>
+    packed_cx_vector(size_type             length,
+                     U                     value,
+                     const allocator_type& allocator = allocator_type())
     : m_allocator(allocator)
     , m_length(length)
     , m_ptr(alloc_traits::allocate(m_allocator, num_packs(length) * PackSize * 2))
@@ -209,7 +199,6 @@ public:
         deallocate();
     };
 
-
     void swap(packed_cx_vector& other) noexcept(
         alloc_traits::propagate_on_container_swap::value&&
             std::is_nothrow_move_constructible_v<allocator_type> ||
@@ -235,12 +224,11 @@ public:
         first.swap(second);
     }
 
-    allocator_type get_allocator() const
+    [[nodiscard]] allocator_type get_allocator() const
+        noexcept(std::is_nothrow_copy_constructible_v<allocator_type>)
     {
         return m_allocator;
     }
-
-    // void set(std::complex<T> z);
 
     [[nodiscard]] reference operator[](size_type idx)
     {
@@ -276,11 +264,11 @@ public:
         return {m_ptr + p_idx};
     }
 
-    [[nodiscard]] size_type size() const
+    [[nodiscard]] size_type size() const noexcept
     {
         return m_length;
     };
-    [[nodiscard]] size_type length() const
+    [[nodiscard]] size_type length() const noexcept
     {
         return m_length;
     };
@@ -298,22 +286,28 @@ public:
         }
     }
 
-    iterator begin()
+    [[nodiscard]] iterator begin() noexcept
     {
         return iterator(m_ptr, 0);
     }
-
-    const_iterator begin() const
+    [[nodiscard]] const_iterator begin() const noexcept
+    {
+        return const_iterator(m_ptr, 0);
+    }
+    [[nodiscard]] const_iterator cbegin() const noexcept
     {
         return const_iterator(m_ptr, 0);
     }
 
-    iterator end()
+    [[nodiscard]] iterator end() noexcept
     {
         return iterator(m_ptr + packed_idx(m_length), m_length);
     }
-
-    const_iterator end() const
+    [[nodiscard]] const_iterator end() const noexcept
+    {
+        return const_iterator(m_ptr + packed_idx(m_length), m_length);
+    }
+    [[nodiscard]] const_iterator cend() const noexcept
     {
         return const_iterator(m_ptr + packed_idx(m_length), m_length);
     }
@@ -345,20 +339,19 @@ private:
     }
 };
 
-template<typename T, std::size_t PackSize, typename Allocator>
-    requires packed_floating_point<T, PackSize>
-template<bool Const>
-class packed_cx_vector<T, PackSize, Allocator>::iterator_base
+template<typename T, std::size_t PackSize, typename Allocator, bool Const>
+class packed_iterator
 {
     friend class packed_cx_vector<T, PackSize, Allocator>;
+    friend class packed_iterator<T, PackSize, Allocator, true>;
 
 public:
-    using real_type       = T;
-    using real_pointer    = packed_cx_vector::real_pointer;
-    using difference_type = packed_cx_vector::difference_type;
-    using reference       = packed_cx_ref<T, PackSize, Allocator, Const>;
-    using value_type      = std::complex<T>;
-    // using pointer          = packed_cx_ref<T, PackSize, Allocator, Const>;
+    using real_type    = T;
+    using real_pointer = typename packed_cx_vector<T, PackSize, Allocator>::real_pointer;
+    using difference_type =
+        typename packed_cx_vector<T, PackSize, Allocator>::difference_type;
+    using reference        = packed_cx_ref<T, PackSize, Allocator, Const>;
+    using value_type       = std::complex<T>;
     using iterator_concept = std::random_access_iterator_tag;
 
     static constexpr auto pack_size = PackSize;
@@ -366,49 +359,49 @@ public:
 private:
     using alloc_traits = std::allocator_traits<Allocator>;
 
-    iterator_base(real_pointer data_ptr, difference_type index) noexcept
+    packed_iterator(real_pointer data_ptr, difference_type index) noexcept
     : m_ptr(data_ptr)
     , m_idx(index){};
 
 public:
-    iterator_base() = default;
+    packed_iterator() noexcept = default;
 
-    iterator_base(const iterator_base<false>& other) noexcept
+    packed_iterator(const packed_iterator<T, PackSize, Allocator, false>& other) noexcept
         requires requires { Const; }
     : m_ptr(other.m_ptr)
     , m_idx(other.m_idx){};
 
-    iterator_base(const iterator_base& other) noexcept = default;
-    iterator_base(iterator_base&& other) noexcept      = default;
+    packed_iterator(const packed_iterator& other) noexcept = default;
+    packed_iterator(packed_iterator&& other) noexcept      = default;
 
-    iterator_base& operator=(const iterator_base& other) noexcept = default;
-    iterator_base& operator=(iterator_base&& other) noexcept      = default;
+    packed_iterator& operator=(const packed_iterator& other) noexcept = default;
+    packed_iterator& operator=(packed_iterator&& other) noexcept      = default;
 
-    ~iterator_base() = default;
+    ~packed_iterator() = default;
 
-    value_type value() const
+    [[nodiscard]] value_type value() const
     {
         return {*m_ptr, *(m_ptr + PackSize)};
     }
-    reference operator*() const
+    [[nodiscard]] reference operator*() const noexcept
     {
         return reference(m_ptr);
     }
-    reference operator[](difference_type idx) const
+    [[nodiscard]] reference operator[](difference_type idx) const noexcept
     {
         return *(*this + idx);
     }
 
-    bool operator==(const iterator_base& other) const
+    [[nodiscard]] bool operator==(const packed_iterator& other) const noexcept
     {
         return (m_ptr == other.m_ptr) && (m_idx == other.m_idx);
     }
-    auto operator<=>(const iterator_base& other) const
+    [[nodiscard]] auto operator<=>(const packed_iterator& other) const noexcept
     {
         return m_ptr <=> other.m_ptr;
     }
 
-    iterator_base& operator++() noexcept
+    packed_iterator& operator++() noexcept
     {
         if (++m_idx % PackSize == 0)
         {
@@ -417,13 +410,13 @@ public:
         ++m_ptr;
         return *this;
     }
-    iterator_base operator++(int) noexcept
+    packed_iterator operator++(int) noexcept
     {
         auto copy = *this;
         ++*this;
         return copy;
     }
-    iterator_base& operator--() noexcept
+    packed_iterator& operator--() noexcept
     {
         if (m_idx % PackSize == 0)
         {
@@ -433,44 +426,71 @@ public:
         --m_ptr;
         return *this;
     }
-    iterator_base operator--(int) noexcept
+    packed_iterator operator--(int) noexcept
     {
         auto copy = *this;
         --*this;
         return copy;
     }
 
-    iterator_base& operator+=(difference_type n)
+    packed_iterator& operator+=(difference_type n) noexcept
     {
         m_ptr = m_ptr + n + (m_idx % PackSize + n) / PackSize * PackSize;
         m_idx += n;
         return *this;
     }
-    iterator_base& operator-=(difference_type n)
+    packed_iterator& operator-=(difference_type n) noexcept
     {
         return (*this) += -n;
     }
 
-    friend iterator_base operator+(iterator_base it, difference_type n)
+    [[nodiscard]] friend packed_iterator operator+(packed_iterator it,
+                                                   difference_type n) noexcept
     {
         it += n;
         return it;
     }
-    friend iterator_base operator+(difference_type n, iterator_base it)
+    [[nodiscard]] friend packed_iterator operator+(difference_type n,
+                                                   packed_iterator it) noexcept
     {
         it += n;
         return it;
     }
-    friend iterator_base operator-(iterator_base it, difference_type n)
+    [[nodiscard]] friend packed_iterator operator-(packed_iterator it,
+                                                   difference_type n) noexcept
     {
         it -= n;
         return it;
     }
 
     template<bool OConst>
-    difference_type operator-(const iterator_base<OConst>& other) const
+    [[nodiscard]] difference_type
+    operator-(const packed_iterator<T, PackSize, Allocator, OConst>& other) const noexcept
     {
         return m_idx - other.m_idx;
+    }
+
+    [[nodiscard]] bool aligned() const noexcept
+    {
+        return m_idx % PackSize == 0;
+    }
+    /**
+     * @brief Returns aligned iterator not bigger then this itertor;
+     *
+     * @return packed_iterator
+     */
+    [[nodiscard]] packed_iterator align_lower() const noexcept
+    {
+        return *this - m_idx % PackSize;
+    }
+    /**
+     * @brief Return aligned iterator not smaller then this itertator;
+     *
+     * @return packed_iterator
+     */
+    [[nodiscard]] packed_iterator align_upper() const noexcept
+    {
+        return m_idx % PackSize == 0 ? *this : *this + PackSize - m_idx % PackSize;
     }
 
 private:
@@ -482,25 +502,40 @@ template<typename T, std::size_t PackSize, typename Allocator, bool Const>
 class packed_cx_ref
 {
     friend class packed_cx_vector<T, PackSize, Allocator>;
-
+    friend class packed_iterator<T, PackSize, Allocator, Const>;
+    friend class packed_cx_ref<T, PackSize, Allocator, true>;
 
 public:
-    using real_type    = T;
-    using real_pointer = typename std::allocator_traits<Allocator>::pointer;
-    using value_type   = std::complex<real_type>;
+    using real_type = T;
+    using pointer   = typename std::conditional<
+        Const,
+        typename std::allocator_traits<Allocator>::const_pointer,
+        typename std::allocator_traits<Allocator>::pointer>::type;
+    using value_type = std::complex<real_type>;
 
 private:
-    packed_cx_ref(real_pointer ptr)
+    packed_cx_ref(pointer ptr) noexcept
     : m_ptr(ptr){};
 
 public:
     packed_cx_ref() = delete;
 
-    packed_cx_ref(const packed_cx_ref&)     = delete;
-    packed_cx_ref(packed_cx_ref&&) noexcept = default;
+    packed_cx_ref(const packed_cx_ref<T, PackSize, Allocator, false>& other) noexcept
+        requires requires { Const; }
+    : m_ptr(other.m_ptr){};
+
+    packed_cx_ref(const packed_cx_ref&) noexcept = default;
+    packed_cx_ref(packed_cx_ref&&) noexcept      = default;
 
     ~packed_cx_ref() = default;
 
+    packed_cx_ref& operator=(const packed_cx_ref& other)
+        requires requires { !Const; }
+    {
+        *m_ptr              = *other.m_ptr;
+        *(m_ptr + PackSize) = *(other.m_ptr + PackSize);
+        return *this;
+    }
     template<typename U>
         requires std::is_convertible_v<U, value_type>
     packed_cx_ref& operator=(const U& other)
@@ -512,16 +547,20 @@ public:
         return *this;
     }
 
-    operator value_type() const
+    [[nodiscard]] operator value_type() const
     {
         return value_type(*m_ptr, *(m_ptr + PackSize));
     }
-    value_type value() const
+    [[nodiscard]] value_type value() const
     {
         return *this;
     }
 
+    [[nodiscard]] pointer operator&() const noexcept
+    {
+        return m_ptr;
+    }
 
 private:
-    real_pointer m_ptr{};
+    pointer m_ptr{};
 };
