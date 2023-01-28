@@ -1,6 +1,9 @@
+#include "fft.hpp"
+#include "vector.hpp"
+
 #include <assert.h>
 #include <iostream>
-#include <vector.hpp>
+
 
 inline std::size_t n_caught = 0;
 #define test_except(test, expression) \
@@ -59,6 +62,9 @@ int main()
         val = val_x;
         val_x += 1;
     }
+
+    auto test_unit = fft_unit<float, 32>(v_def_2);
+
 
     std::complex<float> val   = 1;
     const auto&         conv2 = v_def_2;

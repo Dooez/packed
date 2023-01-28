@@ -1,3 +1,5 @@
+#ifndef VECTOR_HPP
+#define VECTOR_HPP
 #include "vector_util.hpp"
 
 #include <complex>
@@ -564,3 +566,5 @@ public:
 private:
     pointer m_ptr{};
 };
+
+#endif
