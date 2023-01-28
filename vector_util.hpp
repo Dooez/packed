@@ -16,47 +16,54 @@ template<typename T, std::size_t PackSize, typename Allocator>
     requires packed_floating_point<T, PackSize>
 class packed_cx_vector;
 
-template<typename T, std::size_t PackSize, typename Allocator, bool Const>
+template<typename T, std::size_t PackSize, typename Allocator, bool Const = false>
 class packed_cx_ref;
 
-template<typename T, std::size_t PackSize, typename Allocator, bool Const>
+template<typename T, std::size_t PackSize, typename Allocator, bool Const = false>
 class packed_iterator;
 
+
+template<typename T, std::size_t PackSize, typename Allocator, bool Const>
+inline void packed_copy(packed_iterator<T, PackSize, Allocator, Const> first,
+                        packed_iterator<T, PackSize, Allocator, Const> last,
+                        packed_iterator<T, PackSize, Allocator>        d_first)
+{
+    packed_copy(packed_iterator<T, PackSize, Allocator, true>(first),
+                packed_iterator<T, PackSize, Allocator, true>(last),
+                d_first);
+}
+
 template<typename T, std::size_t PackSize, typename Allocator>
-    requires packed_floating_point<T, PackSize>
-void aligned_copy(packed_cx_ref<T, PackSize, Allocator, false>         dest,
-                  packed_cx_ref<T, PackSize, Allocator, true>          source,
-                  typename std::allocator_traits<Allocator>::size_type size)
+void packed_copy(packed_iterator<T, PackSize, Allocator, true> first,
+                 packed_iterator<T, PackSize, Allocator, true> last,
+                 packed_iterator<T, PackSize, Allocator>       d_first)
 {
-    auto aligned_size = size / PackSize * 2 * PackSize;
-    std::memcpy(&dest, &source, (aligned_size + size % PackSize) * sizeof(T));
-    std::memcpy(&dest + aligned_size + PackSize,
-                &source + aligned_size + PackSize,
-                size % PackSize * sizeof(T));
-};
-
-
-template<typename Vec, typename T, std::size_t PackSize, typename Allocator>
-    requires std::same_as<Vec, packed_cx_vector<T, PackSize, Allocator>>
-void copy(typename Vec::const_iterator first,
-          typename Vec::const_iterator last,
-          typename Vec::iterator       d_first)
-{
-    if (first.aligned() && d_first.aligned())
-    {
-        aligned_copy(*d_first, *first, last - first);
-        return;
-    }
-    for (; first < last; ++first)
+    while (first < std::min(first.align_upper(), last))
     {
         *d_first++ = *first;
+        ++first;
+    }
+    if (first.aligned() && d_first.aligned() && first < last)
+    {
+        auto size         = (last - first);
+        auto aligned_size = size / PackSize * PackSize * 2;
+        std::memcpy(&(*d_first), &(*first), (aligned_size + size % PackSize) * sizeof(T));
+        std::memcpy(&(*d_first) + aligned_size + PackSize,
+                    &(*first) + aligned_size + PackSize,
+                    size % PackSize * sizeof(T));
+        return;
+    }
+    while (first < last)
+    {
+        *d_first++ = *first;
+        ++first;
     }
 };
 
 template<typename T, std::size_t PackSize, typename Allocator>
-void set(packed_iterator<T, PackSize, Allocator, false> first,    //
-         packed_iterator<T, PackSize, Allocator, false> last,     //
-         std::complex<T>                                value)
+void set(packed_iterator<T, PackSize, Allocator> first,
+         packed_iterator<T, PackSize, Allocator> last,
+         std::complex<T>                         value)
 {
     constexpr uint reg_size = 32;
 
@@ -65,7 +72,7 @@ void set(packed_iterator<T, PackSize, Allocator, false> first,    //
     const auto re_128 = _mm256_castps256_ps128(re_256);
     const auto im_128 = _mm256_castps256_ps128(im_256);
 
-    while (first < first.align_upper())
+    while (first < std::min(first.align_upper(), last))
     {
         auto ptr = &(*first);
         _mm_store_ss(ptr, re_128);
@@ -90,11 +97,12 @@ void set(packed_iterator<T, PackSize, Allocator, false> first,    //
         ++first;
     }
 };
+
 template<typename T, std::size_t PackSize, typename Allocator, typename U>
     requires std::convertible_to<U, std::complex<T>>
-void set(packed_iterator<T, PackSize, Allocator, false> first,    //
-         packed_iterator<T, PackSize, Allocator, false> last,     //
-         U                                              value)
+inline void set(packed_iterator<T, PackSize, Allocator> first,
+                packed_iterator<T, PackSize, Allocator> last,
+                U                                       value)
 {
     auto value_cx = std::complex<T>(value);
     set(first, last, value_cx);

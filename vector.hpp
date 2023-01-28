@@ -334,6 +334,7 @@ template<typename T, std::size_t PackSize, typename Allocator, bool Const>
 class packed_iterator
 {
     friend class packed_cx_vector<T, PackSize, Allocator>;
+    friend class packed_iterator<T, PackSize, Allocator, true>;
 
 public:
     using real_type    = T;
@@ -489,8 +490,8 @@ template<typename T, std::size_t PackSize, typename Allocator, bool Const>
 class packed_cx_ref
 {
     friend class packed_cx_vector<T, PackSize, Allocator>;
-    friend class packed_iterator<T, PackSize, Allocator, false>;
-    friend class packed_iterator<T, PackSize, Allocator, !Const>;
+    friend class packed_iterator<T, PackSize, Allocator, Const>;
+    friend class packed_cx_ref<T, PackSize, Allocator, true>;
 
 public:
     using real_type = T;
@@ -516,6 +517,13 @@ public:
 
     ~packed_cx_ref() = default;
 
+    packed_cx_ref& operator=(const packed_cx_ref& other)
+        requires requires { !Const; }
+    {
+        *m_ptr              = *other.m_ptr;
+        *(m_ptr + PackSize) = *(other.m_ptr + PackSize);
+        return *this;
+    }
     template<typename U>
         requires std::is_convertible_v<U, value_type>
     packed_cx_ref& operator=(const U& other)
