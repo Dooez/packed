@@ -3,28 +3,66 @@
 
 #include "vector.hpp"
 
+#include <map>
+#include <memory>
+
+
 template<typename T, std::size_t PackSize, typename Allocator = std::allocator<T>>
     requires packed_floating_point<T, PackSize>
 class fft_unit
 {
-public:
-    fft_unit(std::size_t fft_size){};
+    struct packed_fft_core;
 
-    fft_unit(const fft_unit& other)     = delete;
-    fft_unit(fft_unit&& other) noexcept = delete;
+public:
+    using real_type      = T;
+    using allocator_type = Allocator;
+
+    static constexpr auto pack_size = PackSize;
+
+public:
+    fft_unit(std::size_t fft_size, allocator_type allocator = allocator_type())
+    {
+        using alloc_traits = std::allocator_traits<allocator_type>;
+
+        auto sort_alloc = alloc_traits::template rebind_alloc<std::size_t>(allocator);
+        auto core_alloc = alloc_traits::template rebind_alloc<packed_fft_core>(allocator);
+
+        m_core = std::allocate_shared(core_alloc,
+                                      {
+                                          fft_size,
+                                          sort_indexes(fft_size, sort_alloc),
+                                          twiddles(fft_size, allocator),
+                                      });
+    };
+
+    fft_unit(const fft_unit& other)     = default;
+    fft_unit(fft_unit&& other) noexcept = default;
 
     ~fft_unit() = default;
 
-    fft_unit& operator=(const fft_unit& other)     = delete;
-    fft_unit& operator=(fft_unit&& other) noexcept = delete;
+    fft_unit& operator=(const fft_unit& other)     = default;
+    fft_unit& operator=(fft_unit&& other) noexcept = default;
 
 
     template<typename VT, std::size_t VPackSize, typename VAllocator>
-        requires std::same_as<VT, T> && requires { PackSize == VPackSize; }
+        requires std::same_as<VT, real_type> && requires { VPackSize == pack_size; }
     void fft_unit_test(const packed_cx_vector<VT, VPackSize, VAllocator>& test_vecor){};
 
 private:
-    static constexpr auto log2i(std::size_t number)
+    using sort_allocator_type =
+        decltype(std::allocator_traits<allocator_type>::template rebind_alloc<std::size_t>(
+            std::declval<allocator_type>()));
+    struct packed_fft_core
+    {
+        std::size_t                                                           fft_size;
+        std::pair<std::vector<std::size_t, sort_allocator_type>, std::size_t> sort;
+        packed_cx_vector<real_type, pack_size, Allocator>                     twiddles;
+    };
+    std::shared_ptr<packed_fft_core> m_core{};
+
+    static constexpr std::size_t register_size = 32 / sizeof(real_type);
+
+    static constexpr auto log2i(std::size_t number) -> std::size_t
     {
         std::size_t order = 0;
         while ((number >>= 1U) != 0)
@@ -45,29 +83,91 @@ private:
         return num;
     }
 
-    static constexpr auto sort_order(std::size_t fft_size) -> std::vector<std::size_t>
+    static inline auto wnk(std::size_t n, std::size_t k) -> std::complex<real_type>
     {
-        auto order = std::vector<std::size_t>();
-        order.reserve(fft_size);
+        constexpr double pi = 3.14159265358979323846;
+        return exp(std::complex<real_type>(0,
+                                           -2 * pi * static_cast<double>(k) /
+                                               static_cast<double>(n)));
+    }
 
-        auto m = log2i(fft_size);
+    static auto sort_indexes(std::size_t fft_size, sort_allocator_type allocator)
+        -> std::pair<std::vector<std::size_t, sort_allocator_type>, std::size_t>
+    {
+        const auto packed_sort_size = fft_size / register_size / register_size;
 
-        for (uint i = 0; i < fft_size / 64 / 2; ++i)
+        auto sort = std::pair<std::vector<std::size_t, sort_allocator_type>, std::size_t>{
+            allocator,
+            0};
+        auto& indexes = sort.first;
+        indexes.reserve(packed_sort_size);
+
+        for (uint i = 0; i < packed_sort_size / 2; ++i)
         {
             if (i == reverse_bit_order(i))
             {
                 continue;
             }
-            order.push_back(i);
-            order.push_back(reverse_bit_order(i));
+            indexes.push_back(i);
+            indexes.push_back(reverse_bit_order(i));
         }
-        for (uint i = 0; i < fft_size / 64 / 2; ++i)
+        sort.second = indexes.size();
+        for (uint i = 0; i < packed_sort_size; ++i)
         {
             if (i == reverse_bit_order(i))
             {
-                order.push_back(i);
+                indexes.push_back(i);
             }
         }
+        return sort;
+    }
+
+    auto twiddles(std::size_t fft_size, allocator_type allocator)
+        -> packed_cx_vector<real_type, pack_size, allocator_type>
+    {
+        const auto depth = log2i(fft_size);
+
+        const std::size_t n_twiddles = 8 * ((1U << (depth - 3)) - 1U);
+
+        auto twiddles =
+            packed_cx_vector<real_type, pack_size, allocator_type>(n_twiddles, allocator);
+
+        auto tw_it       = twiddles.begin();
+        uint l_fft_size  = 16;
+        uint small_i_max = 1;
+
+        if (depth % 2 == 0)
+        {
+            for (uint k = 0; k < 8; ++k)
+            {
+                tw_it++ = wnk(l_fft_size, k);
+            }
+            l_fft_size *= 2;
+            small_i_max *= 2;
+        }
+
+        while (l_fft_size < fft_size)
+        {
+            for (uint small_i = 0; small_i < small_i_max; ++small_i)
+            {
+                for (uint k = 0; k < 8; ++k)
+                {
+                    tw_it++ = wnk(l_fft_size, k + small_i * 8);
+                }
+
+                for (uint k = 0; k < 8; ++k)
+                {
+                    tw_it++ = wnk(l_fft_size * 2UL, k + small_i * 8);
+                }
+                for (uint k = 0; k < 8; ++k)
+                {
+                    tw_it++ = wnk(l_fft_size * 2UL, k + small_i * 8 + l_fft_size / 2);
+                }
+            }
+            small_i_max *= 4;
+            l_fft_size *= 4;
+        }
+        return twiddles;
     }
 };
 
