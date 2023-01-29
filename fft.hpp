@@ -34,9 +34,7 @@ private:
         return order;
     }
 
-    template<typnemae T>
-        requires std::is_unsigned_v<T>
-    static auto reverse_bit_order(uint64_t num)
+    static constexpr auto reverse_bit_order(uint64_t num) -> uint64_t
     {
         num = num >> 32 | num << 32;
         num = (num & 0xFFFF0000FFFF0000) >> 16 | (num & 0x0000FFFF0000FFFF) << 16;
@@ -45,6 +43,31 @@ private:
         num = (num & 0xCCCCCCCCCCCCCCCC) >> 2 | (num & 0x3333333333333333) << 2;
         num = (num & 0xAAAAAAAAAAAAAAAA) >> 1 | (num & 0x5555555555555555) << 1;
         return num;
+    }
+
+    static constexpr auto sort_order(std::size_t fft_size) -> std::vector<std::size_t>
+    {
+        auto order = std::vector<std::size_t>();
+        order.reserve(fft_size);
+
+        auto m = log2i(fft_size);
+
+        for (uint i = 0; i < fft_size / 64 / 2; ++i)
+        {
+            if (i == reverse_bit_order(i))
+            {
+                continue;
+            }
+            order.push_back(i);
+            order.push_back(reverse_bit_order(i));
+        }
+        for (uint i = 0; i < fft_size / 64 / 2; ++i)
+        {
+            if (i == reverse_bit_order(i))
+            {
+                order.push_back(i);
+            }
+        }
     }
 };
 
