@@ -65,7 +65,7 @@ int main()
         val_x += 1;
     }
 
-    auto test_unit = fft_unit<float, 32>(v_def_2);
+    // auto test_unit = fft_unit<float, 32>(v_def_2);
 
 
     std::complex<float> val   = 1;
