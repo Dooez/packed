@@ -24,6 +24,28 @@ public:
     void fft_unit_test(const packed_cx_vector<VT, VPackSize, VAllocator>& test_vecor){};
 
 private:
+    static constexpr auto log2i(std::size_t number)
+    {
+        std::size_t order = 0;
+        while ((number >>= 1U) != 0)
+        {
+            order++;
+        }
+        return order;
+    }
+
+    template<typnemae T>
+        requires std::is_unsigned_v<T>
+    static auto reverse_bit_order(uint64_t num)
+    {
+        num = num >> 32 | num << 32;
+        num = (num & 0xFFFF0000FFFF0000) >> 16 | (num & 0x0000FFFF0000FFFF) << 16;
+        num = (num & 0xFF00FF00FF00FF00) >> 8 | (num & 0x00FF00FF00FF00FF) << 8;
+        num = (num & 0xF0F0F0F0F0F0F0F0) >> 4 | (num & 0x0F0F0F0F0F0F0F0F) << 4;
+        num = (num & 0xCCCCCCCCCCCCCCCC) >> 2 | (num & 0x3333333333333333) << 2;
+        num = (num & 0xAAAAAAAAAAAAAAAA) >> 1 | (num & 0x5555555555555555) << 1;
+        return num;
+    }
 };
 
 template<typename T, std::size_t PackSize, typename Allocator>
@@ -35,7 +57,7 @@ void fft_internal(packed_cx_vector<T, PackSize, Allocator>& vector)
     constexpr double pi  = 3.14159265358979323846;
     const auto       sq2 = std::exp(std::complex<float>(0, pi / 4));
 
-    auto twsq2 = _mm256_broadcast_ss(&reinterpret_cast<T(&)[2]>(sq2)[0]);
+    auto twsq2 = _mm256_broadcast_ss(&reinterpret_cast<const T(&)[2]>(sq2)[0]);
 
     auto p0re = _mm256_loadu_ps(&vector[0 * size / 8]);
     auto p1re = _mm256_loadu_ps(&vector[1 * size / 8]);
@@ -140,25 +162,55 @@ void fft_internal(packed_cx_vector<T, PackSize, Allocator>& vector)
     auto shb2re = _mm256_unpackhi_pd(sha0re, sha2re);
     auto shb1re = _mm256_unpacklo_pd(sha1re, sha3re);
     auto shb3re = _mm256_unpackhi_pd(sha1re, sha3re);
-    auto shb0re = _mm256_unpacklo_pd(sha4re, sha6re);
-    auto shb2re = _mm256_unpackhi_pd(sha4re, sha6re);
-    auto shb1re = _mm256_unpacklo_pd(sha5re, sha7re);
-    auto shb3re = _mm256_unpackhi_pd(sha5re, sha7re);
+    auto shb4re = _mm256_unpacklo_pd(sha4re, sha6re);
+    auto shb6re = _mm256_unpackhi_pd(sha4re, sha6re);
+    auto shb5re = _mm256_unpacklo_pd(sha5re, sha7re);
+    auto shb7re = _mm256_unpackhi_pd(sha5re, sha7re);
 
     auto shb0im = _mm256_unpacklo_pd(sha0im, sha2im);
     auto shb2im = _mm256_unpackhi_pd(sha0im, sha2im);
     auto shb1im = _mm256_unpacklo_pd(sha1im, sha3im);
     auto shb3im = _mm256_unpackhi_pd(sha1im, sha3im);
-    auto shb0im = _mm256_unpacklo_pd(sha4im, sha6im);
-    auto shb2im = _mm256_unpackhi_pd(sha4im, sha6im);
-    auto shb1im = _mm256_unpacklo_pd(sha5im, sha7im);
-    auto shb3im = _mm256_unpackhi_pd(sha5im, sha7im);
+    auto shb4im = _mm256_unpacklo_pd(sha4im, sha6im);
+    auto shb5im = _mm256_unpackhi_pd(sha4im, sha6im);
+    auto shb6im = _mm256_unpacklo_pd(sha5im, sha7im);
+    auto shb7im = _mm256_unpackhi_pd(sha5im, sha7im);
 
     auto shc0re = _mm256_permute2f128_ps(shb0re, shb1re, 0b00100000);
     auto shc1re = _mm256_permute2f128_ps(shb0re, shb1re, 0b00110001);
+    auto shc2re = _mm256_permute2f128_ps(shb2re, shb3re, 0b00100000);
+    auto shc3re = _mm256_permute2f128_ps(shb2re, shb3re, 0b00110001);
+    auto shc4re = _mm256_permute2f128_ps(shb4re, shb5re, 0b00100000);
+    auto shc5re = _mm256_permute2f128_ps(shb4re, shb5re, 0b00110001);
+    auto shc6re = _mm256_permute2f128_ps(shb6re, shb7re, 0b00100000);
+    auto shc7re = _mm256_permute2f128_ps(shb6re, shb7re, 0b00110001);
 
-    shc0_re = reg.vec(); cod.e('vperm2f128', shc0_re, shb0_re, shb1_re, '00100000b');
-    shc1_re = shb1_re;   cod.e('vperm2f128', shc1_re, shb0_re, shb1_re, '00110001b');
+    auto shc0im = _mm256_permute2f128_ps(shb0im, shb1im, 0b00100000);
+    auto shc1im = _mm256_permute2f128_ps(shb0im, shb1im, 0b00110001);
+    auto shc2im = _mm256_permute2f128_ps(shb2im, shb3im, 0b00100000);
+    auto shc3im = _mm256_permute2f128_ps(shb2im, shb3im, 0b00110001);
+    auto shc4im = _mm256_permute2f128_ps(shb4im, shb5im, 0b00100000);
+    auto shc5im = _mm256_permute2f128_ps(shb4im, shb5im, 0b00110001);
+    auto shc6im = _mm256_permute2f128_ps(shb6im, shb7im, 0b00100000);
+    auto shc7im = _mm256_permute2f128_ps(shb6im, shb7im, 0b00110001);
+
+    _mm256_storeu_ps(&vector[0 * size / 8], shc0re);
+    _mm256_storeu_ps(&vector[1 * size / 8], shc1re);
+    _mm256_storeu_ps(&vector[2 * size / 8], shc2re);
+    _mm256_storeu_ps(&vector[3 * size / 8], shc3re);
+    _mm256_storeu_ps(&vector[4 * size / 8], shc4re);
+    _mm256_storeu_ps(&vector[5 * size / 8], shc5re);
+    _mm256_storeu_ps(&vector[6 * size / 8], shc6re);
+    _mm256_storeu_ps(&vector[7 * size / 8], shc7re);
+
+    _mm256_storeu_ps(&vector[0 * size / 8] + PackSize, shc0im);
+    _mm256_storeu_ps(&vector[1 * size / 8] + PackSize, shc1im);
+    _mm256_storeu_ps(&vector[2 * size / 8] + PackSize, shc2im);
+    _mm256_storeu_ps(&vector[3 * size / 8] + PackSize, shc3im);
+    _mm256_storeu_ps(&vector[4 * size / 8] + PackSize, shc4im);
+    _mm256_storeu_ps(&vector[5 * size / 8] + PackSize, shc5im);
+    _mm256_storeu_ps(&vector[6 * size / 8] + PackSize, shc6im);
+    _mm256_storeu_ps(&vector[7 * size / 8] + PackSize, shc7im);
 }
 
 
