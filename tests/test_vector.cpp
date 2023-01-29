@@ -48,11 +48,13 @@ int test_vector(const Vec& vector)
 
 int main()
 {
-    packed_cx_vector<float> v_def{};
-    packed_cx_vector<float> v_def_2(127);
-    packed_cx_vector<float> v_def_3(127);
+    packed_cx_vector<float>  v_def{};
+    packed_cx_vector<float>  v_def_2(127);
+    packed_cx_vector<float>  v_def_3(127);
+    packed_cx_vector<double> v_def_d(127);
 
     test_vector(v_def_2);
+    test_vector(v_def_d);
     auto val_x = 0;
     for (auto val : v_def_2)
     {
