@@ -95,26 +95,37 @@ public:
     }
 
     packed_cx_vector(packed_cx_vector&& other) noexcept(
-        std::is_nothrow_move_constructible_v<allocator_type>) = default;
-
-    packed_cx_vector(packed_cx_vector&& other, const allocator_type& allocator) noexcept
-        requires(alloc_traits::is_always_equal::value)
-    : m_allocator(allocator)
-    , m_length(std::move(other.m_length))
-    , m_ptr(std::move(other.m_ptr)){};
-
-    packed_cx_vector(packed_cx_vector&& other, const allocator_type& allocator)
-    : m_allocator(allocator)
-    , m_length(std::move(other.m_length))
+        std::is_nothrow_move_constructible_v<allocator_type>)
+    : m_allocator(std::move(other.m_allocator))
     {
-        if (m_allocator == other.m_allocator)
+        using std::swap;
+        swap(m_length, other.m_length);
+        swap(m_ptr, other.m_ptr);
+    };
+
+    packed_cx_vector(packed_cx_vector&& other, const allocator_type& allocator) noexcept(
+        alloc_traits::is_always_equal::value)
+    : m_allocator(allocator)
+    {
+        if constexpr (alloc_traits::is_always_equal::value)
         {
-            m_ptr = std::move(other.m_ptr);
-            return;
+            using std::swap;
+            swap(m_length, other.m_length);
+            swap(m_ptr, other.m_ptr);
+        } else
+        {
+            if (m_allocator == other.m_allocator)
+            {
+                using std::swap;
+                swap(m_length, other.m_length);
+                swap(m_ptr, other.m_ptr);
+                return;
+            }
+            m_ptr =
+                alloc_traits::allocate(m_allocator, num_packs(m_length) * PackSize * 2);
+            // TODO: Copy data
         }
-        m_ptr = alloc_traits::allocate(m_allocator, num_packs(m_length) * PackSize * 2);
-        // TODO: Copy data
-    }
+    };
 
     packed_cx_vector& operator=(const packed_cx_vector& other)
     {
@@ -156,31 +167,34 @@ public:
 
     packed_cx_vector& operator=(packed_cx_vector&& other) noexcept(
         alloc_traits::propagate_on_container_move_assignment::value&&
-            std::is_nothrow_move_constructible_v<allocator_type> ||
+            std::is_nothrow_swappable_v<allocator_type> ||
         alloc_traits::is_always_equal::value)
     {
         if constexpr (alloc_traits::propagate_on_container_move_assignment::value)
         {
             deallocate();
-            m_allocator = std::move(other.m_allocator);
-            m_length    = std::move(other.m_length);
-            m_ptr       = std::move(other.m_ptr);
+            using std::swap;
+            swap(m_allocator, other.m_allocator);
+            swap(m_length, other.m_length);
+            swap(m_ptr, other.m_ptr);
             return *this;
         } else
         {
             if constexpr (alloc_traits::is_always_equal::value)
             {
                 deallocate();
-                m_length = std::move(other.m_length);
-                m_ptr    = std::move(other.m_ptr);
+                using std::swap;
+                swap(m_length, other.m_length);
+                swap(m_ptr, other.m_ptr);
                 return *this;
             } else
             {
                 if (m_allocator == other.m_allocator)
                 {
                     deallocate();
-                    m_length = std::move(other.m_length);
-                    m_ptr    = std::move(other.m_ptr);
+                    using std::swap;
+                    swap(m_length, other.m_length);
+                    swap(m_ptr, other.m_ptr);
                     return *this;
                 }
                 if (num_packs(m_length) != num_packs(other.m_length))
@@ -203,7 +217,7 @@ public:
 
     void swap(packed_cx_vector& other) noexcept(
         alloc_traits::propagate_on_container_swap::value&&
-            std::is_nothrow_move_constructible_v<allocator_type> ||
+            std::is_nothrow_swappable_v<allocator_type> ||
         alloc_traits::is_always_equal::value)
     {
         if constexpr (alloc_traits::propagate_on_container_swap::value)
@@ -322,11 +336,13 @@ private:
 
     void deallocate()
     {
-        if (m_ptr != nullptr && m_length != 0)
+        if (m_ptr != real_pointer() && m_length != 0)
         {
             alloc_traits::deallocate(m_allocator,
                                      m_ptr,
                                      num_packs(m_length) * PackSize * 2);
+            m_ptr    = real_pointer();
+            m_length = 0;
         }
     }
 

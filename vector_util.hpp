@@ -61,11 +61,12 @@ void packed_copy(packed_iterator<T, PackSize, Allocator, true> first,
 };
 
 template<typename T, std::size_t PackSize, typename Allocator>
+    requires std::same_as<T, float>
 void set(packed_iterator<T, PackSize, Allocator> first,
          packed_iterator<T, PackSize, Allocator> last,
          std::complex<T>                         value)
 {
-    constexpr uint reg_size = 32;
+    constexpr std::size_t reg_size = 32 / sizeof(T);
 
     const auto re_256 = _mm256_broadcast_ss(&reinterpret_cast<T(&)[2]>(value)[0]);
     const auto im_256 = _mm256_broadcast_ss(&reinterpret_cast<T(&)[2]>(value)[1]);
@@ -82,10 +83,10 @@ void set(packed_iterator<T, PackSize, Allocator> first,
     while (first < last.align_lower())
     {
         auto ptr = &(*first);
-        for (uint i = 0; i < PackSize / (reg_size / sizeof(T)); ++i)
+        for (uint i = 0; i < PackSize / reg_size; ++i)
         {
-            _mm256_storeu_ps(ptr + (reg_size / sizeof(T)) * i, re_256);
-            _mm256_storeu_ps(ptr + (reg_size / sizeof(T)) * i + PackSize, im_256);
+            _mm256_storeu_ps(ptr + reg_size * i, re_256);
+            _mm256_storeu_ps(ptr + reg_size * i + PackSize, im_256);
         }
         first += PackSize;
     }
@@ -94,6 +95,45 @@ void set(packed_iterator<T, PackSize, Allocator> first,
         auto ptr = &(*first);
         _mm_store_ss(ptr, re_128);
         _mm_store_ss(ptr + PackSize, im_128);
+        ++first;
+    }
+};
+
+template<typename T, std::size_t PackSize, typename Allocator>
+    requires std::same_as<T, double>
+void set(packed_iterator<T, PackSize, Allocator> first,
+         packed_iterator<T, PackSize, Allocator> last,
+         std::complex<T>                         value)
+{
+    constexpr std::size_t reg_size = 32 / sizeof(T);
+
+    const auto re_256 = _mm256_broadcast_sd(&reinterpret_cast<T(&)[2]>(value)[0]);
+    const auto im_256 = _mm256_broadcast_sd(&reinterpret_cast<T(&)[2]>(value)[1]);
+    const auto re_128 = _mm256_castpd256_pd128(re_256);
+    const auto im_128 = _mm256_castpd256_pd128(im_256);
+
+    while (first < std::min(first.align_upper(), last))
+    {
+        auto ptr = &(*first);
+        _mm_store_sd(ptr, re_128);
+        _mm_store_sd(ptr + PackSize, im_128);
+        ++first;
+    }
+    while (first < last.align_lower())
+    {
+        auto ptr = &(*first);
+        for (uint i = 0; i < PackSize / reg_size; ++i)
+        {
+            _mm256_storeu_pd(ptr + reg_size * i, re_256);
+            _mm256_storeu_pd(ptr + reg_size * i + PackSize, im_256);
+        }
+        first += PackSize;
+    }
+    while (first < last)
+    {
+        auto ptr = &(*first);
+        _mm_store_sd(ptr, re_128);
+        _mm_store_sd(ptr + PackSize, im_128);
         ++first;
     }
 };
