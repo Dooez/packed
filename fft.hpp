@@ -13,26 +13,47 @@ class fft_unit
 {
     struct packed_fft_core;
 
+
 public:
     using real_type      = T;
     using allocator_type = Allocator;
 
     static constexpr auto pack_size = PackSize;
 
+private:
+    using sort_allocator_type = typename std::allocator_traits<
+        allocator_type>::template rebind_alloc<std::size_t>;
+
+    struct packed_fft_core
+    {
+        packed_fft_core(
+            std::size_t                                                           size,
+            std::pair<std::vector<std::size_t, sort_allocator_type>, std::size_t> sort,
+            packed_cx_vector<real_type, pack_size, allocator_type> twiddles)
+        : fft_size(size)
+        , sort(std::move(sort))
+        , twiddles(std::move(twiddles)){};
+
+        std::size_t                                                           fft_size;
+        std::pair<std::vector<std::size_t, sort_allocator_type>, std::size_t> sort;
+        packed_cx_vector<real_type, pack_size, allocator_type>                twiddles;
+    };
+    using core_allocator_type = typename std::allocator_traits<
+        allocator_type>::template rebind_alloc<packed_fft_core>;
+
 public:
     fft_unit(std::size_t fft_size, allocator_type allocator = allocator_type())
     {
         using alloc_traits = std::allocator_traits<allocator_type>;
 
-        auto sort_alloc = alloc_traits::template rebind_alloc<std::size_t>(allocator);
-        auto core_alloc = alloc_traits::template rebind_alloc<packed_fft_core>(allocator);
+        auto sort_alloc = sort_allocator_type(allocator);
+        auto core_alloc = core_allocator_type(allocator);
 
-        m_core = std::allocate_shared(core_alloc,
-                                      {
-                                          fft_size,
-                                          sort_indexes(fft_size, sort_alloc),
-                                          twiddles(fft_size, allocator),
-                                      });
+        m_core =
+            std::allocate_shared<packed_fft_core>(core_alloc,
+                                                  fft_size,
+                                                   sort_indexes(fft_size, sort_alloc),
+                                                   twiddles(fft_size, allocator));
     };
 
     fft_unit(const fft_unit& other)     = default;
@@ -49,15 +70,6 @@ public:
     void fft_unit_test(const packed_cx_vector<VT, VPackSize, VAllocator>& test_vecor){};
 
 private:
-    using sort_allocator_type =
-        decltype(std::allocator_traits<allocator_type>::template rebind_alloc<std::size_t>(
-            std::declval<allocator_type>()));
-    struct packed_fft_core
-    {
-        std::size_t                                                           fft_size;
-        std::pair<std::vector<std::size_t, sort_allocator_type>, std::size_t> sort;
-        packed_cx_vector<real_type, pack_size, Allocator>                     twiddles;
-    };
     std::shared_ptr<packed_fft_core> m_core{};
 
     static constexpr std::size_t register_size = 32 / sizeof(real_type);
@@ -140,7 +152,7 @@ private:
         {
             for (uint k = 0; k < 8; ++k)
             {
-                tw_it++ = wnk(l_fft_size, k);
+                *(tw_it++) = wnk(l_fft_size, k);
             }
             l_fft_size *= 2;
             small_i_max *= 2;
@@ -152,16 +164,16 @@ private:
             {
                 for (uint k = 0; k < 8; ++k)
                 {
-                    tw_it++ = wnk(l_fft_size, k + small_i * 8);
+                    *(tw_it++) = wnk(l_fft_size, k + small_i * 8);
                 }
 
                 for (uint k = 0; k < 8; ++k)
                 {
-                    tw_it++ = wnk(l_fft_size * 2UL, k + small_i * 8);
+                    *(tw_it++) = wnk(l_fft_size * 2UL, k + small_i * 8);
                 }
                 for (uint k = 0; k < 8; ++k)
                 {
-                    tw_it++ = wnk(l_fft_size * 2UL, k + small_i * 8 + l_fft_size / 2);
+                    *(tw_it++) = wnk(l_fft_size * 2UL, k + small_i * 8 + l_fft_size / 2);
                 }
             }
             small_i_max *= 4;
