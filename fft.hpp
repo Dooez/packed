@@ -11,9 +11,6 @@ template<typename T, std::size_t PackSize, typename Allocator = std::allocator<T
     requires packed_floating_point<T, PackSize>
 class fft_unit
 {
-    struct packed_fft_core;
-
-
 public:
     using real_type      = T;
     using allocator_type = Allocator;
@@ -26,34 +23,24 @@ private:
 
     struct packed_fft_core
     {
-        packed_fft_core(
-            std::size_t                                                           size,
-            std::pair<std::vector<std::size_t, sort_allocator_type>, std::size_t> sort,
-            packed_cx_vector<real_type, pack_size, allocator_type> twiddles)
-        : fft_size(size)
-        , sort(std::move(sort))
-        , twiddles(std::move(twiddles)){};
+        packed_fft_core(std::size_t fft_size, allocator_type allocator)
+        : fft_size(fft_size)
+        , sort(get_sort(fft_size, static_cast<sort_allocator_type>(allocator)))
+        , twiddles(get_twiddles(fft_size, allocator)){};
 
         std::size_t                                                           fft_size;
         std::pair<std::vector<std::size_t, sort_allocator_type>, std::size_t> sort;
         packed_cx_vector<real_type, pack_size, allocator_type>                twiddles;
     };
+
     using core_allocator_type = typename std::allocator_traits<
         allocator_type>::template rebind_alloc<packed_fft_core>;
 
 public:
     fft_unit(std::size_t fft_size, allocator_type allocator = allocator_type())
     {
-        using alloc_traits = std::allocator_traits<allocator_type>;
-
-        auto sort_alloc = sort_allocator_type(allocator);
         auto core_alloc = core_allocator_type(allocator);
-
-        m_core =
-            std::allocate_shared<packed_fft_core>(core_alloc,
-                                                  fft_size,
-                                                   sort_indexes(fft_size, sort_alloc),
-                                                   twiddles(fft_size, allocator));
+        m_core          = std::allocate_shared<packed_fft_core>(core_alloc, allocator);
     };
 
     fft_unit(const fft_unit& other)     = default;
@@ -103,7 +90,7 @@ private:
                                                static_cast<double>(n)));
     }
 
-    static auto sort_indexes(std::size_t fft_size, sort_allocator_type allocator)
+    static auto get_sort(std::size_t fft_size, sort_allocator_type allocator)
         -> std::pair<std::vector<std::size_t, sort_allocator_type>, std::size_t>
     {
         const auto packed_sort_size = fft_size / register_size / register_size;
@@ -134,7 +121,7 @@ private:
         return sort;
     }
 
-    auto twiddles(std::size_t fft_size, allocator_type allocator)
+    static auto get_twiddles(std::size_t fft_size, allocator_type allocator)
         -> packed_cx_vector<real_type, pack_size, allocator_type>
     {
         const auto depth = log2i(fft_size);
