@@ -50,8 +50,7 @@ public:
     , m_length(length)
     , m_ptr(alloc_traits::allocate(m_allocator, num_packs(length) * PackSize * 2))
     {
-        auto a = 0;
-        // TODO: set to 0
+        set(begin(), end(), 0);
     };
 
     template<typename U>
@@ -63,8 +62,7 @@ public:
     , m_length(length)
     , m_ptr(alloc_traits::allocate(m_allocator, num_packs(length) * PackSize * 2))
     {
-        auto a = 0;
-        // TODO: set to value
+        set(begin(), end(), value);
     };
 
     packed_cx_vector(const packed_cx_vector& other)
@@ -76,7 +74,7 @@ public:
             m_ptr =
                 alloc_traits::allocate(m_allocator, num_packs(m_length) * PackSize * 2);
         }
-        // TODO: Copy data
+        packed_copy(other.begin(), other.end(), begin());
     }
 
     packed_cx_vector(const packed_cx_vector& other, const allocator_type& allocator)
@@ -89,7 +87,7 @@ public:
         }
         m_ptr = alloc_traits::allocate(m_allocator, num_packs(m_length) * PackSize * 2);
 
-        // TODO: Copy data
+        packed_copy(other.begin(), other.end(), begin());
     }
 
     packed_cx_vector(packed_cx_vector&& other) noexcept(
@@ -121,7 +119,7 @@ public:
             }
             m_ptr =
                 alloc_traits::allocate(m_allocator, num_packs(m_length) * PackSize * 2);
-            // TODO: Copy data
+            packed_copy(other.begin(), other.end(), begin());
         }
     };
 
@@ -159,7 +157,7 @@ public:
             }
         }
 
-        //TODO: Copy contents
+        packed_copy(other.begin(), other.end(), begin());
         return *this;
     }
 
@@ -202,7 +200,7 @@ public:
                     m_ptr    = alloc_traits::allocate(m_allocator,
                                                    num_packs(m_length) * PackSize * 2);
                 }
-                //TODO: Copy contents
+                packed_copy(other.begin(), other.end(), begin());
                 return *this;
             }
         }
@@ -292,7 +290,8 @@ public:
         {
             real_type* new_ptr =
                 alloc_traits::allocate(m_allocator, num_packs(new_length) * PackSize * 2);
-            // TODO: copy data
+
+            packed_copy(begin(), end(), iterator(new_ptr, 0));
             deallocate();
 
             m_length = new_length;
