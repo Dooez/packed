@@ -28,6 +28,7 @@ public:
         return static_cast<E>(*this).ymmreg(id);
     };
 
+
 private:
 };
 
@@ -56,21 +57,21 @@ public:
     packed_scalar(std::complex<T> value)
     : m_value(value){};
 
-    constexpr bool aligned()
+    constexpr bool aligned(long idx = 0)
     {
         return true;
     }
 
 private:
-    __mm256 ymmreg(std::size_t id) const
+    cx__mm256 ymmreg(std::size_t id) const
     {
-        return _mm256_broadcast_ps(&m_value);
+        return {_mm256_broadcast_ps(&m_value.real(), &m_value.imag())};
     };
 
     std::complex<T> m_value;
 };
 
-template<typename T>
+template<typename T, std::size_t PackSize, std::size_t Allocator>
 class packed_range : packed_expression<packed_range<T>>
 {
     template<typename E>
@@ -81,8 +82,10 @@ public:
 
     constexpr bool is_scalar = true;
 
-    packed_scalar(std::complex<T> value)
-    : m_value(value){};
+    packed_range(packed_iterator<T, PackSize, Allocator> begin,
+                 packed_iterator<T, PackSize, Allocator> end)
+    : m_begin(begin)
+    , m_end(end){};
 
 private:
     __mm256 ymmreg(std::size_t id) const
@@ -90,17 +93,46 @@ private:
         return _mm256_broadcast_ps(&m_value);
     };
 
-    std::complex<T> m_value;
+    packed_iterator<T, PackSize, Allocator> m_begin;
+    packed_iterator<T, PackSize, Allocator> m_end;
 };
 
-template<typename E>
-bool is_aligned(const E& expression)
+template<typename T, std::size_t PackSize, std::size_t Allocator>
+class const_packed_range : packed_expression<const_packed_range<T>>
 {
-    return expression.aligned();
+    template<typename E>
+    friend packed_expression<E>;
+
+public:
+    using real_type = T;
+
+    constexpr bool is_scalar = true;
+
+    template<bool Const1, bool Const2>
+    const_packed_range(packed_iterator<T, PackSize, Allocator, Const>  begin,
+                       packed_iterator<T, PackSize, Allocator, Const2> end)
+    : m_begin(begin)
+    , m_end(end){};
+
+private:
+    __mm256 ymmreg(std::size_t id) const
+    {
+        return _mm256_broadcast_ps(&m_value);
+    };
+
+    packed_iterator<T, PackSize, Allocator, true> m_begin;
+    packed_iterator<T, PackSize, Allocator, true> m_end;
+};
+
+
+template<typename E>
+bool is_aligned(const E& expression, long offset = 0)
+{
+    return expression.aligned(offset);
 }
 
 template<>
-constexpr bool is_aligned<vector>(const vector& vector)
+constexpr bool is_aligned<vector>(const vector& vector, long offset)
 {
     return true;
 }

@@ -485,9 +485,9 @@ public:
         return m_idx - other.m_idx;
     }
 
-    [[nodiscard]] bool aligned() const noexcept
+    [[nodiscard]] bool aligned(difference_type idx = 0) const noexcept
     {
-        return m_idx % PackSize == 0;
+        return (m_idx + idx) % PackSize == 0;
     }
     /**
      * @brief Returns aligned iterator not bigger then this itertor;
