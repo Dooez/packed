@@ -72,7 +72,7 @@ private:
 };
 
 template<typename T, std::size_t PackSize, std::size_t Allocator>
-class packed_range : packed_expression<packed_range<T>>
+class packed_range : packed_expression<packed_range<T, PackSize, Allocator>>
 {
     template<typename E>
     friend packed_expression<E>;
@@ -88,9 +88,10 @@ public:
     , m_end(end){};
 
 private:
-    __mm256 ymmreg(std::size_t id) const
+    cx__mm256 ymmreg(std::size_t id) const
     {
-        return _mm256_broadcast_ps(&m_value);
+        return {_mm256_broadcast_ps(&(*(m_begin + id))),
+                _mm256_broadcast_ps(&(*(m_begin + id) + PackSize))};
     };
 
     packed_iterator<T, PackSize, Allocator> m_begin;
@@ -98,7 +99,7 @@ private:
 };
 
 template<typename T, std::size_t PackSize, std::size_t Allocator>
-class const_packed_range : packed_expression<const_packed_range<T>>
+class const_packed_range : packed_expression<const_packed_range<T, PackSize, Allocator>>
 {
     template<typename E>
     friend packed_expression<E>;
@@ -115,9 +116,10 @@ public:
     , m_end(end){};
 
 private:
-    __mm256 ymmreg(std::size_t id) const
+    cx__mm256 ymmreg(std::size_t id) const
     {
-        return _mm256_broadcast_ps(&m_value);
+        return {_mm256_broadcast_ps(&(*(m_begin + id))),
+                _mm256_broadcast_ps(&(*(m_begin + id) + PackSize))};
     };
 
     packed_iterator<T, PackSize, Allocator, true> m_begin;
