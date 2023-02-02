@@ -22,6 +22,39 @@ class packed_cx_ref;
 template<typename T, std::size_t PackSize, typename Allocator, bool Const = false>
 class packed_iterator;
 
+/**
+ * @brief alias for templated avx2 types and functions
+ *
+ */
+namespace avx {
+template<typename T>
+struct reg;
+template<>
+struct reg<float>
+{
+    using type = __m256;
+};
+template<>
+struct reg<double>
+{
+    using type = __m256d;
+};
+
+template<typename T>
+inline auto add(typename reg<T>::type lhs, typename reg<T>::type rhs) ->
+    typename reg<T>::type;
+
+template<>
+inline auto add<float>(reg<float>::type lhs, reg<float>::type rhs) -> reg<float>::type
+{
+    return _mm256_add_ps(lhs, rhs);
+}
+template<>
+inline auto add<double>(reg<double>::type lhs, reg<double>::type rhs) -> reg<double>::type
+{
+    return _mm256_add_pd(lhs, rhs);
+}
+}    // namespace avx
 
 template<typename T, std::size_t PackSize, typename Allocator, bool Const>
 inline void packed_copy(packed_iterator<T, PackSize, Allocator, Const> first,
