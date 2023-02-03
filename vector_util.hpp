@@ -22,6 +22,80 @@ class packed_cx_ref;
 template<typename T, std::size_t PackSize, typename Allocator, bool Const = false>
 class packed_iterator;
 
+/**
+ * @brief alias for templated avx2 types and functions
+ *
+ */
+namespace avx {
+template<typename T>
+struct reg;
+template<>
+struct reg<float>
+{
+    using type = __m256;
+};
+template<>
+struct reg<double>
+{
+    using type = __m256d;
+};
+
+template<typename T>
+inline auto load(const T* source) -> typename reg<T>::type;
+template<>
+inline auto load<float>(const float* source) -> reg<float>::type
+{
+    return _mm256_loadu_ps(source);
+}
+template<>
+inline auto load<double>(const double* source) -> reg<double>::type
+{
+    return _mm256_loadu_pd(source);
+}
+
+template<typename T>
+inline auto broadcast(const T* source) -> typename reg<T>::type;
+template<>
+inline auto broadcast<float>(const float* source) -> reg<float>::type
+{
+    return _mm256_broadcast_ss(source);
+}
+template<>
+inline auto broadcast<double>(const double* source) -> reg<double>::type
+{
+    return _mm256_broadcast_sd(source);
+}
+
+template<typename T>
+inline auto store(T* dest, typename reg<T>::type reg) -> void;
+template<>
+inline auto store<float>(float* dest, reg<float>::type reg) -> void
+{
+    return _mm256_storeu_ps(dest, reg);
+}
+template<>
+inline auto store<double>(double* dest, reg<double>::type reg) -> void
+{
+    return _mm256_storeu_pd(dest, reg);
+}
+
+template<typename T>
+inline auto store_s(T* dest, typename reg<T>::type reg) -> void;
+template<>
+inline auto store_s<float>(float* dest, reg<float>::type reg) -> void
+{
+    const auto reg128 = _mm256_castps256_ps128(reg);
+    return _mm_store_ss(dest, reg128);
+}
+template<>
+inline auto store_s<double>(double* dest, reg<double>::type reg) -> void
+{
+    const auto reg128 = _mm256_castpd256_pd128(reg);
+    return _mm_store_sd(dest, reg128);
+}
+
+
+}    // namespace avx
 
 template<typename T, std::size_t PackSize, typename Allocator, bool Const>
 inline void packed_copy(packed_iterator<T, PackSize, Allocator, Const> first,
@@ -60,24 +134,22 @@ void packed_copy(packed_iterator<T, PackSize, Allocator, true> first,
     }
 };
 
+
 template<typename T, std::size_t PackSize, typename Allocator>
-    requires std::same_as<T, float>
 void set(packed_iterator<T, PackSize, Allocator> first,
          packed_iterator<T, PackSize, Allocator> last,
          std::complex<T>                         value)
 {
     constexpr std::size_t reg_size = 32 / sizeof(T);
 
-    const auto re_256 = _mm256_broadcast_ss(&reinterpret_cast<T(&)[2]>(value)[0]);
-    const auto im_256 = _mm256_broadcast_ss(&reinterpret_cast<T(&)[2]>(value)[1]);
-    const auto re_128 = _mm256_castps256_ps128(re_256);
-    const auto im_128 = _mm256_castps256_ps128(im_256);
+    const auto real = avx::broadcast(&reinterpret_cast<T(&)[2]>(value)[0]);
+    const auto imag = avx::broadcast(&reinterpret_cast<T(&)[2]>(value)[1]);
 
     while (first < std::min(first.align_upper(), last))
     {
         auto ptr = &(*first);
-        _mm_store_ss(ptr, re_128);
-        _mm_store_ss(ptr + PackSize, im_128);
+        avx::store_s(ptr, real);
+        avx::store_s(ptr + PackSize, imag);
         ++first;
     }
     while (first < last.align_lower())
@@ -85,55 +157,16 @@ void set(packed_iterator<T, PackSize, Allocator> first,
         auto ptr = &(*first);
         for (uint i = 0; i < PackSize / reg_size; ++i)
         {
-            _mm256_storeu_ps(ptr + reg_size * i, re_256);
-            _mm256_storeu_ps(ptr + reg_size * i + PackSize, im_256);
+            avx::store(ptr + reg_size * i, real);
+            avx::store(ptr + reg_size * i + PackSize, imag);
         }
         first += PackSize;
     }
     while (first < last)
     {
         auto ptr = &(*first);
-        _mm_store_ss(ptr, re_128);
-        _mm_store_ss(ptr + PackSize, im_128);
-        ++first;
-    }
-};
-
-template<typename T, std::size_t PackSize, typename Allocator>
-    requires std::same_as<T, double>
-void set(packed_iterator<T, PackSize, Allocator> first,
-         packed_iterator<T, PackSize, Allocator> last,
-         std::complex<T>                         value)
-{
-    constexpr std::size_t reg_size = 32 / sizeof(T);
-
-    const auto re_256 = _mm256_broadcast_sd(&reinterpret_cast<T(&)[2]>(value)[0]);
-    const auto im_256 = _mm256_broadcast_sd(&reinterpret_cast<T(&)[2]>(value)[1]);
-    const auto re_128 = _mm256_castpd256_pd128(re_256);
-    const auto im_128 = _mm256_castpd256_pd128(im_256);
-
-    while (first < std::min(first.align_upper(), last))
-    {
-        auto ptr = &(*first);
-        _mm_store_sd(ptr, re_128);
-        _mm_store_sd(ptr + PackSize, im_128);
-        ++first;
-    }
-    while (first < last.align_lower())
-    {
-        auto ptr = &(*first);
-        for (uint i = 0; i < PackSize / reg_size; ++i)
-        {
-            _mm256_storeu_pd(ptr + reg_size * i, re_256);
-            _mm256_storeu_pd(ptr + reg_size * i + PackSize, im_256);
-        }
-        first += PackSize;
-    }
-    while (first < last)
-    {
-        auto ptr = &(*first);
-        _mm_store_sd(ptr, re_128);
-        _mm_store_sd(ptr + PackSize, im_128);
+        avx::store_s(ptr, real);
+        avx::store_s(ptr + PackSize, imag);
         ++first;
     }
 };
