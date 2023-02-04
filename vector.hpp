@@ -18,7 +18,10 @@ template<typename T,
          typename Allocator   = std::allocator<T>>
     requires packed_floating_point<T, PackSize>
 class packed_cx_vector
+: public packed_expression<T, packed_cx_vector<T, PackSize, Allocator>>
 {
+    friend class packed_expression_base<T>;
+
 private:
     using alloc_traits = std::allocator_traits<Allocator>;
 
@@ -41,13 +44,13 @@ public:
     explicit packed_cx_vector(const allocator_type& allocator) noexcept(
         std::is_nothrow_copy_constructible_v<allocator_type>)
     : m_allocator(allocator)
-    , m_length(0)
+    , m_size(0)
     , m_ptr(nullptr){};
 
     explicit packed_cx_vector(size_type             length,
                               const allocator_type& allocator = allocator_type())
     : m_allocator(allocator)
-    , m_length(length)
+    , m_size(length)
     , m_ptr(alloc_traits::allocate(m_allocator, num_packs(length) * PackSize * 2))
     {
         set(begin(), end(), 0);
@@ -59,7 +62,7 @@ public:
                      U                     value,
                      const allocator_type& allocator = allocator_type())
     : m_allocator(allocator)
-    , m_length(length)
+    , m_size(length)
     , m_ptr(alloc_traits::allocate(m_allocator, num_packs(length) * PackSize * 2))
     {
         set(begin(), end(), value);
@@ -67,25 +70,24 @@ public:
 
     packed_cx_vector(const packed_cx_vector& other)
     : m_allocator(alloc_traits::select_on_container_copy_construction(other.m_allocator))
-    , m_length(other.m_length)
+    , m_size(other.m_size)
     {
-        if (m_length > 0)
+        if (m_size > 0)
         {
-            m_ptr =
-                alloc_traits::allocate(m_allocator, num_packs(m_length) * PackSize * 2);
+            m_ptr = alloc_traits::allocate(m_allocator, num_packs(m_size) * PackSize * 2);
         }
         packed_copy(other.begin(), other.end(), begin());
     }
 
     packed_cx_vector(const packed_cx_vector& other, const allocator_type& allocator)
     : m_allocator(allocator)
-    , m_length(other.m_length)
+    , m_size(other.m_size)
     {
-        if (m_length == 0)
+        if (m_size == 0)
         {
             return;
         }
-        m_ptr = alloc_traits::allocate(m_allocator, num_packs(m_length) * PackSize * 2);
+        m_ptr = alloc_traits::allocate(m_allocator, num_packs(m_size) * PackSize * 2);
 
         packed_copy(other.begin(), other.end(), begin());
     }
@@ -95,7 +97,7 @@ public:
     : m_allocator(std::move(other.m_allocator))
     {
         using std::swap;
-        swap(m_length, other.m_length);
+        swap(m_size, other.m_size);
         swap(m_ptr, other.m_ptr);
     };
 
@@ -106,19 +108,18 @@ public:
         if constexpr (alloc_traits::is_always_equal::value)
         {
             using std::swap;
-            swap(m_length, other.m_length);
+            swap(m_size, other.m_size);
             swap(m_ptr, other.m_ptr);
         } else
         {
             if (m_allocator == other.m_allocator)
             {
                 using std::swap;
-                swap(m_length, other.m_length);
+                swap(m_size, other.m_size);
                 swap(m_ptr, other.m_ptr);
                 return;
             }
-            m_ptr =
-                alloc_traits::allocate(m_allocator, num_packs(m_length) * PackSize * 2);
+            m_ptr = alloc_traits::allocate(m_allocator, num_packs(m_size) * PackSize * 2);
             packed_copy(other.begin(), other.end(), begin());
         }
     };
@@ -134,13 +135,13 @@ public:
                       !alloc_traits::is_always_equal::value)
         {
             if (m_allocator != other.m_allocator ||
-                num_packs(m_length) != num_packs(other.m_length))
+                num_packs(m_size) != num_packs(other.m_size))
             {
                 deallocate();
                 m_allocator = other.m_allocator;
-                m_length    = other.m_length;
-                m_ptr       = alloc_traits::allocate(m_allocator,
-                                               num_packs(m_length) * PackSize * 2);
+                m_size      = other.m_size;
+                m_ptr =
+                    alloc_traits::allocate(m_allocator, num_packs(m_size) * PackSize * 2);
             }
         } else
         {
@@ -148,12 +149,12 @@ public:
             {
                 m_allocator = other.m_allocator;
             }
-            if (num_packs(m_length) != num_packs(other.m_length))
+            if (num_packs(m_size) != num_packs(other.m_size))
             {
                 deallocate();
-                m_length = other.m_length;
-                m_ptr    = alloc_traits::allocate(m_allocator,
-                                               num_packs(m_length) * PackSize * 2);
+                m_size = other.m_size;
+                m_ptr =
+                    alloc_traits::allocate(m_allocator, num_packs(m_size) * PackSize * 2);
             }
         }
 
@@ -171,7 +172,7 @@ public:
             deallocate();
             using std::swap;
             swap(m_allocator, other.m_allocator);
-            swap(m_length, other.m_length);
+            swap(m_size, other.m_size);
             swap(m_ptr, other.m_ptr);
             return *this;
         } else
@@ -180,7 +181,7 @@ public:
             {
                 deallocate();
                 using std::swap;
-                swap(m_length, other.m_length);
+                swap(m_size, other.m_size);
                 swap(m_ptr, other.m_ptr);
                 return *this;
             } else
@@ -189,22 +190,47 @@ public:
                 {
                     deallocate();
                     using std::swap;
-                    swap(m_length, other.m_length);
+                    swap(m_size, other.m_size);
                     swap(m_ptr, other.m_ptr);
                     return *this;
                 }
-                if (num_packs(m_length) != num_packs(other.m_length))
+                if (num_packs(m_size) != num_packs(other.m_size))
                 {
                     deallocate();
-                    m_length = other.m_length;
-                    m_ptr    = alloc_traits::allocate(m_allocator,
-                                                   num_packs(m_length) * PackSize * 2);
+                    m_size = other.m_size;
+                    m_ptr  = alloc_traits::allocate(m_allocator,
+                                                   num_packs(m_size) * PackSize * 2);
                 }
                 packed_copy(other.begin(), other.end(), begin());
                 return *this;
             }
         }
     }
+
+    template<typename E>
+    // requires concept_packed_expression<T, E>
+    packed_cx_vector& operator=(const E& other)
+    {
+        assert(m_size == other.size());
+
+        std::size_t idx = 0;
+        if (other.aligned())
+        {
+            for (; idx <= m_size / PackSize * PackSize; idx += 8)
+            {
+                auto data = other.cx_reg(idx);
+                auto ptr  = m_ptr + packed_idx(idx);
+
+                avx::store(ptr, data.real);
+                avx::store(ptr + PackSize, data.imag);
+            }
+        }
+        for (; idx < m_size; ++idx)
+        {
+            (*this)[idx] = other[idx];
+        }
+        return *this;
+    };
 
     ~packed_cx_vector()
     {
@@ -220,12 +246,12 @@ public:
         {
             using std::swap;
             swap(m_allocator, other.m_allocator);
-            swap(m_length, other.m_length);
+            swap(m_size, other.m_size);
             swap(m_ptr, other.m_ptr);
         } else
         {
             using std::swap;
-            swap(m_length, other.m_length);
+            swap(m_size, other.m_size);
             swap(m_ptr, other.m_ptr);
         }
     }
@@ -255,22 +281,22 @@ public:
 
     [[nodiscard]] reference at(size_type idx)
     {
-        if (idx >= m_length)
+        if (idx >= m_size)
         {
             throw std::out_of_range(std::string("idx (which is") + std::to_string(idx) +
                                     std::string(") >= vector size (which is ") +
-                                    std::to_string(m_length) + std::string(")"));
+                                    std::to_string(m_size) + std::string(")"));
         }
         auto p_idx = packed_idx(idx);
         return {m_ptr + p_idx};
     }
     [[nodiscard]] const_reference at(size_type idx) const
     {
-        if (idx >= m_length)
+        if (idx >= m_size)
         {
             throw std::out_of_range(std::string("idx (which is") + std::to_string(idx) +
                                     std::string(") >= vector size (which is ") +
-                                    std::to_string(m_length) + std::string(")"));
+                                    std::to_string(m_size) + std::string(")"));
         }
         auto p_idx = packed_idx(idx);
         return {m_ptr + p_idx};
@@ -278,15 +304,15 @@ public:
 
     [[nodiscard]] size_type size() const noexcept
     {
-        return m_length;
+        return m_size;
     };
     [[nodiscard]] size_type length() const noexcept
     {
-        return m_length;
+        return m_size;
     };
     void resize(size_type new_length)
     {
-        if (num_packs(new_length) != num_packs(m_length))
+        if (num_packs(new_length) != num_packs(m_size))
         {
             real_type* new_ptr =
                 alloc_traits::allocate(m_allocator, num_packs(new_length) * PackSize * 2);
@@ -294,8 +320,8 @@ public:
             packed_copy(begin(), end(), iterator(new_ptr, 0));
             deallocate();
 
-            m_length = new_length;
-            m_ptr    = new_ptr;
+            m_size = new_length;
+            m_ptr  = new_ptr;
         }
     }
 
@@ -314,32 +340,32 @@ public:
 
     [[nodiscard]] iterator end() noexcept
     {
-        return iterator(m_ptr + packed_idx(m_length), m_length);
+        return iterator(m_ptr + packed_idx(m_size), m_size);
     }
     [[nodiscard]] const_iterator end() const noexcept
     {
-        return const_iterator(m_ptr + packed_idx(m_length), m_length);
+        return const_iterator(m_ptr + packed_idx(m_size), m_size);
     }
     [[nodiscard]] const_iterator cend() const noexcept
     {
-        return const_iterator(m_ptr + packed_idx(m_length), m_length);
+        return const_iterator(m_ptr + packed_idx(m_size), m_size);
     }
 
 private:
     [[no_unique_address]] allocator_type m_allocator{};
 
-    size_type    m_length = 0;
+    size_type    m_size = 0;
     real_pointer m_ptr{};
 
     void deallocate()
     {
-        if (m_ptr != real_pointer() && m_length != 0)
+        if (m_ptr != real_pointer() && m_size != 0)
         {
             alloc_traits::deallocate(m_allocator,
                                      m_ptr,
-                                     num_packs(m_length) * PackSize * 2);
-            m_ptr    = real_pointer();
-            m_length = 0;
+                                     num_packs(m_size) * PackSize * 2);
+            m_ptr  = real_pointer();
+            m_size = 0;
         }
     }
 
@@ -352,7 +378,21 @@ private:
     {
         return idx + idx / PackSize * PackSize;
     }
+
+public:
+    constexpr bool aligned(difference_type idx = 0) const
+    {
+        return true;
+    }
+
+    auto cx_reg(size_type idx) const -> avx::cx_reg<T>
+    {
+        auto real = avx::load(m_ptr + packed_idx(idx));
+        auto imag = avx::load(m_ptr + packed_idx(idx) + PackSize);
+        return {real, imag};
+    };
 };
+
 
 template<typename T, std::size_t PackSize, typename Allocator, bool Const>
 class packed_iterator

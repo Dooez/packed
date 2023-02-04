@@ -92,11 +92,13 @@ private:
 };
 
 template<typename T, typename E>
-class packed_expression : packed_expression_base<T>
+class packed_expression : public packed_expression_base<T>
 {
     friend class packed_expression_base<T>;
 
 public:
+    using real_type = T;
+
     packed_expression() noexcept  = default;
     ~packed_expression() noexcept = default;
 
@@ -106,28 +108,29 @@ public:
     packed_expression& operator=(const packed_expression& other) noexcept = default;
     packed_expression& operator=(packed_expression&& other) noexcept      = default;
 
-    auto size()
+    auto size() const
     {
-        return static_cast<E>(*this).size();
+        return static_cast<const E*>(this)->size();
     };
 
-    auto operator[](std::size_t idx)
-    {
-        return static_cast<E>(*this)[idx];
-    }
 
 private:
+public:
+    constexpr bool aligned(long idx = 0) const
+    {
+        return static_cast<const E*>(this)->aligned(idx);
+    }
+
+    auto operator[](std::size_t idx) const
+    {
+        return (*static_cast<const E*>(this))[idx];
+    }
+
     auto cx_reg(std::size_t idx) const -> avx::cx_reg<T>
     {
-        return static_cast<E>(*this).cx_reg(idx);
+        return static_cast<const E*>(this)->cx_reg(idx);
     };
 };
-
-template<typename E>
-constexpr bool is_aligned(const E& expression, long offset = 0)
-{
-    return expression.aligned(offset);
-}
 
 template<typename E>
 constexpr bool is_scalar()
@@ -138,18 +141,18 @@ constexpr bool is_scalar()
 template<typename T, typename E>
 concept concept_packed_expression =
     std::derived_from<E, packed_expression<T, E>> &&
-    requires(E expression, std::size_t idx) {
+    requires(const E& expression, std::size_t idx) {
         {
-            is_aligned(expression)
+            expression.aligned(idx)
             } -> std::same_as<bool>;
-
-        {
-            expression.cx_reg(idx)
-            } -> std::same_as<avx::cx_reg<T>>;
 
         {
             expression[idx]
             } -> std::convertible_to<std::complex<T>>;
+
+        {
+            expression.cx_reg(idx)
+            } -> std::same_as<avx::cx_reg<T>>;
 
         is_scalar<E>() || requires(E expression) {
                               {
@@ -160,7 +163,7 @@ concept concept_packed_expression =
 
 
 template<typename T>
-class packed_scalar : packed_expression<T, packed_scalar<T>>
+class packed_scalar : public packed_expression<T, packed_scalar<T>>
 {
     friend class packed_expression_base<T>;
 
@@ -171,6 +174,7 @@ public:
     : m_value(value){};
 
 private:
+public:
     constexpr bool aligned(long idx = 0)
     {
         return true;
@@ -202,8 +206,8 @@ constexpr bool is_scalar<packed_scalar<double>>()
 
 
 template<typename T, typename E1, typename E2>
-    requires concept_packed_expression<T, E1> && concept_packed_expression<T, E2>
-class packed_sum : packed_expression<T, packed_sum<T, E1, E2>>
+// requires concept_packed_expression<T, E1> && concept_packed_expression<T, E2>
+class packed_sum : public packed_expression<T, packed_sum<T, E1, E2>>
 {
     friend class packed_expression_base<T>;
 
@@ -214,8 +218,8 @@ public:
     : m_lhs(lhs)
     , m_rhs(rhs)
     {
-        assert(E1::real_type == E2::real_type);
-        assert(is_scalar<E2>() || lhs.size() = rhs.size());
+        // assert(E1::real_type == E2::real_type);
+        assert(is_scalar<E2>() || lhs.size() == rhs.size());
     };
 
     auto size() const -> std::size_t
@@ -224,14 +228,15 @@ public:
     }
 
 private:
-    constexpr bool aligned(std::size_t offset) const
+public:
+    constexpr bool aligned(std::size_t offset = 0) const
     {
-        return is_aligned(m_lhs, offset) && is_aligned(m_rhs, offset);
+        return m_lhs.aligned(offset) && m_rhs.aligned(offset);
     }
 
     auto operator[](std::size_t idx) const
     {
-        return m_lhs[idx] + m_rhs[idx];
+        return std::complex<T>(m_lhs[idx]) + std::complex<T>(m_rhs[idx]);
     };
 
     auto cx_reg(std::size_t idx) const -> avx::cx_reg<T>
@@ -239,7 +244,7 @@ private:
         const auto lhs = m_lhs.cx_reg(idx);
         const auto rhs = m_rhs.cx_reg(idx);
 
-        return {avx::add(lhs.real, rhs.real), avx::add(lhs.imag, rhs.imag)};
+        return {avx::add<T>(lhs.real, rhs.real), avx::add<T>(lhs.imag, rhs.imag)};
     };
 
     const E1& m_lhs;
@@ -247,8 +252,8 @@ private:
 };
 
 template<typename T, typename E1, typename E2>
-    requires concept_packed_expression<T, E1> && concept_packed_expression<T, E2>
-class packed_diff : packed_expression<T, packed_diff<T, E1, E2>>
+// requires concept_packed_expression<T, E1> && concept_packed_expression<T, E2>
+class packed_diff : public packed_expression<T, packed_diff<T, E1, E2>>
 {
     friend class packed_expression_base<T>;
 
@@ -275,9 +280,10 @@ public:
     }
 
 private:
+public:
     constexpr bool aligned(std::size_t offset) const
     {
-        return is_aligned(m_lhs, offset) && is_aligned(m_rhs, offset);
+        return m_lhs.aligned(offset) && m_rhs.aligned(offset);
     }
 
     auto operator[](std::size_t idx) const
@@ -297,11 +303,17 @@ private:
     const E2& m_rhs;
 };
 
-template<typename T, typename E1, typename E2>
-    requires concept_packed_expression<T, E1> && concept_packed_expression<T, E2>
-auto operator+(const E1& lhs, const E2& rhs)
+template<typename T,
+         template<typename...>
+         typename E1,
+         template<typename...>
+         typename E2,
+         typename... Tother>
+// requires concept_packed_expression<T, E1<T, Tother...>> &&
+//          concept_packed_expression<T, E2<T, Tother...>>
+auto operator+(const E1<T, Tother...>& lhs, const E2<T, Tother...>& rhs)
 {
-    return packed_diff(lhs, rhs);
+    return packed_sum<T, E1<T, Tother...>, E2<T, Tother...>>(lhs, rhs);
 };
 
 #endif
