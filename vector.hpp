@@ -378,7 +378,6 @@ private:
         return idx + idx / PackSize * PackSize;
     }
 
-public:
     constexpr bool aligned(difference_type idx = 0) const
     {
         return true;

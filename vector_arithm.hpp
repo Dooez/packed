@@ -80,39 +80,35 @@ constexpr bool is_scalar()
     return false;
 };
 
-
-template<typename E>
-concept private_expression =
-    requires(const E& expression, std::size_t idx) {
-        typename E::real_type;
-
-        {
-            expression.aligned(idx)
-            } -> std::same_as<bool>;
-
-        {
-            expression[idx]
-            } -> std::convertible_to<std::complex<typename E::real_type>>;
-
-        {
-            expression.cx_reg(idx)
-            } -> std::same_as<avx::cx_reg<typename E::real_type>>;
-
-        is_scalar<E>() || requires {
-                              {
-                                  expression.size()
-                                  } -> std::same_as<std::size_t>;
-                          };
-    };
-
-
 class expression_base
 {
 public:
     template<typename E>
     struct is_expression
     {
-        static constexpr bool value = private_expression<E>;
+        static constexpr bool value =
+            requires(const E& expression, std::size_t idx) {
+                typename E::real_type;
+
+                {
+                    expression.aligned(idx)
+                    } -> std::same_as<bool>;
+
+                {
+                    expression[idx]
+                    } -> std::convertible_to<std::complex<typename E::real_type>>;
+
+                {
+                    expression.cx_reg(idx)
+                    } -> std::same_as<avx::cx_reg<typename E::real_type>>;
+
+                is_scalar<E>() || requires {
+                                      {
+                                          expression.size()
+                                          } -> std::same_as<std::size_t>;
+                                  };
+            };
+        ;
     };
 
 protected:
@@ -140,7 +136,6 @@ protected:
         return expression.cx_reg(idx);
     }
 };
-
 
 template<typename E>
 concept concept_packed_expression = expression_base::is_expression<E>::value;
@@ -209,7 +204,6 @@ public:
 
     auto size() const -> std::size_t
     {
-        // auto& base = *static_cast<const expression_base*>(this);
         return _size(m_lhs);
     }
 
@@ -238,11 +232,71 @@ private:
     const E2& m_rhs;
 };
 
+
+template<typename E1, typename E2>
+    requires concept_packed_expression<E1> && concept_packed_expression<E2> &&
+             std::same_as<typename E1::real_type, typename E2::real_type>
+class mul : private expression_base
+{
+    friend class expression_base;
+
+    template<typename T, std::size_t PackSize, typename Allocator>
+        requires packed_floating_point<T, PackSize>
+    friend class packed_cx_vector;
+
+public:
+    using real_type = typename E1::real_type;
+
+    mul(const E1& lhs, const E2& rhs)
+    : m_lhs(lhs)
+    , m_rhs(rhs)
+    {
+        assert(is_scalar<E2>() || lhs.size() == rhs.size());
+    };
+
+    auto size() const -> std::size_t
+    {
+        return _size(m_lhs);
+    }
+
+private:
+    constexpr bool aligned(std::size_t offset = 0) const
+    {
+        return _aligned(m_lhs, offset) && _aligned(m_rhs, offset);
+    }
+
+    auto operator[](std::size_t idx) const
+    {
+        return std::complex<real_type>(_element(m_lhs, idx)) *
+               std::complex<real_type>(_element(m_rhs, idx));
+    };
+
+    auto cx_reg(std::size_t idx) const -> avx::cx_reg<real_type>
+    {
+        const auto lhs = _cx_reg(m_lhs, idx);
+        const auto rhs = _cx_reg(m_rhs, idx);
+
+        auto real = avx::sub<real_type>(avx::mul<real_type>(lhs.real, rhs.real), avx::mul<real_type>(lhs.imag, rhs.imag));
+        auto imag = avx::add<real_type>(avx::mul<real_type>(lhs.real, rhs.imag), avx::mul<real_type>(lhs.imag, rhs.real));
+
+        return {real, imag};
+    };
+
+    const E1& m_lhs;
+    const E2& m_rhs;
+};
+
 template<typename E1, typename E2>
     requires concept_packed_expression<E1> && concept_packed_expression<E2>
 auto operator+(const E1& lhs, const E2& rhs)
 {
     return packed_sum(lhs, rhs);
+};
+template<typename E1, typename E2>
+    requires concept_packed_expression<E1> && concept_packed_expression<E2>
+auto operator*(const E1& lhs, const E2& rhs)
+{
+    return mul(lhs, rhs);
 };
 
 #endif
