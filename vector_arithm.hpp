@@ -1,210 +1,307 @@
+#ifndef VECTOR_ARITHM_HPP
+#define VECTOR_ARITHM_HPP
+#include "vector_util.hpp"
+
 #include <assert.h>
 #include <complex>
 #include <concepts>
 #include <immintrin.h>
+#include <type_traits>
 
-struct cx__mm256
+namespace avx {
+template<typename T>
+inline auto add(typename reg<T>::type lhs, typename reg<T>::type rhs) ->
+    typename reg<T>::type;
+template<>
+inline auto add<float>(reg<float>::type lhs, reg<float>::type rhs) -> reg<float>::type
 {
-    __mm256 real;
-    __mm256 imag;
+    return _mm256_add_ps(lhs, rhs);
+}
+template<>
+inline auto add<double>(reg<double>::type lhs, reg<double>::type rhs) -> reg<double>::type
+{
+    return _mm256_add_pd(lhs, rhs);
+}
+
+template<typename T>
+inline auto sub(typename reg<T>::type lhs, typename reg<T>::type rhs) ->
+    typename reg<T>::type;
+template<>
+inline auto sub<float>(reg<float>::type lhs, reg<float>::type rhs) -> reg<float>::type
+{
+    return _mm256_sub_ps(lhs, rhs);
+}
+template<>
+inline auto sub<double>(reg<double>::type lhs, reg<double>::type rhs) -> reg<double>::type
+{
+    return _mm256_sub_pd(lhs, rhs);
+}
+
+template<typename T>
+inline auto mul(typename reg<T>::type lhs, typename reg<T>::type rhs) ->
+    typename reg<T>::type;
+template<>
+inline auto mul<float>(reg<float>::type lhs, reg<float>::type rhs) -> reg<float>::type
+{
+    return _mm256_mul_ps(lhs, rhs);
+}
+template<>
+inline auto mul<double>(reg<double>::type lhs, reg<double>::type rhs) -> reg<double>::type
+{
+    return _mm256_mul_pd(lhs, rhs);
+}
+
+template<typename T>
+inline auto div(typename reg<T>::type lhs, typename reg<T>::type rhs) ->
+    typename reg<T>::type;
+template<>
+inline auto div<float>(reg<float>::type lhs, reg<float>::type rhs) -> reg<float>::type
+{
+    return _mm256_div_ps(lhs, rhs);
+}
+template<>
+inline auto div<double>(reg<double>::type lhs, reg<double>::type rhs) -> reg<double>::type
+{
+    return _mm256_div_pd(lhs, rhs);
+}
+
+template<typename T>
+struct cx_reg
+{
+    typename reg<T>::type real;
+    typename reg<T>::type imag;
+};
+
+}    // namespace avx
+
+template<typename T>
+class packed_expression_base
+{
+public:
+    packed_expression_base() = default;
+
+    packed_expression_base(const packed_expression_base& other)     = default;
+    packed_expression_base(packed_expression_base&& other) noexcept = default;
+
+    ~packed_expression_base() = default;
+
+    packed_expression_base& operator=(const packed_expression_base& other)     = default;
+    packed_expression_base& operator=(packed_expression_base&& other) noexcept = default;
+
+private:
+};
+
+template<typename T, typename E>
+class packed_expression : packed_expression_base<T>
+{
+    friend class packed_expression_base<T>;
+
+public:
+    packed_expression() noexcept  = default;
+    ~packed_expression() noexcept = default;
+
+    packed_expression(const packed_expression& other) noexcept = default;
+    packed_expression(packed_expression&& other) noexcept      = default;
+
+    packed_expression& operator=(const packed_expression& other) noexcept = default;
+    packed_expression& operator=(packed_expression&& other) noexcept      = default;
+
+    auto size()
+    {
+        return static_cast<E>(*this).size();
+    };
+
+    auto operator[](std::size_t idx)
+    {
+        return static_cast<E>(*this)[idx];
+    }
+
+private:
+    auto cx_reg(std::size_t idx) const -> avx::cx_reg<T>
+    {
+        return static_cast<E>(*this).cx_reg(idx);
+    };
 };
 
 template<typename E>
-class packed_expression
+constexpr bool is_aligned(const E& expression, long offset = 0)
 {
-public:
-    packed_expression() = default;
+    return expression.aligned(offset);
+}
 
-    packed_expression(const packed_expression& other)     = delete;
-    packed_expression(packed_expression&& other) noexcept = delete;
+template<typename E>
+constexpr bool is_scalar()
+{
+    return false;
+};
 
-    ~packed_expression() = default;
+template<typename T, typename E>
+concept concept_packed_expression =
+    std::derived_from<E, packed_expression<T, E>> &&
+    requires(E expression, std::size_t idx) {
+        {
+            is_aligned(expression)
+            } -> std::same_as<bool>;
 
-    packed_expression& operator=(const packed_expression& other)     = delete;
-    packed_expression& operator=(packed_expression&& other) noexcept = delete;
+        {
+            expression.cx_reg(idx)
+            } -> std::same_as<avx::cx_reg<T>>;
 
-    cx__mm256 ymmreg(std::size_t id) const
-    {
-        return static_cast<E>(*this).ymmreg(id);
+        {
+            expression[idx]
+            } -> std::convertible_to<std::complex<T>>;
+
+        is_scalar<E>() || requires(E expression) {
+                              {
+                                  expression.size()
+                                  } -> std::same_as<std::size_t>;
+                          };
     };
 
 
-private:
-};
-
-
-class vector : packed_expression<vector>
-{
-    template<typename E>
-    friend packed_expression<E>;
-
-public:
-private:
-    __mm256 ymmreg(std::size_t id){};
-};
-
 template<typename T>
-class packed_scalar : packed_expression<packed_scalar<T>>
+class packed_scalar : packed_expression<T, packed_scalar<T>>
 {
-    template<typename E>
-    friend packed_expression<E>;
+    friend class packed_expression_base<T>;
 
 public:
     using real_type = T;
 
-    constexpr bool is_scalar = true;
-
     packed_scalar(std::complex<T> value)
     : m_value(value){};
 
+private:
     constexpr bool aligned(long idx = 0)
     {
         return true;
     }
 
-private:
-    cx__mm256 ymmreg(std::size_t id) const
+    auto operator[](std::size_t idx) const -> std::complex<T>
     {
-        return {_mm256_broadcast_ps(&m_value.real(), &m_value.imag())};
+        return m_value;
+    };
+
+    auto cx_reg(std::size_t idx) const -> avx::cx_reg<T>
+    {
+        return {avx::broadcast(&m_value.real()), avx::broadcast(&m_value.imag())};
     };
 
     std::complex<T> m_value;
 };
 
-template<typename T, std::size_t PackSize, std::size_t Allocator>
-class packed_range : packed_expression<packed_range<T, PackSize, Allocator>>
-{
-    template<typename E>
-    friend packed_expression<E>;
-
-public:
-    using real_type = T;
-
-    constexpr bool is_scalar = true;
-
-    packed_range(packed_iterator<T, PackSize, Allocator> begin,
-                 packed_iterator<T, PackSize, Allocator> end)
-    : m_begin(begin)
-    , m_end(end){};
-
-private:
-    cx__mm256 ymmreg(std::size_t id) const
-    {
-        return {_mm256_broadcast_ps(&(*(m_begin + id))),
-                _mm256_broadcast_ps(&(*(m_begin + id) + PackSize))};
-    };
-
-    packed_iterator<T, PackSize, Allocator> m_begin;
-    packed_iterator<T, PackSize, Allocator> m_end;
-};
-
-template<typename T, std::size_t PackSize, std::size_t Allocator>
-class const_packed_range : packed_expression<const_packed_range<T, PackSize, Allocator>>
-{
-    template<typename E>
-    friend packed_expression<E>;
-
-public:
-    using real_type = T;
-
-    constexpr bool is_scalar = true;
-
-    template<bool Const1, bool Const2>
-    const_packed_range(packed_iterator<T, PackSize, Allocator, Const>  begin,
-                       packed_iterator<T, PackSize, Allocator, Const2> end)
-    : m_begin(begin)
-    , m_end(end){};
-
-private:
-    cx__mm256 ymmreg(std::size_t id) const
-    {
-        return {_mm256_broadcast_ps(&(*(m_begin + id))),
-                _mm256_broadcast_ps(&(*(m_begin + id) + PackSize))};
-    };
-
-    packed_iterator<T, PackSize, Allocator, true> m_begin;
-    packed_iterator<T, PackSize, Allocator, true> m_end;
-};
-
-
-template<typename E>
-bool is_aligned(const E& expression, long offset = 0)
-{
-    return expression.aligned(offset);
-}
-
 template<>
-constexpr bool is_aligned<vector>(const vector& vector, long offset)
+constexpr bool is_scalar<packed_scalar<float>>()
 {
     return true;
-}
-
-template<typename E1, typename E2>
-    requires std::derived_from<E1, packed_expression<E1>> &&
-             std::derived_from<E2, packed_expression<E2>>
-class packed_sum : packed_expression<packed_sum<E1, E2>>
+};
+template<>
+constexpr bool is_scalar<packed_scalar<double>>()
 {
-    template<typename E>
-    friend packed_expression<E>;
+    return true;
+};
+
+
+template<typename T, typename E1, typename E2>
+    requires concept_packed_expression<T, E1> && concept_packed_expression<T, E2>
+class packed_sum : packed_expression<T, packed_sum<T, E1, E2>>
+{
+    friend class packed_expression_base<T>;
 
 public:
     using real_type = typename E1::real_type;
-
-    constexpr bool is_scalar = false;
 
     packed_sum(const E1& lhs, const E2& rhs)
     : m_lhs(lhs)
     , m_rhs(rhs)
     {
         assert(E1::real_type == E2::real_type);
-        assert(rhs.is_scalar || lhs.size() = rhs.size());
+        assert(is_scalar<E2>() || lhs.size() = rhs.size());
     };
 
-    std::size_t size() const
+    auto size() const -> std::size_t
     {
-        return lhs.size();
-    }
-
-    bool is_aligned() const
-    {
-        return is_aligned(lhs) && is_aligned(rhs);
+        return m_lhs.size();
     }
 
 private:
-    __mm256 ymmreg(std::size_t id) const
+    constexpr bool aligned(std::size_t offset) const
     {
-        return _mm256_add_ps(m_lhs.ymmreg(id), m_rhs.ymmreg(id));
+        return is_aligned(m_lhs, offset) && is_aligned(m_rhs, offset);
+    }
+
+    auto operator[](std::size_t idx) const
+    {
+        return m_lhs[idx] + m_rhs[idx];
+    };
+
+    auto cx_reg(std::size_t idx) const -> avx::cx_reg<T>
+    {
+        const auto lhs = m_lhs.cx_reg(idx);
+        const auto rhs = m_rhs.cx_reg(idx);
+
+        return {avx::add(lhs.real, rhs.real), avx::add(lhs.imag, rhs.imag)};
     };
 
     const E1& m_lhs;
     const E2& m_rhs;
 };
 
-template<typename T>
-void asdvector(const packed_expression<T>& other)
+template<typename T, typename E1, typename E2>
+    requires concept_packed_expression<T, E1> && concept_packed_expression<T, E2>
+class packed_diff : packed_expression<T, packed_diff<T, E1, E2>>
 {
-    float* ptr = nullptr;
-    if (is_aligned(other))
-    {
-        auto [real, imag] = other.ymmreg();
-        _m256_storeu_ps(ptr, real);
-        _m256_storeu_ps(ptr + 32, iamg);
-    }
-}
+    friend class packed_expression_base<T>;
 
-template<typename E1, typename E2>
-    requires std::derived_from<E1, packed_expression<E1>> &&
-             std::derived_from<E2, packed_expression<E2>>
+public:
+    using real_type = typename E1::real_type;
+
+    packed_diff(const E1& lhs, const E2& rhs)
+    : m_lhs(lhs)
+    , m_rhs(rhs)
+    {
+        assert(E1::real_type == E2::real_type);
+        assert(is_scalar<E1>() || is_scalar<E2>() || lhs.size() = rhs.size());
+    };
+
+    auto size() const -> std::size_t
+    {
+        if constexpr (!is_scalar<E1>())
+        {
+            return m_lhs.size();
+        } else
+        {
+            return m_rhs.size();
+        }
+    }
+
+private:
+    constexpr bool aligned(std::size_t offset) const
+    {
+        return is_aligned(m_lhs, offset) && is_aligned(m_rhs, offset);
+    }
+
+    auto operator[](std::size_t idx) const
+    {
+        return m_lhs[idx] + m_rhs[idx];
+    };
+
+    auto cx_reg(std::size_t idx) const -> avx::cx_reg<T>
+    {
+        const auto lhs = m_lhs.cx_reg(idx);
+        const auto rhs = m_rhs.cx_reg(idx);
+
+        return {avx::sub(lhs.real, rhs.real), avx::sub(lhs.imag, rhs.imag)};
+    };
+
+    const E1& m_lhs;
+    const E2& m_rhs;
+};
+
+template<typename T, typename E1, typename E2>
+    requires concept_packed_expression<T, E1> && concept_packed_expression<T, E2>
 auto operator+(const E1& lhs, const E2& rhs)
 {
-    return packed_sum(lhs, rhs);
+    return packed_diff(lhs, rhs);
 };
 
-template<typename E1, typename Scalar>
-    requires std::derived_from<E1, packed_expression<E1>> &&
-             std::convertible_to<Scalar, std::complex<typename E1::real_type>>
-auto operator+(const E1& lhs, Scalar rhs)
-{
-    using real_type = typename E1::real_type;
-    return packed_sum(lhs, packed_scalar<real_type>(std::complex<real_type>(rhs)));
-};
+#endif
