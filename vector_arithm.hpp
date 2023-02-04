@@ -144,45 +144,6 @@ template<typename E1, typename E2>
 concept compatible = concept_packed_expression<E1> && concept_packed_expression<E2> &&
                      std::same_as<typename E1::real_type, typename E2::real_type>;
 
-template<typename T>
-class packed_scalar : expression_base
-{
-public:
-    using real_type = T;
-
-    packed_scalar(std::complex<T> value)
-    : m_value(value){};
-
-private:
-public:
-    constexpr bool aligned(long idx = 0)
-    {
-        return true;
-    }
-
-    auto operator[](std::size_t idx) const -> std::complex<T>
-    {
-        return m_value;
-    };
-
-    auto cx_reg(std::size_t idx) const -> avx::cx_reg<T>
-    {
-        return {avx::broadcast(&m_value.real()), avx::broadcast(&m_value.imag())};
-    };
-
-    std::complex<T> m_value;
-};
-
-template<>
-constexpr bool is_scalar<packed_scalar<float>>()
-{
-    return true;
-};
-template<>
-constexpr bool is_scalar<packed_scalar<double>>()
-{
-    return true;
-};
 
 template<typename E1, typename E2>
     requires compatible<E1, E2>
@@ -202,7 +163,13 @@ public:
 
     auto size() const -> std::size_t
     {
-        return _size(m_lhs);
+        if constexpr (is_scalar<E1>())
+        {
+            return _size(m_rhs);
+        } else
+        {
+            return _size(m_lhs);
+        }
     }
 
 private:
@@ -216,7 +183,10 @@ private:
     : m_lhs(lhs)
     , m_rhs(rhs)
     {
-        assert(is_scalar<E2>() || lhs.size() == rhs.size());
+        if constexpr (!is_scalar<E1>() && !is_scalar<E2>())
+        {
+            assert(lhs.size() == rhs.size());
+        }
     };
 
     constexpr bool aligned(std::size_t offset = 0) const
@@ -253,7 +223,13 @@ public:
 
     auto size() const -> std::size_t
     {
-        return _size(m_lhs);
+        if constexpr (is_scalar<E1>())
+        {
+            return _size(m_rhs);
+        } else
+        {
+            return _size(m_lhs);
+        }
     }
 
 private:
@@ -267,7 +243,7 @@ private:
     : m_lhs(lhs)
     , m_rhs(rhs)
     {
-        assert(is_scalar<E2>() || lhs.size() == rhs.size());
+        assert(is_scalar<E1>() || is_scalar<E2>() || lhs.size() == rhs.size());
     };
 
     constexpr bool aligned(std::size_t offset = 0) const
@@ -311,5 +287,82 @@ auto operator*(const E1& lhs, const E2& rhs)
 {
     return mul(lhs, rhs);
 };
+
+
+template<typename E, typename Scalar>
+concept compatible_scalar =
+    concept_packed_expression<E> && std::convertible_to<Scalar, typename E::real_type>;
+
+template<typename E, typename Scalar>
+concept compatible_cx_scalar =
+    concept_packed_expression<E> &&
+    std::convertible_to<Scalar, std::complex<typename E::real_type>>;
+
+
+template<typename E>
+    requires concept_packed_expression<E>
+auto operator+(const E& lhs, typename E::real_type rhs);
+template<typename E>
+    requires concept_packed_expression<E>
+auto operator+(typename E::real_type lhs, const E& rhs);
+
+
+template<typename E>
+    requires concept_packed_expression<E>
+class packed_scalar : expression_base
+{
+public:
+    using real_type = typename E::real_type;
+
+private:
+    friend constexpr bool is_scalar<packed_scalar>()
+    {
+        return true;
+    };
+
+
+    template<typename T, std::size_t PackSize, typename Allocator>
+        requires packed_floating_point<T, PackSize>
+    friend class packed_cx_vector;
+    friend class expression_base;
+
+    friend auto operator+<E>(const E& lhs, real_type rhs);
+    friend auto operator+<E>(real_type lhs, const E& rhs);
+
+
+    packed_scalar(std::complex<real_type> value)
+    : m_value(value){};
+
+    constexpr bool aligned(long idx = 0) const
+    {
+        return true;
+    }
+
+    auto operator[](std::size_t idx) const -> std::complex<real_type>
+    {
+        return m_value;
+    };
+
+    auto cx_reg(std::size_t idx) const -> avx::cx_reg<real_type>
+    {
+        return {avx::broadcast(&m_value.real()), avx::broadcast(&m_value.imag())};
+    };
+
+    std::complex<real_type> m_value;
+};
+
+template<typename E>
+    requires concept_packed_expression<E>
+auto operator+(const E& lhs, typename E::real_type rhs)
+{
+    return lhs + packed_scalar<E>(rhs);
+}
+
+template<typename E>
+    requires concept_packed_expression<E>
+auto operator+(typename E::real_type lhs, const E& rhs)
+{
+    return rhs + packed_scalar<E>(lhs);
+}
 
 #endif
