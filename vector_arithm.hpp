@@ -140,6 +140,10 @@ protected:
 template<typename E>
 concept concept_packed_expression = expression_base::is_expression<E>::value;
 
+template<typename E1, typename E2>
+concept compatible = concept_packed_expression<E1> && concept_packed_expression<E2> &&
+                     std::same_as<typename E1::real_type, typename E2::real_type>;
+
 template<typename T>
 class packed_scalar : expression_base
 {
@@ -180,20 +184,33 @@ constexpr bool is_scalar<packed_scalar<double>>()
     return true;
 };
 
+template<typename E1, typename E2>
+    requires compatible<E1, E2>
+auto operator+(const E1& lhs, const E2& rhs);
 
 template<typename E1, typename E2>
-    requires concept_packed_expression<E1> && concept_packed_expression<E2> &&
-             std::same_as<typename E1::real_type, typename E2::real_type>
+    requires compatible<E1, E2>
+auto operator*(const E1& lhs, const E2& rhs);
+
+
+template<typename E1, typename E2>
+    requires compatible<E1, E2>
 class packed_sum : private expression_base
 {
-    friend class expression_base;
+public:
+    using real_type = typename E1::real_type;
 
+    auto size() const -> std::size_t
+    {
+        return _size(m_lhs);
+    }
+
+private:
     template<typename T, std::size_t PackSize, typename Allocator>
         requires packed_floating_point<T, PackSize>
     friend class packed_cx_vector;
-
-public:
-    using real_type = typename E1::real_type;
+    friend class expression_base;
+    friend auto operator+<E1, E2>(const E1& lhs, const E2& rhs);
 
     packed_sum(const E1& lhs, const E2& rhs)
     : m_lhs(lhs)
@@ -202,12 +219,6 @@ public:
         assert(is_scalar<E2>() || lhs.size() == rhs.size());
     };
 
-    auto size() const -> std::size_t
-    {
-        return _size(m_lhs);
-    }
-
-private:
     constexpr bool aligned(std::size_t offset = 0) const
     {
         return _aligned(m_lhs, offset) && _aligned(m_rhs, offset);
@@ -234,18 +245,23 @@ private:
 
 
 template<typename E1, typename E2>
-    requires concept_packed_expression<E1> && concept_packed_expression<E2> &&
-             std::same_as<typename E1::real_type, typename E2::real_type>
+    requires compatible<E1, E2>
 class mul : private expression_base
 {
-    friend class expression_base;
+public:
+    using real_type = typename E1::real_type;
 
+    auto size() const -> std::size_t
+    {
+        return _size(m_lhs);
+    }
+
+private:
     template<typename T, std::size_t PackSize, typename Allocator>
         requires packed_floating_point<T, PackSize>
     friend class packed_cx_vector;
-
-public:
-    using real_type = typename E1::real_type;
+    friend class expression_base;
+    friend auto operator*<E1, E2>(const E1& lhs, const E2& rhs);
 
     mul(const E1& lhs, const E2& rhs)
     : m_lhs(lhs)
@@ -254,12 +270,6 @@ public:
         assert(is_scalar<E2>() || lhs.size() == rhs.size());
     };
 
-    auto size() const -> std::size_t
-    {
-        return _size(m_lhs);
-    }
-
-private:
     constexpr bool aligned(std::size_t offset = 0) const
     {
         return _aligned(m_lhs, offset) && _aligned(m_rhs, offset);
@@ -276,8 +286,10 @@ private:
         const auto lhs = _cx_reg(m_lhs, idx);
         const auto rhs = _cx_reg(m_rhs, idx);
 
-        auto real = avx::sub<real_type>(avx::mul<real_type>(lhs.real, rhs.real), avx::mul<real_type>(lhs.imag, rhs.imag));
-        auto imag = avx::add<real_type>(avx::mul<real_type>(lhs.real, rhs.imag), avx::mul<real_type>(lhs.imag, rhs.real));
+        auto real = avx::sub<real_type>(avx::mul<real_type>(lhs.real, rhs.real),
+                                        avx::mul<real_type>(lhs.imag, rhs.imag));
+        auto imag = avx::add<real_type>(avx::mul<real_type>(lhs.real, rhs.imag),
+                                        avx::mul<real_type>(lhs.imag, rhs.real));
 
         return {real, imag};
     };
@@ -287,13 +299,14 @@ private:
 };
 
 template<typename E1, typename E2>
-    requires concept_packed_expression<E1> && concept_packed_expression<E2>
+    requires compatible<E1, E2>
 auto operator+(const E1& lhs, const E2& rhs)
 {
-    return packed_sum(lhs, rhs);
+    return packed_sum<E1, E2>(lhs, rhs);
 };
+
 template<typename E1, typename E2>
-    requires concept_packed_expression<E1> && concept_packed_expression<E2>
+    requires compatible<E1, E2>
 auto operator*(const E1& lhs, const E2& rhs)
 {
     return mul(lhs, rhs);
