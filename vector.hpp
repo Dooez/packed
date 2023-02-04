@@ -18,9 +18,8 @@ template<typename T,
          typename Allocator   = std::allocator<T>>
     requires packed_floating_point<T, PackSize>
 class packed_cx_vector
-: public packed_expression<T, packed_cx_vector<T, PackSize, Allocator>>
 {
-    friend class packed_expression_base<T>;
+    friend class expression_base;
 
 private:
     using alloc_traits = std::allocator_traits<Allocator>;
