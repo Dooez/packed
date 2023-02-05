@@ -75,9 +75,9 @@ struct cx_reg
 }    // namespace avx
 
 template<typename E>
-constexpr bool is_scalar()
+struct is_scalar
 {
-    return false;
+    static constexpr bool value = false;
 };
 
 class expression_base
@@ -102,7 +102,7 @@ public:
                     expression.cx_reg(idx)
                     } -> std::same_as<avx::cx_reg<typename E::real_type>>;
 
-                is_scalar<E>() || requires {
+                is_scalar<E>::value || requires {
                                       {
                                           expression.size()
                                           } -> std::same_as<std::size_t>;
@@ -163,7 +163,7 @@ public:
 
     auto size() const -> std::size_t
     {
-        if constexpr (is_scalar<E1>())
+        if constexpr (is_scalar<E1>::value)
         {
             return _size(m_rhs);
         } else
@@ -183,7 +183,7 @@ private:
     : m_lhs(lhs)
     , m_rhs(rhs)
     {
-        if constexpr (!is_scalar<E1>() && !is_scalar<E2>())
+        if constexpr (!is_scalar<E1>::value && !is_scalar<E2>::value)
         {
             assert(lhs.size() == rhs.size());
         }
@@ -223,7 +223,7 @@ public:
 
     auto size() const -> std::size_t
     {
-        if constexpr (is_scalar<E1>())
+        if constexpr (is_scalar<E1>::value)
         {
             return _size(m_rhs);
         } else
@@ -243,7 +243,7 @@ private:
     : m_lhs(lhs)
     , m_rhs(rhs)
     {
-        assert(is_scalar<E1>() || is_scalar<E2>() || lhs.size() == rhs.size());
+        assert(is_scalar<E1>::value || is_scalar<E2>::value || lhs.size() == rhs.size());
     };
 
     constexpr bool aligned(std::size_t offset = 0) const
@@ -315,11 +315,6 @@ public:
     using real_type = typename E::real_type;
 
 private:
-    friend constexpr bool is_scalar<packed_scalar>()
-    {
-        return true;
-    };
-
 
     template<typename T, std::size_t PackSize, typename Allocator>
         requires packed_floating_point<T, PackSize>
@@ -349,6 +344,12 @@ private:
     };
 
     std::complex<real_type> m_value;
+};
+
+template<typename E>
+struct is_scalar<packed_scalar<E>>
+{
+    static constexpr bool value = true;
 };
 
 template<typename E>
