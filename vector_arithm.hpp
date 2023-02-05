@@ -507,10 +507,11 @@ private:
 
     auto cx_reg(std::size_t idx) const -> avx::cx_reg<real_type>
     {
-        return {avx::broadcast(&m_value.real()), avx::broadcast(&m_value.imag())};
+        const auto& value = reinterpret_cast<const real_type(&)[2]>(m_value);
+        return {avx::broadcast(&(value[0])), avx::broadcast(&(value[1]))};
     };
 
-    std::complex<real_type> m_value;
+    const std::complex<real_type> m_value;
 };
 
 template<typename E>

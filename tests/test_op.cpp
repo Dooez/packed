@@ -9,9 +9,9 @@
 
 void set_te2(packed_cx_vector<double>& v1,
              packed_cx_vector<double>& v2,
-             packed_cx_vector<double>& v3)
+             std::complex<double> v3)
 {
-    v1 = v2 * v3 + v1 * v2;
+    v1 = v2 * v3;
 }
 
 int main()
