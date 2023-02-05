@@ -144,7 +144,6 @@ template<typename E1, typename E2>
 concept compatible = concept_packed_expression<E1> && concept_packed_expression<E2> &&
                      std::same_as<typename E1::real_type, typename E2::real_type>;
 
-
 template<typename E1, typename E2>
     requires compatible<E1, E2>
 auto operator+(const E1& lhs, const E2& rhs);
@@ -152,7 +151,6 @@ auto operator+(const E1& lhs, const E2& rhs);
 template<typename E1, typename E2>
     requires compatible<E1, E2>
 auto operator*(const E1& lhs, const E2& rhs);
-
 
 template<typename E1, typename E2>
     requires compatible<E1, E2>
@@ -212,7 +210,6 @@ private:
     const E1& m_lhs;
     const E2& m_rhs;
 };
-
 
 template<typename E1, typename E2>
     requires compatible<E1, E2>
@@ -274,7 +271,6 @@ private:
     const E2& m_rhs;
 };
 
-
 template<typename E1, typename E2>
     requires compatible<E1, E2>
 auto operator+(const E1& lhs, const E2& rhs)
@@ -289,14 +285,14 @@ auto operator*(const E1& lhs, const E2& rhs)
     return mul(lhs, rhs);
 };
 
+// #region complex scalar
 
 template<typename E>
     requires concept_packed_expression<E>
-auto operator+(const E& lhs, typename E::real_type rhs);
+auto operator+(const E& lhs, std::complex<typename E::real_type> rhs);
 template<typename E>
     requires concept_packed_expression<E>
-auto operator+(typename E::real_type lhs, const E& rhs);
-
+auto operator+(std::complex<typename E::real_type> lhs, const E& rhs);
 
 template<typename E>
     requires concept_packed_expression<E>
@@ -311,8 +307,8 @@ private:
     friend class packed_cx_vector;
     friend class expression_base;
 
-    friend auto operator+<E>(const E& lhs, real_type rhs);
-    friend auto operator+<E>(real_type lhs, const E& rhs);
+    friend auto operator+<E>(const E& lhs, std::complex<real_type> rhs);
+    friend auto operator+<E>(std::complex<real_type> lhs, const E& rhs);
 
 
     packed_scalar(std::complex<real_type> value)
@@ -344,18 +340,21 @@ struct is_scalar<packed_scalar<E>>
 
 template<typename E>
     requires concept_packed_expression<E>
-auto operator+(const E& lhs, typename E::real_type rhs)
+auto operator+(const E& lhs, std::complex<typename E::real_type> rhs)
 {
     return lhs + packed_scalar<E>(rhs);
 }
 
 template<typename E>
     requires concept_packed_expression<E>
-auto operator+(typename E::real_type lhs, const E& rhs)
+auto operator+(std::complex<typename E::real_type> lhs, const E& rhs)
 {
     return rhs + packed_scalar<E>(lhs);
 }
 
+// #endregion complex scalar
+
+// #region real scalar
 
 template<typename E>
     requires concept_packed_expression<E>
@@ -425,5 +424,7 @@ auto operator*(typename E::real_type lhs, const E& rhs)
 {
     return mulr(rhs, lhs);
 }
+
+// #endregion real scalar
 
 #endif
