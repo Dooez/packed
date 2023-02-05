@@ -20,8 +20,19 @@ int main()
     packed_cx_vector<double> vec2(123);
     packed_cx_vector<double> vec3(123);
 
-    auto s  = vec1 * 13.0;
-    // auto s2 = vec2 + std::complex<double>(13.0, 1);
+    auto cxsca = std::complex<double>(13, 0);
+
+    static_assert(is_scalar<packed_scalar<packed_cx_vector<double>>>::value);
+
+    auto s  = vec1 + 13.0 + (vec1 + cxsca);
+    auto s2 = vec1 - 13.0 - (vec1 - cxsca);
+    auto s3 = vec1 * 13.0 * (vec1 * cxsca);
+    auto s4 = vec1 / 13.0 / (vec1 * cxsca);
+
+    auto s5 = 13.0 + vec1  + (cxsca + vec1);
+    auto s6 = 13.0 - vec1  - (cxsca - vec1);
+    auto s7 = 13.0 * vec1  * (cxsca * vec1);
+    auto s8 = 13.0 / vec1  / (cxsca / vec1);
 
     vec1 = vec2 + vec3;
 

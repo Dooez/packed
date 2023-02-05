@@ -138,10 +138,10 @@ protected:
 };
 
 template<typename E>
-concept concept_packed_expression = expression_base::is_expression<E>::value;
+concept packed_expression = expression_base::is_expression<E>::value;
 
 template<typename E1, typename E2>
-concept compatible = concept_packed_expression<E1> && concept_packed_expression<E2> &&
+concept compatible = packed_expression<E1> && packed_expression<E2> &&
                      std::same_as<typename E1::real_type, typename E2::real_type>;
 
 template<typename E1, typename E2>
@@ -150,11 +150,19 @@ auto operator+(const E1& lhs, const E2& rhs);
 
 template<typename E1, typename E2>
     requires compatible<E1, E2>
+auto operator-(const E1& lhs, const E2& rhs);
+
+template<typename E1, typename E2>
+    requires compatible<E1, E2>
 auto operator*(const E1& lhs, const E2& rhs);
 
 template<typename E1, typename E2>
     requires compatible<E1, E2>
-class packed_sum : private expression_base
+auto operator/(const E1& lhs, const E2& rhs);
+
+template<typename E1, typename E2>
+    requires compatible<E1, E2>
+class sum : private expression_base
 {
 public:
     using real_type = typename E1::real_type;
@@ -177,7 +185,7 @@ private:
     friend class expression_base;
     friend auto operator+<E1, E2>(const E1& lhs, const E2& rhs);
 
-    packed_sum(const E1& lhs, const E2& rhs)
+    sum(const E1& lhs, const E2& rhs)
     : m_lhs(lhs)
     , m_rhs(rhs)
     {
@@ -213,6 +221,65 @@ private:
 
 template<typename E1, typename E2>
     requires compatible<E1, E2>
+class diff : private expression_base
+{
+public:
+    using real_type = typename E1::real_type;
+
+    auto size() const -> std::size_t
+    {
+        if constexpr (is_scalar<E1>::value)
+        {
+            return _size(m_rhs);
+        } else
+        {
+            return _size(m_lhs);
+        }
+    }
+
+private:
+    template<typename T, std::size_t PackSize, typename Allocator>
+        requires packed_floating_point<T, PackSize>
+    friend class packed_cx_vector;
+    friend class expression_base;
+    friend auto operator-<E1, E2>(const E1& lhs, const E2& rhs);
+
+    diff(const E1& lhs, const E2& rhs)
+    : m_lhs(lhs)
+    , m_rhs(rhs)
+    {
+        if constexpr (!is_scalar<E1>::value && !is_scalar<E2>::value)
+        {
+            assert(lhs.size() == rhs.size());
+        }
+    };
+
+    constexpr bool aligned(std::size_t offset = 0) const
+    {
+        return _aligned(m_lhs, offset) && _aligned(m_rhs, offset);
+    }
+
+    auto operator[](std::size_t idx) const
+    {
+        return std::complex<real_type>(_element(m_lhs, idx)) -
+               std::complex<real_type>(_element(m_rhs, idx));
+    };
+
+    auto cx_reg(std::size_t idx) const -> avx::cx_reg<real_type>
+    {
+        const auto lhs = _cx_reg(m_lhs, idx);
+        const auto rhs = _cx_reg(m_rhs, idx);
+
+        return {avx::sub<real_type>(lhs.real, rhs.real),
+                avx::sub<real_type>(lhs.imag, rhs.imag)};
+    };
+
+    const E1& m_lhs;
+    const E2& m_rhs;
+};
+
+template<typename E1, typename E2>
+    requires compatible<E1, E2>
 class mul : private expression_base
 {
 public:
@@ -240,7 +307,10 @@ private:
     : m_lhs(lhs)
     , m_rhs(rhs)
     {
-        assert(is_scalar<E1>::value || is_scalar<E2>::value || lhs.size() == rhs.size());
+        if constexpr (!is_scalar<E1>::value && !is_scalar<E2>::value)
+        {
+            assert(lhs.size() == rhs.size());
+        }
     };
 
     constexpr bool aligned(std::size_t offset = 0) const
@@ -273,9 +343,83 @@ private:
 
 template<typename E1, typename E2>
     requires compatible<E1, E2>
+class div_ : private expression_base
+{
+public:
+    using real_type = typename E1::real_type;
+
+    auto size() const -> std::size_t
+    {
+        if constexpr (is_scalar<E1>::value)
+        {
+            return _size(m_rhs);
+        } else
+        {
+            return _size(m_lhs);
+        }
+    }
+
+private:
+    template<typename T, std::size_t PackSize, typename Allocator>
+        requires packed_floating_point<T, PackSize>
+    friend class packed_cx_vector;
+    friend class expression_base;
+    friend auto operator/<E1, E2>(const E1& lhs, const E2& rhs);
+
+    div_(const E1& lhs, const E2& rhs)
+    : m_lhs(lhs)
+    , m_rhs(rhs)
+    {
+        if constexpr (!is_scalar<E1>::value && !is_scalar<E2>::value)
+        {
+            assert(lhs.size() == rhs.size());
+        }
+    };
+
+    constexpr bool aligned(std::size_t offset = 0) const
+    {
+        return _aligned(m_lhs, offset) && _aligned(m_rhs, offset);
+    }
+
+    auto operator[](std::size_t idx) const
+    {
+        return std::complex<real_type>(_element(m_lhs, idx)) /
+               std::complex<real_type>(_element(m_rhs, idx));
+    };
+
+    auto cx_reg(std::size_t idx) const -> avx::cx_reg<real_type>
+    {
+        const auto lhs = _cx_reg(m_lhs, idx);
+        const auto rhs = _cx_reg(m_rhs, idx);
+
+        const auto rhs_abs = avx::add<real_type>(avx::mul<real_type>(rhs.real, rhs.real),
+                                                 avx::mul<real_type>(rhs.imag, rhs.imag));
+
+        const auto real_ = avx::add<real_type>(avx::mul<real_type>(lhs.real, rhs.real),
+                                               avx::mul<real_type>(lhs.imag, rhs.imag));
+
+        const auto imag_ = avx::sub<real_type>(avx::mul<real_type>(lhs.imag, rhs.real),
+                                               avx::mul<real_type>(lhs.real, rhs.imag));
+
+        return {avx::div<real_type>(real_, rhs_abs), avx::div<real_type>(imag_, rhs_abs)};
+    };
+
+    const E1& m_lhs;
+    const E2& m_rhs;
+};
+
+template<typename E1, typename E2>
+    requires compatible<E1, E2>
 auto operator+(const E1& lhs, const E2& rhs)
 {
-    return packed_sum<E1, E2>(lhs, rhs);
+    return sum(lhs, rhs);
+};
+
+template<typename E1, typename E2>
+    requires compatible<E1, E2>
+auto operator-(const E1& lhs, const E2& rhs)
+{
+    return diff(lhs, rhs);
 };
 
 template<typename E1, typename E2>
@@ -285,17 +429,45 @@ auto operator*(const E1& lhs, const E2& rhs)
     return mul(lhs, rhs);
 };
 
+template<typename E1, typename E2>
+    requires compatible<E1, E2>
+auto operator/(const E1& lhs, const E2& rhs)
+{
+    return div_(lhs, rhs);
+};
+
 // #region complex scalar
 
 template<typename E>
-    requires concept_packed_expression<E>
+    requires packed_expression<E>
 auto operator+(const E& lhs, std::complex<typename E::real_type> rhs);
 template<typename E>
-    requires concept_packed_expression<E>
+    requires packed_expression<E>
 auto operator+(std::complex<typename E::real_type> lhs, const E& rhs);
 
 template<typename E>
-    requires concept_packed_expression<E>
+    requires packed_expression<E>
+auto operator-(const E& lhs, std::complex<typename E::real_type> rhs);
+template<typename E>
+    requires packed_expression<E>
+auto operator-(std::complex<typename E::real_type> lhs, const E& rhs);
+template<typename E>
+    requires packed_expression<E>
+
+auto operator*(const E& lhs, std::complex<typename E::real_type> rhs);
+template<typename E>
+    requires packed_expression<E>
+auto operator*(std::complex<typename E::real_type> lhs, const E& rhs);
+
+template<typename E>
+    requires packed_expression<E>
+auto operator/(const E& lhs, std::complex<typename E::real_type> rhs);
+template<typename E>
+    requires packed_expression<E>
+auto operator/(std::complex<typename E::real_type> lhs, const E& rhs);
+
+template<typename E>
+    requires packed_expression<E>
 class packed_scalar : expression_base
 {
 public:
@@ -309,7 +481,12 @@ private:
 
     friend auto operator+<E>(const E& lhs, std::complex<real_type> rhs);
     friend auto operator+<E>(std::complex<real_type> lhs, const E& rhs);
-
+    friend auto operator-<E>(const E& lhs, std::complex<real_type> rhs);
+    friend auto operator-<E>(std::complex<real_type> lhs, const E& rhs);
+    friend auto operator*<E>(const E& lhs, std::complex<real_type> rhs);
+    friend auto operator*<E>(std::complex<real_type> lhs, const E& rhs);
+    friend auto operator/<E>(const E& lhs, std::complex<real_type> rhs);
+    friend auto operator/<E>(std::complex<real_type> lhs, const E& rhs);
 
     packed_scalar(std::complex<real_type> value)
     : m_value(value){};
@@ -339,17 +516,55 @@ struct is_scalar<packed_scalar<E>>
 };
 
 template<typename E>
-    requires concept_packed_expression<E>
+    requires packed_expression<E>
 auto operator+(const E& lhs, std::complex<typename E::real_type> rhs)
 {
     return lhs + packed_scalar<E>(rhs);
 }
-
 template<typename E>
-    requires concept_packed_expression<E>
+    requires packed_expression<E>
 auto operator+(std::complex<typename E::real_type> lhs, const E& rhs)
 {
-    return rhs + packed_scalar<E>(lhs);
+    return packed_scalar<E>(lhs) + rhs;
+}
+
+template<typename E>
+    requires packed_expression<E>
+auto operator-(const E& lhs, std::complex<typename E::real_type> rhs)
+{
+    return lhs - packed_scalar<E>(rhs);
+}
+template<typename E>
+    requires packed_expression<E>
+auto operator-(std::complex<typename E::real_type> lhs, const E& rhs)
+{
+    return packed_scalar<E>(lhs) - rhs;
+}
+
+template<typename E>
+    requires packed_expression<E>
+auto operator*(const E& lhs, std::complex<typename E::real_type> rhs)
+{
+    return lhs * packed_scalar<E>(rhs);
+}
+template<typename E>
+    requires packed_expression<E>
+auto operator*(std::complex<typename E::real_type> lhs, const E& rhs)
+{
+    return packed_scalar<E>(lhs) * rhs;
+}
+
+template<typename E>
+    requires packed_expression<E>
+auto operator/(const E& lhs, std::complex<typename E::real_type> rhs)
+{
+    return lhs / packed_scalar<E>(rhs);
+}
+template<typename E>
+    requires packed_expression<E>
+auto operator/(std::complex<typename E::real_type> lhs, const E& rhs)
+{
+    return packed_scalar<E>(lhs) / rhs;
 }
 
 // #endregion complex scalar
@@ -357,16 +572,36 @@ auto operator+(std::complex<typename E::real_type> lhs, const E& rhs)
 // #region real scalar
 
 template<typename E>
-    requires concept_packed_expression<E>
-auto operator*(const E& lhs, typename E::real_type rhs);
+    requires packed_expression<E>
+auto operator+(const E& lhs, typename E::real_type rhs);
+template<typename E>
+    requires packed_expression<E>
+auto operator+(typename E::real_type lhs, const E& rhs);
 
 template<typename E>
-    requires concept_packed_expression<E>
+    requires packed_expression<E>
+auto operator-(const E& lhs, typename E::real_type rhs);
+template<typename E>
+    requires packed_expression<E>
+auto operator-(typename E::real_type lhs, const E& rhs);
+
+template<typename E>
+    requires packed_expression<E>
+auto operator*(const E& lhs, typename E::real_type rhs);
+template<typename E>
+    requires packed_expression<E>
 auto operator*(typename E::real_type lhs, const E& rhs);
 
 template<typename E>
-    requires concept_packed_expression<E>
-class mulr : private expression_base
+    requires packed_expression<E>
+auto operator/(const E& lhs, typename E::real_type rhs);
+template<typename E>
+    requires packed_expression<E>
+auto operator/(typename E::real_type lhs, const E& rhs);
+
+template<typename E>
+    requires packed_expression<E>
+class radd : private expression_base
 {
 public:
     using real_type = typename E::real_type;
@@ -381,10 +616,106 @@ private:
         requires packed_floating_point<T, PackSize>
     friend class packed_cx_vector;
     friend class expression_base;
+
+    friend auto operator+<E>(const E& lhs, typename E::real_type rhs);
+    friend auto operator+<E>(typename E::real_type lhs, const E& rhs);
+    friend auto operator-<E>(const E& lhs, typename E::real_type rhs);
+
+    radd(real_type scalar, const E& vector)
+    : m_scalar(scalar)
+    , m_vector(vector){};
+
+    constexpr bool aligned(std::size_t offset = 0) const
+    {
+        return _aligned(m_vector, offset);
+    }
+
+    auto operator[](std::size_t idx) const
+    {
+        return m_scalar + std::complex<real_type>(_element(m_vector, idx));
+    };
+
+    auto cx_reg(std::size_t idx) const -> avx::cx_reg<real_type>
+    {
+        const auto scalar = avx::broadcast(&m_scalar);
+        const auto vector = _cx_reg(m_vector, idx);
+
+        return {avx::add<real_type>(scalar, vector.real), vector.imag};
+    };
+
+    const E&  m_vector;
+    real_type m_scalar;
+};
+
+template<typename E>
+    requires packed_expression<E>
+class rsub : private expression_base
+{
+public:
+    using real_type = typename E::real_type;
+
+    auto size() const -> std::size_t
+    {
+        return _size(m_vector);
+    }
+
+private:
+    template<typename T, std::size_t PackSize, typename Allocator>
+        requires packed_floating_point<T, PackSize>
+    friend class packed_cx_vector;
+    friend class expression_base;
+
+    friend auto operator-<E>(typename E::real_type lhs, const E& rhs);
+
+    rsub(real_type scalar, const E& vector)
+    : m_scalar(scalar)
+    , m_vector(vector){};
+
+    constexpr bool aligned(std::size_t offset = 0) const
+    {
+        return _aligned(m_vector, offset);
+    }
+
+    auto operator[](std::size_t idx) const
+    {
+        return m_scalar - std::complex<real_type>(_element(m_vector, idx));
+    };
+
+    auto cx_reg(std::size_t idx) const -> avx::cx_reg<real_type>
+    {
+        const auto scalar = avx::broadcast(&m_scalar);
+        const auto vector = _cx_reg(m_vector, idx);
+
+        return {avx::sub<real_type>(scalar, vector.real), vector.imag};
+    };
+
+    const E&  m_vector;
+    real_type m_scalar;
+};
+
+template<typename E>
+    requires packed_expression<E>
+class rmul : private expression_base
+{
+public:
+    using real_type = typename E::real_type;
+
+    auto size() const -> std::size_t
+    {
+        return _size(m_vector);
+    }
+
+private:
+    template<typename T, std::size_t PackSize, typename Allocator>
+        requires packed_floating_point<T, PackSize>
+    friend class packed_cx_vector;
+    friend class expression_base;
+
     friend auto operator*<E>(const E& lhs, typename E::real_type rhs);
     friend auto operator*<E>(typename E::real_type lhs, const E& rhs);
+    friend auto operator/<E>(const E& lhs, typename E::real_type rhs);
 
-    mulr(const E& vector, real_type scalar)
+    rmul(real_type scalar, const E& vector)
     : m_vector(vector)
     , m_scalar(scalar){};
 
@@ -395,13 +726,13 @@ private:
 
     auto operator[](std::size_t idx) const
     {
-        return std::complex<real_type>(_element(m_vector, idx)) * m_scalar;
+        return m_scalar * std::complex<real_type>(_element(m_vector, idx));
     };
 
     auto cx_reg(std::size_t idx) const -> avx::cx_reg<real_type>
     {
-        const auto vector = _cx_reg(m_vector, idx);
         const auto scalar = avx::broadcast(&m_scalar);
+        const auto vector = _cx_reg(m_vector, idx);
 
         return {avx::mul<real_type>(vector.real, scalar),
                 avx::mul<real_type>(vector.imag, scalar)};
@@ -412,17 +743,112 @@ private:
 };
 
 template<typename E>
-    requires concept_packed_expression<E>
-auto operator*(const E& lhs, typename E::real_type rhs)
+    requires packed_expression<E>
+class rdiv : private expression_base
 {
-    return mulr(lhs, rhs);
+public:
+    using real_type = typename E::real_type;
+
+    auto size() const -> std::size_t
+    {
+        return _size(m_vector);
+    }
+
+private:
+    template<typename T, std::size_t PackSize, typename Allocator>
+        requires packed_floating_point<T, PackSize>
+    friend class packed_cx_vector;
+    friend class expression_base;
+    friend auto operator/<E>(typename E::real_type lhs, const E& rhs);
+
+    rdiv(real_type scalar, const E& vector)
+    : m_scalar(scalar)
+    , m_vector(vector){};
+
+    constexpr bool aligned(std::size_t offset = 0) const
+    {
+        return _aligned(m_vector, offset);
+    }
+
+    auto operator[](std::size_t idx) const
+    {
+        return m_scalar / std::complex<real_type>(_element(m_vector, idx));
+    };
+
+    auto cx_reg(std::size_t idx) const -> avx::cx_reg<real_type>
+    {
+        const auto scalar = avx::broadcast<real_type>(&m_scalar);
+        const auto vector = _cx_reg(m_vector, idx);
+
+        const auto vector_abs =
+            avx::add<real_type>(avx::mul<real_type>(vector.real, vector.real),
+                                avx::mul<real_type>(vector.imag, vector.imag));
+
+        const auto real =
+            avx::div<real_type>(avx::mul<real_type>(scalar.real, vector.real),
+                                vector_abs);
+
+        const auto imag =
+            avx::div<real_type>(avx::mul<real_type>(scalar.real, vector.imag),
+                                vector_abs);
+
+        return {real, imag};
+    };
+
+    const E&  m_vector;
+    real_type m_scalar;
+};
+
+template<typename E>
+    requires packed_expression<E>
+auto operator+(const E& lhs, typename E::real_type rhs)
+{
+    return radd(rhs, lhs);
+}
+template<typename E>
+    requires packed_expression<E>
+auto operator+(typename E::real_type lhs, const E& rhs)
+{
+    return radd(lhs, rhs);
 }
 
 template<typename E>
-    requires concept_packed_expression<E>
+    requires packed_expression<E>
+auto operator-(const E& lhs, typename E::real_type rhs)
+{
+    return radd(-rhs, lhs);
+}
+template<typename E>
+    requires packed_expression<E>
+auto operator-(typename E::real_type lhs, const E& rhs)
+{
+    return rsub(lhs, rhs);
+}
+
+template<typename E>
+    requires packed_expression<E>
+auto operator*(const E& lhs, typename E::real_type rhs)
+{
+    return rmul(rhs, lhs);
+}
+template<typename E>
+    requires packed_expression<E>
 auto operator*(typename E::real_type lhs, const E& rhs)
 {
-    return mulr(rhs, lhs);
+    return rmul(lhs, rhs);
+}
+
+template<typename E>
+    requires packed_expression<E>
+auto operator/(const E& lhs, typename E::real_type rhs)
+{
+    return rmul(1 / rhs, lhs);
+}
+template<typename E>
+    requires packed_expression<E>
+auto operator/(typename E::real_type lhs, const E& rhs)
+{
+    return rdiv(lhs, rhs);
 }
 
 // #endregion real scalar
