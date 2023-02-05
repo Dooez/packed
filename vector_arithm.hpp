@@ -138,30 +138,32 @@ protected:
 };
 
 template<typename E>
-concept packed_expression = expression_base::is_expression<E>::value;
+concept vector_expression = expression_base::is_expression<E>::value;
 
 template<typename E1, typename E2>
-concept compatible = packed_expression<E1> && packed_expression<E2> &&
+concept compatible_expressions = vector_expression<E1> && vector_expression<E2> &&
                      std::same_as<typename E1::real_type, typename E2::real_type>;
 
+// #region expression
+
 template<typename E1, typename E2>
-    requires compatible<E1, E2>
+    requires compatible_expressions<E1, E2>
 auto operator+(const E1& lhs, const E2& rhs);
 
 template<typename E1, typename E2>
-    requires compatible<E1, E2>
+    requires compatible_expressions<E1, E2>
 auto operator-(const E1& lhs, const E2& rhs);
 
 template<typename E1, typename E2>
-    requires compatible<E1, E2>
+    requires compatible_expressions<E1, E2>
 auto operator*(const E1& lhs, const E2& rhs);
 
 template<typename E1, typename E2>
-    requires compatible<E1, E2>
+    requires compatible_expressions<E1, E2>
 auto operator/(const E1& lhs, const E2& rhs);
 
 template<typename E1, typename E2>
-    requires compatible<E1, E2>
+    requires compatible_expressions<E1, E2>
 class sum : private expression_base
 {
 public:
@@ -220,7 +222,7 @@ private:
 };
 
 template<typename E1, typename E2>
-    requires compatible<E1, E2>
+    requires compatible_expressions<E1, E2>
 class diff : private expression_base
 {
 public:
@@ -279,7 +281,7 @@ private:
 };
 
 template<typename E1, typename E2>
-    requires compatible<E1, E2>
+    requires compatible_expressions<E1, E2>
 class mul : private expression_base
 {
 public:
@@ -342,7 +344,7 @@ private:
 };
 
 template<typename E1, typename E2>
-    requires compatible<E1, E2>
+    requires compatible_expressions<E1, E2>
 class div_ : private expression_base
 {
 public:
@@ -409,65 +411,67 @@ private:
 };
 
 template<typename E1, typename E2>
-    requires compatible<E1, E2>
+    requires compatible_expressions<E1, E2>
 auto operator+(const E1& lhs, const E2& rhs)
 {
     return sum(lhs, rhs);
 };
 
 template<typename E1, typename E2>
-    requires compatible<E1, E2>
+    requires compatible_expressions<E1, E2>
 auto operator-(const E1& lhs, const E2& rhs)
 {
     return diff(lhs, rhs);
 };
 
 template<typename E1, typename E2>
-    requires compatible<E1, E2>
+    requires compatible_expressions<E1, E2>
 auto operator*(const E1& lhs, const E2& rhs)
 {
     return mul(lhs, rhs);
 };
 
 template<typename E1, typename E2>
-    requires compatible<E1, E2>
+    requires compatible_expressions<E1, E2>
 auto operator/(const E1& lhs, const E2& rhs)
 {
     return div_(lhs, rhs);
 };
 
+// #endregion expression
+
 // #region complex scalar
 
 template<typename E>
-    requires packed_expression<E>
+    requires vector_expression<E>
 auto operator+(const E& lhs, std::complex<typename E::real_type> rhs);
 template<typename E>
-    requires packed_expression<E>
+    requires vector_expression<E>
 auto operator+(std::complex<typename E::real_type> lhs, const E& rhs);
 
 template<typename E>
-    requires packed_expression<E>
+    requires vector_expression<E>
 auto operator-(const E& lhs, std::complex<typename E::real_type> rhs);
 template<typename E>
-    requires packed_expression<E>
+    requires vector_expression<E>
 auto operator-(std::complex<typename E::real_type> lhs, const E& rhs);
 template<typename E>
-    requires packed_expression<E>
+    requires vector_expression<E>
 
 auto operator*(const E& lhs, std::complex<typename E::real_type> rhs);
 template<typename E>
-    requires packed_expression<E>
+    requires vector_expression<E>
 auto operator*(std::complex<typename E::real_type> lhs, const E& rhs);
 
 template<typename E>
-    requires packed_expression<E>
+    requires vector_expression<E>
 auto operator/(const E& lhs, std::complex<typename E::real_type> rhs);
 template<typename E>
-    requires packed_expression<E>
+    requires vector_expression<E>
 auto operator/(std::complex<typename E::real_type> lhs, const E& rhs);
 
 template<typename E>
-    requires packed_expression<E>
+    requires vector_expression<E>
 class packed_scalar : expression_base
 {
 public:
@@ -516,52 +520,52 @@ struct is_scalar<packed_scalar<E>>
 };
 
 template<typename E>
-    requires packed_expression<E>
+    requires vector_expression<E>
 auto operator+(const E& lhs, std::complex<typename E::real_type> rhs)
 {
     return lhs + packed_scalar<E>(rhs);
 }
 template<typename E>
-    requires packed_expression<E>
+    requires vector_expression<E>
 auto operator+(std::complex<typename E::real_type> lhs, const E& rhs)
 {
     return packed_scalar<E>(lhs) + rhs;
 }
 
 template<typename E>
-    requires packed_expression<E>
+    requires vector_expression<E>
 auto operator-(const E& lhs, std::complex<typename E::real_type> rhs)
 {
     return lhs - packed_scalar<E>(rhs);
 }
 template<typename E>
-    requires packed_expression<E>
+    requires vector_expression<E>
 auto operator-(std::complex<typename E::real_type> lhs, const E& rhs)
 {
     return packed_scalar<E>(lhs) - rhs;
 }
 
 template<typename E>
-    requires packed_expression<E>
+    requires vector_expression<E>
 auto operator*(const E& lhs, std::complex<typename E::real_type> rhs)
 {
     return lhs * packed_scalar<E>(rhs);
 }
 template<typename E>
-    requires packed_expression<E>
+    requires vector_expression<E>
 auto operator*(std::complex<typename E::real_type> lhs, const E& rhs)
 {
     return packed_scalar<E>(lhs) * rhs;
 }
 
 template<typename E>
-    requires packed_expression<E>
+    requires vector_expression<E>
 auto operator/(const E& lhs, std::complex<typename E::real_type> rhs)
 {
     return lhs / packed_scalar<E>(rhs);
 }
 template<typename E>
-    requires packed_expression<E>
+    requires vector_expression<E>
 auto operator/(std::complex<typename E::real_type> lhs, const E& rhs)
 {
     return packed_scalar<E>(lhs) / rhs;
@@ -572,35 +576,35 @@ auto operator/(std::complex<typename E::real_type> lhs, const E& rhs)
 // #region real scalar
 
 template<typename E>
-    requires packed_expression<E>
+    requires vector_expression<E>
 auto operator+(const E& lhs, typename E::real_type rhs);
 template<typename E>
-    requires packed_expression<E>
+    requires vector_expression<E>
 auto operator+(typename E::real_type lhs, const E& rhs);
 
 template<typename E>
-    requires packed_expression<E>
+    requires vector_expression<E>
 auto operator-(const E& lhs, typename E::real_type rhs);
 template<typename E>
-    requires packed_expression<E>
+    requires vector_expression<E>
 auto operator-(typename E::real_type lhs, const E& rhs);
 
 template<typename E>
-    requires packed_expression<E>
+    requires vector_expression<E>
 auto operator*(const E& lhs, typename E::real_type rhs);
 template<typename E>
-    requires packed_expression<E>
+    requires vector_expression<E>
 auto operator*(typename E::real_type lhs, const E& rhs);
 
 template<typename E>
-    requires packed_expression<E>
+    requires vector_expression<E>
 auto operator/(const E& lhs, typename E::real_type rhs);
 template<typename E>
-    requires packed_expression<E>
+    requires vector_expression<E>
 auto operator/(typename E::real_type lhs, const E& rhs);
 
 template<typename E>
-    requires packed_expression<E>
+    requires vector_expression<E>
 class radd : private expression_base
 {
 public:
@@ -648,7 +652,7 @@ private:
 };
 
 template<typename E>
-    requires packed_expression<E>
+    requires vector_expression<E>
 class rsub : private expression_base
 {
 public:
@@ -694,7 +698,7 @@ private:
 };
 
 template<typename E>
-    requires packed_expression<E>
+    requires vector_expression<E>
 class rmul : private expression_base
 {
 public:
@@ -743,7 +747,7 @@ private:
 };
 
 template<typename E>
-    requires packed_expression<E>
+    requires vector_expression<E>
 class rdiv : private expression_base
 {
 public:
@@ -800,52 +804,52 @@ private:
 };
 
 template<typename E>
-    requires packed_expression<E>
+    requires vector_expression<E>
 auto operator+(const E& lhs, typename E::real_type rhs)
 {
     return radd(rhs, lhs);
 }
 template<typename E>
-    requires packed_expression<E>
+    requires vector_expression<E>
 auto operator+(typename E::real_type lhs, const E& rhs)
 {
     return radd(lhs, rhs);
 }
 
 template<typename E>
-    requires packed_expression<E>
+    requires vector_expression<E>
 auto operator-(const E& lhs, typename E::real_type rhs)
 {
     return radd(-rhs, lhs);
 }
 template<typename E>
-    requires packed_expression<E>
+    requires vector_expression<E>
 auto operator-(typename E::real_type lhs, const E& rhs)
 {
     return rsub(lhs, rhs);
 }
 
 template<typename E>
-    requires packed_expression<E>
+    requires vector_expression<E>
 auto operator*(const E& lhs, typename E::real_type rhs)
 {
     return rmul(rhs, lhs);
 }
 template<typename E>
-    requires packed_expression<E>
+    requires vector_expression<E>
 auto operator*(typename E::real_type lhs, const E& rhs)
 {
     return rmul(lhs, rhs);
 }
 
 template<typename E>
-    requires packed_expression<E>
+    requires vector_expression<E>
 auto operator/(const E& lhs, typename E::real_type rhs)
 {
     return rmul(1 / rhs, lhs);
 }
 template<typename E>
-    requires packed_expression<E>
+    requires vector_expression<E>
 auto operator/(typename E::real_type lhs, const E& rhs)
 {
     return rdiv(lhs, rhs);

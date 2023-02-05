@@ -207,7 +207,7 @@ public:
     }
 
     template<typename E>
-        requires packed_expression<E>
+        requires vector_expression<E>
     packed_cx_vector& operator=(const E& other)
     {
         assert(m_size == other.size());
