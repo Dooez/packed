@@ -20,7 +20,7 @@ int main()
     packed_cx_vector<double> vec2(123);
     packed_cx_vector<double> vec3(123);
 
-    auto s  = vec1 + 13.0;
+    auto s  = vec1 * 13.0;
     // auto s2 = vec2 + std::complex<double>(13.0, 1);
 
     vec1 = vec2 + vec3;
