@@ -2,6 +2,7 @@
 
 #include <complex>
 #include <memory>
+#include <ranges>
 #include <vector>
 
 /**
@@ -511,6 +512,76 @@ public:
 private:
     real_pointer    m_ptr{};
     difference_type m_idx = 0;
+};
+
+template<typename T, std::size_t PackSize, typename Allocator, bool Const>
+class packed_subrange : std::ranges::view_base
+{
+    using vector_t = packed_cx_vector<T, PackSize, Allocator>;
+
+    friend vector_t;
+
+public:
+    using real_type       = T;
+    using size_type       = typename vector_t::size_type;
+    using difference_type = typename vector_t::difference_type;
+
+    using iterator       = packed_iterator<T, PackSize, Allocator, Const>;
+    using reference_type = typename iterator::reference_type;
+
+    packed_subrange() = default;
+
+    packed_subrange(const packed_subrange&) noexcept = default;
+    packed_subrange(packed_subrange&&) noexcept      = default;
+
+    ~packed_subrange() = default;
+
+    packed_subrange& operator=(packed_subrange&&) noexcept = default;
+
+    void swap(packed_subrange& other) noexcept(std::is_nothrow_swappable_v<iterator>)
+    {
+        using std::swap;
+        swap(m_begin, other.m_begin);
+        swap(m_size, other.m_size);
+    }
+
+    friend void swap(packed_subrange& first,
+                     packed_subrange& second) noexcept(first.swap(second))
+    {
+        first.swap(second);
+    }
+
+    auto begin() const -> iterator
+    {
+        return m_begin;
+    }
+    auto end() const -> iterator
+    {
+        return m_begin + m_size;
+    }
+    auto operator[](difference_type idx) -> reference_type
+    {
+        return *(m_begin + idx);
+    }
+
+    auto size() const -> size_type
+    {
+        return m_size;
+    };
+    bool empty() const
+    {
+        return m_size == 0;
+    }
+    operator bool() const
+    {
+        return m_size != 0;
+    }
+
+    packed_subrange& operator=(const packed_subrange&) = delete;
+
+private:
+    iterator  m_begin{};
+    size_type m_size{};
 };
 
 template<typename T, std::size_t PackSize, typename Allocator, bool Const>

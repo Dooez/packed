@@ -22,6 +22,10 @@ class packed_cx_ref;
 template<typename T, std::size_t PackSize, typename Allocator, bool Const = false>
 class packed_iterator;
 
+template<typename T, std::size_t PackSize, typename Allocator, bool Const = false>
+class packed_subrange;
+
+
 /**
  * @brief alias for templated avx2 types and functions
  *

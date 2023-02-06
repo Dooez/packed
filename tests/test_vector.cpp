@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <iostream>
+#include <type_traits>
 #include <vector.hpp>
 
 inline std::size_t n_caught = 0;
@@ -45,9 +46,14 @@ int test_vector(const Vec& vector)
     return 0;
 }
 
+    template<std::indirectly_readable T>
+    using iter_const_reference_t =
+        std::common_reference_t<const std::iter_value_t<T>&&, std::iter_reference_t<T>>;
 
 int main()
 {
+    using test_t = iter_const_reference_t<packed_iterator<float, 32, std::allocator<float>>>;
+
     packed_cx_vector<float>  v_def{};
     packed_cx_vector<float>  v_def_2(127);
     packed_cx_vector<float>  v_def_3(127);
