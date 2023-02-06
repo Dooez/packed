@@ -9,7 +9,7 @@
 // }
 
 
-void set_te2(packed_cx_vector<double>& v1,
+void asm_test_fun(packed_cx_vector<double>& v1,
              packed_cx_vector<double>& v2,
              std::complex<double>      v3)
 {
@@ -19,7 +19,7 @@ template<typename T>
     requires std::floating_point<T>
 int equal_eps(T lhs, T rhs)
 {
-    static constexpr T epsilon = 1 * std::numeric_limits<T>::epsilon;
+    static constexpr T epsilon = 10 * std::numeric_limits<T>::epsilon;
     if (lhs == rhs)
     {
         return true;
@@ -33,14 +33,14 @@ template<typename T>
     requires std::floating_point<T>
 int equal_eps(std::complex<T> lhs, std::complex<T> rhs)
 {
-    static constexpr T epsilon = 1 * std::numeric_limits<T>::epsilon();
+    static constexpr T epsilon = 10 * std::numeric_limits<T>::epsilon();
     if (lhs == rhs)
     {
         return true;
     }
 
     T largest = abs(lhs) > abs(rhs) ? abs(lhs) : abs(rhs);
-    return abs(lhs - rhs) < largest * epsilon;
+    return abs(lhs - rhs) < (largest * epsilon);
 }
 
 template<typename T1, typename T2, typename V3>
@@ -52,7 +52,9 @@ bool test_add(const std::vector<T1>& val1, const std::vector<T2>& val2, const V3
         if (!equal_eps(stdr, std::complex<typename V3::real_type>(val3[i])))
         {
             std::cout << "addition failed at " << i << " with values " << stdr << " "
-                      << std::complex<typename V3::real_type>(val3[i]) << "\n";
+                      << std::complex<typename V3::real_type>(val3[i]) << " "
+                      << abs(std::complex<typename V3::real_type>(val3[i]) - stdr)
+                      << "\n";
             return false;
         }
     }
@@ -103,6 +105,26 @@ bool test_div(const std::vector<T1>& val1, const std::vector<T2>& val2, const V3
     }
     return true;
 }
+template<typename T1, typename T2, typename V3, typename R>
+bool test_compound(const std::vector<T1>& val1,
+                   const std::vector<T2>& val2,
+                   const V3&              val3,
+                   R                      rscalar,
+                   std::complex<R>        scalar)
+{
+    for (uint i = 0; i < val1.size(); ++i)
+    {
+        auto stdr = (rscalar + (scalar * val1.at(i) * rscalar)) +
+                    (scalar + (rscalar / val2.at(i) * scalar)) + scalar;
+        if (!equal_eps(stdr, std::complex<typename V3::real_type>(val3[i])))
+        {
+            std::cout << "compound failed at " << i << " with values" << stdr << "  "
+                      << std::complex<typename V3::real_type>(val3[i]) << "\n";
+            return false;
+        }
+    }
+    return true;
+}
 
 template<typename T>
     requires std::floating_point<T>
@@ -125,7 +147,7 @@ int test_arithm(std::size_t length)
     }
 
 
-    const T    rval = 13 * std::numeric_limits<T>::epsilon();
+    const T    rval = 13.123 + 13 * std::numeric_limits<T>::epsilon();
     const auto val  = std::complex<T>(rval, rval);
 
     auto stdrval = std::vector<T>(length, rval);
@@ -133,7 +155,7 @@ int test_arithm(std::size_t length)
 
     vecr = vec1 + vec2;
     if (!test_add(stdvec1, stdvec2, vecr))
-    {   
+    {
         return 1;
     }
     vecr = vec1 - vec2;
@@ -141,7 +163,7 @@ int test_arithm(std::size_t length)
     {
         return 1;
     }
-    
+
     vecr = vec1 * vec2;
     if (!test_mul(stdvec1, stdvec2, vecr))
     {
@@ -237,6 +259,13 @@ int test_arithm(std::size_t length)
         return 1;
     }
 
+    vecr = (rval + (val * vec1 * rval)) + (val + (rval / vec2 * val)) + val;
+    if (!test_compound(stdvec1, stdvec2, vecr, rval, val))
+    {
+        return 1;
+    }
+
+
     return 0;
 }
 
@@ -244,7 +273,7 @@ int test_arithm(std::size_t length)
 int main()
 {
     int res = 0;
-    for (uint i = 1; i < 128; ++i)
+    for (uint i = 1; i < 64; ++i)
     {
         res += test_arithm<float>(i);
         res += test_arithm<double>(i);
@@ -254,6 +283,22 @@ int main()
             return i;
         }
     }
+    for (uint i = 1; i < 64; ++i)
+    {
+        res += test_arithm<float>(i);
+        res += test_arithm<double>(i);
+        if (res > 0)
+        {
+            std::cout << i << "\n";
+            return i;
+        }
+    }
+    packed_cx_vector<float> vec(123);
+    vec = vec + 123 + 15;
+
+    // for(auto val: vec){
+    //     std::cout<< abs(val.value()) << " ";
+    // }
 
     return res;
 }

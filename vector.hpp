@@ -52,7 +52,7 @@ public:
     , m_size(length)
     , m_ptr(alloc_traits::allocate(m_allocator, real_size(m_size)))
     {
-        
+          set(begin(), end(), 0);        
     };
 
     template<typename U>
@@ -63,7 +63,7 @@ public:
     : m_allocator(allocator)
     , m_size(length)
     , m_ptr(alloc_traits::allocate(m_allocator, real_size(m_size))){
-          // set(begin(), end(), value);
+          set(begin(), end(), value);
       };
 
     packed_cx_vector(const packed_cx_vector& other)
