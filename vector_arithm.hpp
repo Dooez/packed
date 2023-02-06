@@ -74,6 +74,8 @@ struct cx_reg
 
 }    // namespace avx
 
+namespace internal {
+
 template<typename E>
 struct is_scalar
 {
@@ -111,6 +113,13 @@ public:
         ;
     };
 
+    template<typename T, std::size_t PackSize, typename Allocator>
+        requires packed_floating_point<T, PackSize>
+    struct is_expression<packed_cx_vector<T, PackSize, Allocator>>
+    {
+        static constexpr bool value = true;
+    };
+
 protected:
     template<typename E>
     static constexpr auto _size(const E& expression)
@@ -124,6 +133,15 @@ protected:
         return expression.aligned(offset);
     }
 
+    template<typename T, std::size_t PackSize, typename Allocator>
+        requires packed_floating_point<T, PackSize>
+    static constexpr bool
+    _aligned(const packed_cx_vector<T, PackSize, Allocator>& expression,
+             std::size_t                                     offset = 0)
+    {
+        return true;
+    }
+
     template<typename E>
     static constexpr auto _element(const E& expression, std::size_t idx)
     {
@@ -135,32 +153,48 @@ protected:
     {
         return expression.cx_reg(idx);
     }
+
+    template<typename T, std::size_t PackSize, typename Allocator>
+        requires packed_floating_point<T, PackSize>
+    static constexpr auto
+    _cx_reg(const packed_cx_vector<T, PackSize, Allocator>& expression, std::size_t idx)
+        -> avx::cx_reg<T>
+    {
+        auto real = avx::load(expression.m_ptr + expression.packed_idx(idx));
+        auto imag = avx::load(expression.m_ptr + expression.packed_idx(idx) + PackSize);
+        return {real, imag};
+    }
 };
 
 template<typename E>
 concept vector_expression = expression_base::is_expression<E>::value;
 
 template<typename E1, typename E2>
-concept compatible_expressions = vector_expression<E1> && vector_expression<E2> &&
-                     std::same_as<typename E1::real_type, typename E2::real_type>;
+concept compatible_expressions =
+    vector_expression<E1> && vector_expression<E2> &&
+    std::same_as<typename E1::real_type, typename E2::real_type>;
+
+}    // namespace internal
 
 // #region expression
 
 template<typename E1, typename E2>
-    requires compatible_expressions<E1, E2>
+    requires internal::compatible_expressions<E1, E2>
 auto operator+(const E1& lhs, const E2& rhs);
 
 template<typename E1, typename E2>
-    requires compatible_expressions<E1, E2>
+    requires internal::compatible_expressions<E1, E2>
 auto operator-(const E1& lhs, const E2& rhs);
 
 template<typename E1, typename E2>
-    requires compatible_expressions<E1, E2>
+    requires internal::compatible_expressions<E1, E2>
 auto operator*(const E1& lhs, const E2& rhs);
 
 template<typename E1, typename E2>
-    requires compatible_expressions<E1, E2>
+    requires internal::compatible_expressions<E1, E2>
 auto operator/(const E1& lhs, const E2& rhs);
+
+namespace internal {
 
 template<typename E1, typename E2>
     requires compatible_expressions<E1, E2>
@@ -183,7 +217,7 @@ public:
 private:
     template<typename T, std::size_t PackSize, typename Allocator>
         requires packed_floating_point<T, PackSize>
-    friend class packed_cx_vector;
+    friend class ::packed_cx_vector;
     friend class expression_base;
     friend auto operator+<E1, E2>(const E1& lhs, const E2& rhs);
 
@@ -242,7 +276,7 @@ public:
 private:
     template<typename T, std::size_t PackSize, typename Allocator>
         requires packed_floating_point<T, PackSize>
-    friend class packed_cx_vector;
+    friend class ::packed_cx_vector;
     friend class expression_base;
     friend auto operator-<E1, E2>(const E1& lhs, const E2& rhs);
 
@@ -301,7 +335,7 @@ public:
 private:
     template<typename T, std::size_t PackSize, typename Allocator>
         requires packed_floating_point<T, PackSize>
-    friend class packed_cx_vector;
+    friend class ::packed_cx_vector;
     friend class expression_base;
     friend auto operator*<E1, E2>(const E1& lhs, const E2& rhs);
 
@@ -364,7 +398,7 @@ public:
 private:
     template<typename T, std::size_t PackSize, typename Allocator>
         requires packed_floating_point<T, PackSize>
-    friend class packed_cx_vector;
+    friend class ::packed_cx_vector;
     friend class expression_base;
     friend auto operator/<E1, E2>(const E1& lhs, const E2& rhs);
 
@@ -410,32 +444,34 @@ private:
     const E2& m_rhs;
 };
 
+}    // namespace internal
+
 template<typename E1, typename E2>
-    requires compatible_expressions<E1, E2>
+    requires internal::compatible_expressions<E1, E2>
 auto operator+(const E1& lhs, const E2& rhs)
 {
-    return sum(lhs, rhs);
+    return internal::sum(lhs, rhs);
 };
 
 template<typename E1, typename E2>
-    requires compatible_expressions<E1, E2>
+    requires internal::compatible_expressions<E1, E2>
 auto operator-(const E1& lhs, const E2& rhs)
 {
-    return diff(lhs, rhs);
+    return internal::diff(lhs, rhs);
 };
 
 template<typename E1, typename E2>
-    requires compatible_expressions<E1, E2>
+    requires internal::compatible_expressions<E1, E2>
 auto operator*(const E1& lhs, const E2& rhs)
 {
-    return mul(lhs, rhs);
+    return internal::mul(lhs, rhs);
 };
 
 template<typename E1, typename E2>
-    requires compatible_expressions<E1, E2>
+    requires internal::compatible_expressions<E1, E2>
 auto operator/(const E1& lhs, const E2& rhs)
 {
-    return div_(lhs, rhs);
+    return internal::div_(lhs, rhs);
 };
 
 // #endregion expression
@@ -443,33 +479,34 @@ auto operator/(const E1& lhs, const E2& rhs)
 // #region complex scalar
 
 template<typename E>
-    requires vector_expression<E>
+    requires internal::vector_expression<E>
 auto operator+(const E& lhs, std::complex<typename E::real_type> rhs);
 template<typename E>
-    requires vector_expression<E>
+    requires internal::vector_expression<E>
 auto operator+(std::complex<typename E::real_type> lhs, const E& rhs);
 
 template<typename E>
-    requires vector_expression<E>
+    requires internal::vector_expression<E>
 auto operator-(const E& lhs, std::complex<typename E::real_type> rhs);
 template<typename E>
-    requires vector_expression<E>
+    requires internal::vector_expression<E>
 auto operator-(std::complex<typename E::real_type> lhs, const E& rhs);
 template<typename E>
-    requires vector_expression<E>
+    requires internal::vector_expression<E>
 
 auto operator*(const E& lhs, std::complex<typename E::real_type> rhs);
 template<typename E>
-    requires vector_expression<E>
+    requires internal::vector_expression<E>
 auto operator*(std::complex<typename E::real_type> lhs, const E& rhs);
 
 template<typename E>
-    requires vector_expression<E>
+    requires internal::vector_expression<E>
 auto operator/(const E& lhs, std::complex<typename E::real_type> rhs);
 template<typename E>
-    requires vector_expression<E>
+    requires internal::vector_expression<E>
 auto operator/(std::complex<typename E::real_type> lhs, const E& rhs);
 
+namespace internal {
 template<typename E>
     requires vector_expression<E>
 class packed_scalar : expression_base
@@ -480,7 +517,7 @@ public:
 private:
     template<typename T, std::size_t PackSize, typename Allocator>
         requires packed_floating_point<T, PackSize>
-    friend class packed_cx_vector;
+    friend class ::packed_cx_vector;
     friend class expression_base;
 
     friend auto operator+<E>(const E& lhs, std::complex<real_type> rhs);
@@ -520,56 +557,58 @@ struct is_scalar<packed_scalar<E>>
     static constexpr bool value = true;
 };
 
+}    // namespace internal
+
 template<typename E>
-    requires vector_expression<E>
+    requires internal::vector_expression<E>
 auto operator+(const E& lhs, std::complex<typename E::real_type> rhs)
 {
-    return lhs + packed_scalar<E>(rhs);
+    return lhs + internal::packed_scalar<E>(rhs);
 }
 template<typename E>
-    requires vector_expression<E>
+    requires internal::vector_expression<E>
 auto operator+(std::complex<typename E::real_type> lhs, const E& rhs)
 {
-    return packed_scalar<E>(lhs) + rhs;
+    return internal::packed_scalar<E>(lhs) + rhs;
 }
 
 template<typename E>
-    requires vector_expression<E>
+    requires internal::vector_expression<E>
 auto operator-(const E& lhs, std::complex<typename E::real_type> rhs)
 {
-    return lhs - packed_scalar<E>(rhs);
+    return lhs - internal::packed_scalar<E>(rhs);
 }
 template<typename E>
-    requires vector_expression<E>
+    requires internal::vector_expression<E>
 auto operator-(std::complex<typename E::real_type> lhs, const E& rhs)
 {
-    return packed_scalar<E>(lhs) - rhs;
+    return internal::packed_scalar<E>(lhs) - rhs;
 }
 
 template<typename E>
-    requires vector_expression<E>
+    requires internal::vector_expression<E>
 auto operator*(const E& lhs, std::complex<typename E::real_type> rhs)
 {
-    return lhs * packed_scalar<E>(rhs);
+    return lhs * internal::packed_scalar<E>(rhs);
 }
 template<typename E>
-    requires vector_expression<E>
+    requires internal::vector_expression<E>
 auto operator*(std::complex<typename E::real_type> lhs, const E& rhs)
 {
-    return packed_scalar<E>(lhs) * rhs;
+    return internal::packed_scalar<E>(lhs) * rhs;
 }
 
 template<typename E>
-    requires vector_expression<E>
+    requires internal::vector_expression<E>
 auto operator/(const E& lhs, std::complex<typename E::real_type> rhs)
 {
-    return lhs / packed_scalar<E>(rhs);
+    return lhs / internal::packed_scalar<E>(rhs);
 }
 template<typename E>
-    requires vector_expression<E>
+    requires internal::vector_expression<E>
 auto operator/(std::complex<typename E::real_type> lhs, const E& rhs)
 {
-    return packed_scalar<E>(lhs) / rhs;
+    return internal::packed_scalar<E>(lhs) / rhs;
 }
 
 // #endregion complex scalar
@@ -577,32 +616,34 @@ auto operator/(std::complex<typename E::real_type> lhs, const E& rhs)
 // #region real scalar
 
 template<typename E>
-    requires vector_expression<E>
+    requires internal::vector_expression<E>
 auto operator+(const E& lhs, typename E::real_type rhs);
 template<typename E>
-    requires vector_expression<E>
+    requires internal::vector_expression<E>
 auto operator+(typename E::real_type lhs, const E& rhs);
 
 template<typename E>
-    requires vector_expression<E>
+    requires internal::vector_expression<E>
 auto operator-(const E& lhs, typename E::real_type rhs);
 template<typename E>
-    requires vector_expression<E>
+    requires internal::vector_expression<E>
 auto operator-(typename E::real_type lhs, const E& rhs);
 
 template<typename E>
-    requires vector_expression<E>
+    requires internal::vector_expression<E>
 auto operator*(const E& lhs, typename E::real_type rhs);
 template<typename E>
-    requires vector_expression<E>
+    requires internal::vector_expression<E>
 auto operator*(typename E::real_type lhs, const E& rhs);
 
 template<typename E>
-    requires vector_expression<E>
+    requires internal::vector_expression<E>
 auto operator/(const E& lhs, typename E::real_type rhs);
 template<typename E>
-    requires vector_expression<E>
+    requires internal::vector_expression<E>
 auto operator/(typename E::real_type lhs, const E& rhs);
+
+namespace internal {
 
 template<typename E>
     requires vector_expression<E>
@@ -619,7 +660,7 @@ public:
 private:
     template<typename T, std::size_t PackSize, typename Allocator>
         requires packed_floating_point<T, PackSize>
-    friend class packed_cx_vector;
+    friend class ::packed_cx_vector;
     friend class expression_base;
 
     friend auto operator+<E>(const E& lhs, typename E::real_type rhs);
@@ -667,7 +708,7 @@ public:
 private:
     template<typename T, std::size_t PackSize, typename Allocator>
         requires packed_floating_point<T, PackSize>
-    friend class packed_cx_vector;
+    friend class ::packed_cx_vector;
     friend class expression_base;
 
     friend auto operator-<E>(typename E::real_type lhs, const E& rhs);
@@ -713,7 +754,7 @@ public:
 private:
     template<typename T, std::size_t PackSize, typename Allocator>
         requires packed_floating_point<T, PackSize>
-    friend class packed_cx_vector;
+    friend class ::packed_cx_vector;
     friend class expression_base;
 
     friend auto operator*<E>(const E& lhs, typename E::real_type rhs);
@@ -762,7 +803,7 @@ public:
 private:
     template<typename T, std::size_t PackSize, typename Allocator>
         requires packed_floating_point<T, PackSize>
-    friend class packed_cx_vector;
+    friend class ::packed_cx_vector;
     friend class expression_base;
     friend auto operator/<E>(typename E::real_type lhs, const E& rhs);
 
@@ -790,11 +831,11 @@ private:
                                 avx::mul<real_type>(vector.imag, vector.imag));
 
         const auto real =
-            avx::div<real_type>(avx::mul<real_type>(scalar.real, vector.real),
+            avx::div<real_type>(avx::mul<real_type>(scalar, vector.real),
                                 vector_abs);
 
         const auto imag =
-            avx::div<real_type>(avx::mul<real_type>(scalar.real, vector.imag),
+            avx::div<real_type>(avx::mul<real_type>(scalar, vector.imag),
                                 vector_abs);
 
         return {real, imag};
@@ -804,56 +845,57 @@ private:
     real_type m_scalar;
 };
 
+}    // namespace internal
 template<typename E>
-    requires vector_expression<E>
+    requires internal::vector_expression<E>
 auto operator+(const E& lhs, typename E::real_type rhs)
 {
-    return radd(rhs, lhs);
+    return internal::radd(rhs, lhs);
 }
 template<typename E>
-    requires vector_expression<E>
+    requires internal::vector_expression<E>
 auto operator+(typename E::real_type lhs, const E& rhs)
 {
-    return radd(lhs, rhs);
+    return internal::radd(lhs, rhs);
 }
 
 template<typename E>
-    requires vector_expression<E>
+    requires internal::vector_expression<E>
 auto operator-(const E& lhs, typename E::real_type rhs)
 {
-    return radd(-rhs, lhs);
+    return internal::radd(-rhs, lhs);
 }
 template<typename E>
-    requires vector_expression<E>
+    requires internal::vector_expression<E>
 auto operator-(typename E::real_type lhs, const E& rhs)
 {
-    return rsub(lhs, rhs);
+    return internal::rsub(lhs, rhs);
 }
 
 template<typename E>
-    requires vector_expression<E>
+    requires internal::vector_expression<E>
 auto operator*(const E& lhs, typename E::real_type rhs)
 {
-    return rmul(rhs, lhs);
+    return internal::rmul(rhs, lhs);
 }
 template<typename E>
-    requires vector_expression<E>
+    requires internal::vector_expression<E>
 auto operator*(typename E::real_type lhs, const E& rhs)
 {
-    return rmul(lhs, rhs);
+    return internal::rmul(lhs, rhs);
 }
 
 template<typename E>
-    requires vector_expression<E>
+    requires internal::vector_expression<E>
 auto operator/(const E& lhs, typename E::real_type rhs)
 {
-    return rmul(1 / rhs, lhs);
+    return internal::rmul(1 / rhs, lhs);
 }
 template<typename E>
-    requires vector_expression<E>
+    requires internal::vector_expression<E>
 auto operator/(typename E::real_type lhs, const E& rhs)
 {
-    return rdiv(lhs, rhs);
+    return internal::rdiv(lhs, rhs);
 }
 
 // #endregion real scalar

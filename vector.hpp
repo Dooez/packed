@@ -19,7 +19,7 @@ template<typename T,
     requires packed_floating_point<T, PackSize>
 class packed_cx_vector
 {
-    friend class expression_base;
+    friend class internal::expression_base;
 
 private:
     using alloc_traits = std::allocator_traits<Allocator>;
@@ -207,7 +207,7 @@ public:
     }
 
     template<typename E>
-        requires vector_expression<E>
+        requires internal::vector_expression<E>
     packed_cx_vector& operator=(const E& other)
     {
         assert(m_size == other.size());
@@ -377,18 +377,6 @@ private:
     {
         return idx + idx / PackSize * PackSize;
     }
-
-    constexpr bool aligned(difference_type idx = 0) const
-    {
-        return true;
-    }
-
-    auto cx_reg(size_type idx) const -> avx::cx_reg<T>
-    {
-        auto real = avx::load(m_ptr + packed_idx(idx));
-        auto imag = avx::load(m_ptr + packed_idx(idx) + PackSize);
-        return {real, imag};
-    };
 };
 
 
