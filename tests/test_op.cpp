@@ -19,7 +19,7 @@ template<typename T>
     requires std::floating_point<T>
 int equal_eps(T lhs, T rhs)
 {
-    static constexpr T epsilon = 2 * std::numeric_limits<T>::epsilon;
+    static constexpr T epsilon = 1 * std::numeric_limits<T>::epsilon;
     if (lhs == rhs)
     {
         return true;
@@ -33,7 +33,7 @@ template<typename T>
     requires std::floating_point<T>
 int equal_eps(std::complex<T> lhs, std::complex<T> rhs)
 {
-    static constexpr T epsilon = 2 * std::numeric_limits<T>::epsilon();
+    static constexpr T epsilon = 1 * std::numeric_limits<T>::epsilon();
     if (lhs == rhs)
     {
         return true;
@@ -43,14 +43,61 @@ int equal_eps(std::complex<T> lhs, std::complex<T> rhs)
     return abs(lhs - rhs) < largest * epsilon;
 }
 
-template<typename V1, typename V2, typename V3>
-bool test_add(const V1& val1, const V2& val2, const V3& val3)
+template<typename T1, typename T2, typename V3>
+bool test_add(const std::vector<T1>& val1, const std::vector<T2>& val2, const V3& val3)
 {
     for (uint i = 0; i < val1.size(); ++i)
     {
         auto stdr = val1.at(i) + val2.at(i);
         if (!equal_eps(stdr, std::complex<typename V3::real_type>(val3[i])))
         {
+            std::cout << "addition failed at " << i << " with values " << stdr << " "
+                      << std::complex<typename V3::real_type>(val3[i]) << "\n";
+            return false;
+        }
+    }
+    return true;
+}
+template<typename T1, typename T2, typename V3>
+bool test_sub(const std::vector<T1>& val1, const std::vector<T2>& val2, const V3& val3)
+{
+    for (uint i = 0; i < val1.size(); ++i)
+    {
+        auto stdr = val1.at(i) - val2.at(i);
+        if (!equal_eps(stdr, std::complex<typename V3::real_type>(val3[i])))
+        {
+            std::cout << "subtraction failed at " << i << " with values" << stdr << "  "
+                      << std::complex<typename V3::real_type>(val3[i]) << "\n";
+            return false;
+        }
+    }
+    return true;
+}
+template<typename T1, typename T2, typename V3>
+bool test_mul(const std::vector<T1>& val1, const std::vector<T2>& val2, const V3& val3)
+{
+    for (uint i = 0; i < val1.size(); ++i)
+    {
+        auto stdr = val1.at(i) * val2.at(i);
+        if (!equal_eps(stdr, std::complex<typename V3::real_type>(val3[i])))
+        {
+            std::cout << "multiplication failed at " << i << " with values" << stdr
+                      << "  " << std::complex<typename V3::real_type>(val3[i]) << "\n";
+            return false;
+        }
+    }
+    return true;
+}
+template<typename T1, typename T2, typename V3>
+bool test_div(const std::vector<T1>& val1, const std::vector<T2>& val2, const V3& val3)
+{
+    for (uint i = 0; i < val1.size(); ++i)
+    {
+        auto stdr = val1.at(i) / val2.at(i);
+        if (!equal_eps(stdr, std::complex<typename V3::real_type>(val3[i])))
+        {
+            std::cout << "division failed at " << i << " with values" << stdr << "  "
+                      << std::complex<typename V3::real_type>(val3[i]) << "\n";
             return false;
         }
     }
@@ -71,62 +118,61 @@ int test_arithm(std::size_t length)
 
     for (uint i = 0; i < length; ++i)
     {
-        vec1[i]       = i + std::numeric_limits<T>::epsilon();
+        vec1[i]       = i * std::numeric_limits<T>::epsilon();
         vec2[i]       = i + 1;
-        stdvec1.at(i) = i + std::numeric_limits<T>::epsilon();
+        stdvec1.at(i) = i * std::numeric_limits<T>::epsilon();
         stdvec2.at(i) = i + 1;
     }
 
 
-    const T    rval = 13;
-    const auto val  = std::complex<T>(13, 13);
+    const T    rval = 13 * std::numeric_limits<T>::epsilon();
+    const auto val  = std::complex<T>(rval, rval);
 
-    auto stdrval = std::vector<T>(length, 13);
-    auto stdval  = std::vector<std::complex<T>>(length, std::complex<T>(13, 13));
+    auto stdrval = std::vector<T>(length, rval);
+    auto stdval  = std::vector<std::complex<T>>(length, val);
 
     vecr = vec1 + vec2;
     if (!test_add(stdvec1, stdvec2, vecr))
+    {   
+        return 1;
+    }
+    vecr = vec1 - vec2;
+    if (!test_sub(stdvec1, stdvec2, vecr))
     {
         return 1;
     }
-
-    vecr = vec1 - vec2;
-    for (uint i = 0; i < length; ++i)
-    {
-        auto stdr = stdvec1.at(i) - stdvec2.at(i);
-        if (!equal_eps(stdr, std::complex<T>(vecr[i])))
-        {
-            return 1;
-        }
-    }
+    
     vecr = vec1 * vec2;
-    for (uint i = 0; i < length; ++i)
+    if (!test_mul(stdvec1, stdvec2, vecr))
     {
-        auto stdr = stdvec1.at(i) * stdvec2.at(i);
-        if (!equal_eps(stdr, std::complex<T>(vecr[i])))
-        {
-            return 1;
-        }
+        return 1;
     }
     vecr = vec1 / vec2;
-    for (uint i = 0; i < length; ++i)
-    {
-        auto stdr = stdvec1.at(i) / stdvec2.at(i);
-        if (!equal_eps(stdr, std::complex<T>(vecr[i])))
-        {
-            return 1;
-        }
-    }
-
-    vecr = rval + vec1;
-    if (!test_add(stdrval, stdvec1, vecr))
+    if (!test_div(stdvec1, stdvec2, vecr))
     {
         return 1;
     }
 
-    vecr = rval - vec1;
-    vecr = rval * vec1;
-    vecr = rval / vec1;
+    vecr = rval + vec2;
+    if (!test_add(stdrval, stdvec2, vecr))
+    {
+        return 1;
+    }
+    vecr = rval - vec2;
+    if (!test_sub(stdrval, stdvec2, vecr))
+    {
+        return 1;
+    }
+    vecr = rval * vec2;
+    if (!test_mul(stdrval, stdvec2, vecr))
+    {
+        return 1;
+    }
+    vecr = rval / vec2;
+    if (!test_div(stdrval, stdvec2, vecr))
+    {
+        return 1;
+    }
 
     vecr = vec1 + rval;
     if (!test_add(stdvec1, stdrval, vecr))
@@ -134,28 +180,63 @@ int test_arithm(std::size_t length)
         return 1;
     }
     vecr = vec1 - rval;
-    vecr = vec1 * rval;
-    vecr = vec1 / rval;
-
-    vecr = val + vec1;
-    if (!test_add(stdval, stdvec1, vecr))
+    if (!test_sub(stdvec1, stdrval, vecr))
     {
-        // return 1;
+        return 1;
     }
-    vecr = val - vec1;
-    vecr = val * vec1;
-    vecr = val / vec1;
+    vecr = vec1 * rval;
+    if (!test_mul(stdvec1, stdrval, vecr))
+    {
+        return 1;
+    }
+    vecr = vec1 / rval;
+    if (!test_div(stdvec1, stdrval, vecr))
+    {
+        return 1;
+    }
+
+    vecr = val + vec2;
+    if (!test_add(stdval, stdvec2, vecr))
+    {
+        return 1;
+    }
+    vecr = val - vec2;
+    if (!test_sub(stdval, stdvec2, vecr))
+    {
+        return 1;
+    }
+    vecr = val * vec2;
+    if (!test_mul(stdval, stdvec2, vecr))
+    {
+        return 1;
+    }
+    vecr = val / vec2;
+    if (!test_div(stdval, stdvec2, vecr))
+    {
+        return 1;
+    }
 
     vecr = vec1 + val;
     if (!test_add(stdvec1, stdval, vecr))
     {
-        // return 1;
+        return 1;
     }
     vecr = vec1 - val;
+    if (!test_sub(stdvec1, stdval, vecr))
+    {
+        return 1;
+    }
     vecr = vec1 * val;
+    if (!test_mul(stdvec1, stdval, vecr))
+    {
+        return 1;
+    }
     vecr = vec1 / val;
+    if (!test_div(stdvec1, stdval, vecr))
+    {
+        return 1;
+    }
 
-    vecr = val * rval * vec1 + vec2 * rval * val;
     return 0;
 }
 
@@ -163,13 +244,14 @@ int test_arithm(std::size_t length)
 int main()
 {
     int res = 0;
-    for (uint i = 1; i < 1024; ++i)
+    for (uint i = 1; i < 128; ++i)
     {
         res += test_arithm<float>(i);
         res += test_arithm<double>(i);
         if (res > 0)
         {
             std::cout << i << "\n";
+            return i;
         }
     }
 
