@@ -329,8 +329,16 @@ public:
     [[nodiscard]] auto subrange(size_type idx_start, size_type idx_end)
         -> packed_subrange<T, PackSize>
     {
-        return {begin(), idx_end - idx_start};
+        return packed_subrange<T, PackSize>(begin() + idx_start, idx_end - idx_start);
     }
+
+    template<std::size_t Size>
+    [[nodiscard]] auto subrange(size_type idx_start)
+        -> packed_subrange<T, PackSize, false, Size>
+    {
+        return packed_subrange<T, PackSize, false, Size>(begin() + idx_start);
+    }
+
 
 private:
     [[no_unique_address]] allocator_type m_allocator{};
@@ -679,7 +687,7 @@ public:
 
     // NOLINTNEXTLINE (*explicit*)
     packed_cx_ref(const packed_cx_ref<T, PackSize, false>& other) noexcept
-        requires requires { Const; }
+        requires Const
     : m_ptr(other.m_ptr){};
 
     packed_cx_ref(const packed_cx_ref&) noexcept = default;
@@ -694,7 +702,7 @@ public:
         *(m_ptr + PackSize) = *(other.m_ptr + PackSize);
         return *this;
     }
-    packed_cx_ref& operator=(packed_cx_ref&& other) 
+    packed_cx_ref& operator=(packed_cx_ref&& other) const
         requires(!Const)
     {
         *m_ptr              = *other.m_ptr;
@@ -722,7 +730,7 @@ public:
         return *this;
     }
 
-    [[nodiscard]] pointer operator&() const noexcept
+    [[nodiscard]] auto operator&() const noexcept -> pointer
     {
         return m_ptr;
     }

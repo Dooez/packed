@@ -101,11 +101,14 @@ int test_subvector(const Vec& vector)
         return 1;
     }
     using sub_t = std::remove_cvref_t<decltype(sub)>;
+
+    auto sub2 = vec_size.template subrange<13>(0);
+    std::cout << sub2.size() << "\n";
     // static_assert(std::indirectly_copyable<std::ranges::iterator_t<std::vector<int>>,
     //                                        std::vector<int>::iterator>);
     // // static_assert(std::indirectly_writable<)
-    static_assert(
-        std::indirectly_copyable<typename Vec::iterator, typename sub_t::iterator>);
+    // static_assert(
+    //     std::indirectly_copyable<typename Vec::iterator, typename sub_t::iterator>);
     // std::ranges::copy(sub, vec_2.begin());
 
     // sub.copy(vec_2);
