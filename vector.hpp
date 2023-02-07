@@ -51,7 +51,7 @@ public:
     , m_length(length)
     , m_ptr(alloc_traits::allocate(m_allocator, num_packs(length) * PackSize * 2))
     {
-        set(begin(), end(), 0);
+        fill(begin(), end(), 0);
     };
 
     template<typename U>
@@ -63,7 +63,7 @@ public:
     , m_length(length)
     , m_ptr(alloc_traits::allocate(m_allocator, num_packs(length) * PackSize * 2))
     {
-        set(begin(), end(), value);
+        fill(begin(), end(), value);
     };
 
     packed_cx_vector(const packed_cx_vector& other)
@@ -237,53 +237,53 @@ public:
         first.swap(second);
     }
 
-    [[nodiscard]] allocator_type get_allocator() const
-        noexcept(std::is_nothrow_copy_constructible_v<allocator_type>)
+    [[nodiscard]] auto get_allocator() const
+        noexcept(std::is_nothrow_copy_constructible_v<allocator_type>) -> allocator_type
     {
         return m_allocator;
     }
 
-    [[nodiscard]] reference operator[](size_type idx)
+    [[nodiscard]] auto operator[](size_type idx) -> reference
     {
         auto p_idx = packed_idx(idx);
-        return {m_ptr + p_idx};
+        return reference(m_ptr + p_idx);
     }
-    [[nodiscard]] const_reference operator[](size_type idx) const
+    [[nodiscard]] auto operator[](size_type idx) const -> const_reference
     {
         auto p_idx = packed_idx(idx);
-        return {m_ptr + p_idx};
+        return reference(m_ptr + p_idx);
     }
 
-    [[nodiscard]] reference at(size_type idx)
+    [[nodiscard]] auto at(size_type idx) -> reference
     {
-        if (idx >= m_length)
+        if (idx >= size())
         {
             throw std::out_of_range(std::string("idx (which is") + std::to_string(idx) +
                                     std::string(") >= vector size (which is ") +
-                                    std::to_string(m_length) + std::string(")"));
+                                    std::to_string(size()) + std::string(")"));
         }
         auto p_idx = packed_idx(idx);
         return {m_ptr + p_idx};
     }
-    [[nodiscard]] const_reference at(size_type idx) const
+    [[nodiscard]] auto at(size_type idx) const -> const_reference
     {
-        if (idx >= m_length)
+        if (idx >= size())
         {
             throw std::out_of_range(std::string("idx (which is") + std::to_string(idx) +
                                     std::string(") >= vector size (which is ") +
-                                    std::to_string(m_length) + std::string(")"));
+                                    std::to_string(size()) + std::string(")"));
         }
         auto p_idx = packed_idx(idx);
         return {m_ptr + p_idx};
     }
 
-    [[nodiscard]] size_type size() const noexcept
+    [[nodiscard]] constexpr auto size() const noexcept -> size_type
     {
         return m_length;
     };
-    [[nodiscard]] size_type length() const noexcept
+    [[nodiscard]] auto length() const noexcept -> size_type
     {
-        return m_length;
+        return size();
     };
     void resize(size_type new_length)
     {
@@ -300,30 +300,36 @@ public:
         }
     }
 
-    [[nodiscard]] iterator begin() noexcept
+    [[nodiscard]] auto begin() noexcept -> iterator
     {
         return iterator(m_ptr, 0);
     }
-    [[nodiscard]] const_iterator begin() const noexcept
+    [[nodiscard]] auto begin() const noexcept -> const_iterator
     {
         return const_iterator(m_ptr, 0);
     }
-    [[nodiscard]] const_iterator cbegin() const noexcept
+    [[nodiscard]] auto cbegin() const noexcept -> const_iterator
     {
         return const_iterator(m_ptr, 0);
     }
 
-    [[nodiscard]] iterator end() noexcept
+    [[nodiscard]] auto end() noexcept -> iterator
     {
-        return iterator(m_ptr + packed_idx(m_length), m_length);
+        return iterator(m_ptr + packed_idx(size()), size());
     }
-    [[nodiscard]] const_iterator end() const noexcept
+    [[nodiscard]] auto end() const noexcept -> const_iterator
     {
-        return const_iterator(m_ptr + packed_idx(m_length), m_length);
+        return const_iterator(m_ptr + packed_idx(size()), size());
     }
-    [[nodiscard]] const_iterator cend() const noexcept
+    [[nodiscard]] auto cend() const noexcept -> const_iterator
     {
-        return const_iterator(m_ptr + packed_idx(m_length), m_length);
+        return const_iterator(m_ptr + packed_idx(size()), size());
+    }
+
+    [[nodiscard]] auto subrange(size_type idx_start, size_type idx_end)
+        -> packed_subrange<T, PackSize>
+    {
+        return {begin(), idx_end - idx_start};
     }
 
 private:
@@ -334,11 +340,11 @@ private:
 
     void deallocate()
     {
-        if (m_ptr != real_pointer() && m_length != 0)
+        if (m_ptr != real_pointer() && size() != 0)
         {
             alloc_traits::deallocate(m_allocator,
                                      m_ptr,
-                                     num_packs(m_length) * PackSize * 2);
+                                     num_packs(size()) * PackSize * 2);
             m_ptr    = real_pointer();
             m_length = 0;
         }
@@ -358,7 +364,7 @@ private:
 template<typename T, std::size_t PackSize, bool Const>
 class packed_iterator
 {
-    template<typename TVec, std::size_t PackSizeVec, typename Allocator>
+    template<typename TVec, std::size_t PackSizeVec, typename>
         requires packed_floating_point<TVec, PackSizeVec>
     friend class packed_cx_vector;
     friend class packed_iterator<T, PackSize, true>;
@@ -383,8 +389,9 @@ private:
 public:
     packed_iterator() noexcept = default;
 
-    packed_iterator(const packed_iterator<T, PackSize, false>& other) noexcept
-        requires requires { Const; }
+    // NOLINTNEXTLINE(*explicit*)
+    packed_iterator(const packed_iterator<T, PackSize>& other) noexcept
+        requires Const
     : m_ptr(other.m_ptr)
     , m_idx(other.m_idx){};
 
@@ -515,10 +522,10 @@ private:
     difference_type m_idx = 0;
 };
 
-template<typename T, std::size_t PackSize, bool Const>
+template<typename T, std::size_t PackSize, bool Const, std::size_t Extent>
 class packed_subrange : std::ranges::view_base
 {
-    template<typename TVec, std::size_t PackSizeVec, typename Allocator>
+    template<typename TVec, std::size_t PackSizeVec, typename>
         requires packed_floating_point<TVec, PackSizeVec>
     friend class packed_cx_vector;
 
@@ -528,8 +535,25 @@ public:
     using difference_type = std::ptrdiff_t;
 
     using iterator       = packed_iterator<T, PackSize, Const>;
-    using reference_type = typename iterator::reference_type;
+    using const_iterator = packed_iterator<T, PackSize, true>;
 
+    using reference       = typename iterator::reference;
+    using const_reference = typename const_iterator::reference;
+
+private:
+    using size_t =
+        std::conditional_t<Extent == std::dynamic_extent, size_type, std::monostate>;
+
+    packed_subrange(const iterator& begin, size_type size)
+        requires(Extent == std::dynamic_extent)
+    : m_begin(begin)
+    , m_size(size){};
+
+    packed_subrange(const iterator& begin)
+        requires(Extent != std::dynamic_extent)
+    : m_begin(begin){};
+
+public:
     packed_subrange() = default;
 
     packed_subrange(const packed_subrange&) noexcept = default;
@@ -537,7 +561,8 @@ public:
 
     ~packed_subrange() = default;
 
-    packed_subrange& operator=(packed_subrange&&) noexcept = default;
+    packed_subrange& operator=(packed_subrange&&) noexcept      = default;
+    packed_subrange& operator=(const packed_subrange&) noexcept = default;
 
     void swap(packed_subrange& other) noexcept
     {
@@ -545,55 +570,100 @@ public:
         swap(m_begin, other.m_begin);
         swap(m_size, other.m_size);
     }
-
     friend void swap(packed_subrange& first, packed_subrange& second) noexcept
     {
         first.swap(second);
     }
 
-    auto begin() const -> iterator
+    [[nodiscard]] auto begin() -> iterator
     {
         return m_begin;
     }
-    auto end() const -> iterator
+    [[nodiscard]] auto begin() const -> const_iterator
     {
-        return m_begin + m_size;
+        return m_begin;
     }
-    auto operator[](difference_type idx) -> reference_type
+    [[nodiscard]] auto cbegin() const -> const_iterator
+    {
+        return m_begin;
+    }
+    [[nodiscard]] auto end() -> iterator
+    {
+        return m_begin + size();
+    }
+    [[nodiscard]] auto end() const -> const_iterator
+    {
+        return m_begin + size();
+    }
+    [[nodiscard]] auto cend() const -> const_iterator
+    {
+        return m_begin + size();
+    }
+
+    [[nodiscard]] auto operator[](difference_type idx) -> reference
+    {
+        return *(m_begin + idx);
+    }
+    [[nodiscard]] auto operator[](difference_type idx) const -> const_reference
     {
         return *(m_begin + idx);
     }
 
-    auto size() const -> size_type
+    [[nodiscard]] constexpr auto size() const -> size_type
     {
-        return m_size;
+        if constexpr (Extent == std::dynamic_extent)
+        {
+            return m_size;
+        } else
+        {
+            return Extent;
+        }
     };
-    bool empty() const
+    [[nodiscard]] bool empty() const
     {
-        return m_size == 0;
+        return size() == 0;
     }
-    operator bool() const
+    // NOLINTNEXTLINE (*explicit*)
+    [[nodiscard]] operator bool() const
     {
-        return m_size != 0;
+        return size() != 0;
     }
 
-    packed_subrange& operator=(const packed_subrange&) = delete;
+    template<typename U>
+        requires std::convertible_to<U, std::complex<T>>
+    void fill(U value)
+    {
+        fill(begin(), end(), value);
+    };
+
+    template<typename R>
+        requires(!Const) &&
+                std::convertible_to<std::ranges::range_value_t<R>,
+                                    std::complex<real_type>> &&
+                requires(R&& r, iterator it) { std::ranges::copy(r, it); }
+    void copy(const R& other)
+    {
+        std::ranges::copy(other, begin());
+    };
 
 private:
-    iterator  m_begin{};
-    size_type m_size{};
+    [[no_unique_address]] size_t m_size{};
+    iterator                     m_begin{};
 };
 
 template<typename T, std::size_t PackSize, bool Const>
 class packed_cx_ref
-
 {
-    template<typename TVec, std::size_t PackSizeVec, typename Allocator>
+    template<typename TVec, std::size_t PackSizeVec, typename>
         requires packed_floating_point<TVec, PackSizeVec>
     friend class packed_cx_vector;
 
     friend class packed_iterator<T, PackSize, Const>;
-    friend class packed_cx_ref<T, PackSize, true>;
+
+    friend class packed_subrange<T, PackSize, Const>;
+    friend class packed_subrange<T, PackSize>;
+
+    friend class packed_cx_ref<T, PackSize, false>;
 
 public:
     using real_type  = T;
@@ -601,12 +671,13 @@ public:
     using value_type = std::complex<real_type>;
 
 private:
-    packed_cx_ref(pointer ptr) noexcept
+    explicit packed_cx_ref(pointer ptr) noexcept
     : m_ptr(ptr){};
 
 public:
     packed_cx_ref() = delete;
 
+    // NOLINTNEXTLINE (*explicit*)
     packed_cx_ref(const packed_cx_ref<T, PackSize, false>& other) noexcept
         requires requires { Const; }
     : m_ptr(other.m_ptr){};
@@ -623,6 +694,8 @@ public:
         *(m_ptr + PackSize) = *(other.m_ptr + PackSize);
         return *this;
     }
+    packed_cx_ref& operator=(packed_cx_ref&& other) = delete;
+
     template<typename U>
         requires std::is_convertible_v<U, value_type>
     packed_cx_ref& operator=(const U& other)

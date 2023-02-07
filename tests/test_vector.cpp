@@ -71,7 +71,7 @@ int main()
 
     std::complex<float> val   = 1;
     const auto&         conv2 = v_def_2;
-    set(v_def_2.begin(), v_def_2.end(), val);
+    fill(v_def_2.begin(), v_def_2.end(), val);
     packed_copy(v_def_2.begin(), v_def_2.end(), v_def_3.begin());
 
     for (uint i = 0; i < v_def_2.size(); ++i)

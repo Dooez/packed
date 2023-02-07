@@ -4,6 +4,8 @@
 #include <complex>
 #include <cstring>
 #include <immintrin.h>
+#include <span>
+#include <variant>
 
 template<std::size_t N>
 concept power_of_two = requires { (N & (N - 1)) == 0; };
@@ -22,7 +24,10 @@ class packed_cx_ref;
 template<typename T, std::size_t PackSize, bool Const = false>
 class packed_iterator;
 
-template<typename T, std::size_t PackSize, bool Const = false>
+template<typename T,
+         std::size_t PackSize,
+         bool        Const  = false,
+         std::size_t Extent = std::dynamic_extent>
 class packed_subrange;
 
 
@@ -140,9 +145,9 @@ void packed_copy(packed_iterator<T, PackSize, true> first,
 
 
 template<typename T, std::size_t PackSize>
-void set(packed_iterator<T, PackSize> first,
-         packed_iterator<T, PackSize> last,
-         std::complex<T>              value)
+void fill(packed_iterator<T, PackSize> first,
+          packed_iterator<T, PackSize> last,
+          std::complex<T>              value)
 {
     constexpr std::size_t reg_size = 32 / sizeof(T);
 
@@ -177,11 +182,11 @@ void set(packed_iterator<T, PackSize> first,
 
 template<typename T, std::size_t PackSize, typename U>
     requires std::convertible_to<U, std::complex<T>>
-inline void set(packed_iterator<T, PackSize> first,
-                packed_iterator<T, PackSize> last,
-                U                            value)
+inline void fill(packed_iterator<T, PackSize> first,
+                 packed_iterator<T, PackSize> last,
+                 U                            value)
 {
     auto value_cx = std::complex<T>(value);
-    set(first, last, value_cx);
+    fill(first, last, value_cx);
 };
 #endif
