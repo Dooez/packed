@@ -25,13 +25,13 @@ private:
 
 public:
     using real_type    = T;
-    using real_pointer = typename alloc_traits::pointer;
+    using real_pointer = T*;
 
     using allocator_type  = Allocator;
-    using size_type       = typename alloc_traits::size_type;
-    using difference_type = typename alloc_traits::difference_type;
+    using size_type       = std::size_t;
+    using difference_type = ptrdiff_t;
     using reference       = packed_cx_ref<T, PackSize, false>;
-    using const_reference = packed_cx_ref<T, PackSize, true>;
+    using const_reference = const packed_cx_ref<T, PackSize, true>;
 
     using iterator       = packed_iterator<T, PackSize, false>;
     using const_iterator = packed_iterator<T, PackSize, true>;
@@ -366,8 +366,10 @@ class packed_iterator
 public:
     using real_type        = T;
     using real_pointer     = T*;
-    using difference_type  = long;
-    using reference        = packed_cx_ref<T, PackSize, Const>;
+    using difference_type  = ptrdiff_t;
+    using reference        = typename std::conditional_t<Const,
+                                                  const packed_cx_ref<T, PackSize, true>,
+                                                  packed_cx_ref<T, PackSize>>;
     using value_type       = packed_cx_ref<T, PackSize, Const>;
     using iterator_concept = std::random_access_iterator_tag;
 
@@ -398,13 +400,7 @@ public:
     {
         return {*m_ptr, *(m_ptr + PackSize)};
     }
-    [[nodiscard]] reference operator*() const noexcept
-        requires (!Const)
-    {
-        return reference(m_ptr);
-    }
-    [[nodiscard]] const reference operator*() const noexcept
-        requires Const
+    [[nodiscard]] reference operator*() const
     {
         return reference(m_ptr);
     }
@@ -529,7 +525,7 @@ class packed_subrange : std::ranges::view_base
 public:
     using real_type       = T;
     using size_type       = std::size_t;
-    using difference_type = int64_t;
+    using difference_type = std::ptrdiff_t;
 
     using iterator       = packed_iterator<T, PackSize, Const>;
     using reference_type = typename iterator::reference_type;
