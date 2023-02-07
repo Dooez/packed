@@ -633,7 +633,7 @@ public:
         requires std::convertible_to<U, std::complex<T>>
     void fill(U value)
     {
-        fill(begin(), end(), value);
+        ::fill(begin(), end(), value);
     };
 
     template<typename R>
@@ -687,18 +687,24 @@ public:
 
     ~packed_cx_ref() = default;
 
-    packed_cx_ref& operator=(const packed_cx_ref& other)
-        requires requires { !Const; }
+    packed_cx_ref& operator=(const packed_cx_ref& other) const
+        requires(!Const)
     {
         *m_ptr              = *other.m_ptr;
         *(m_ptr + PackSize) = *(other.m_ptr + PackSize);
         return *this;
     }
-    packed_cx_ref& operator=(packed_cx_ref&& other) = delete;
+    packed_cx_ref& operator=(packed_cx_ref&& other) 
+        requires(!Const)
+    {
+        *m_ptr              = *other.m_ptr;
+        *(m_ptr + PackSize) = *(other.m_ptr + PackSize);
+        return *this;
+    }
 
     template<typename U>
         requires std::is_convertible_v<U, value_type>
-    packed_cx_ref& operator=(const U& other)
+    auto& operator=(const U& other) const
         requires requires { !Const; }
     {
         auto tmp            = static_cast<value_type>(other);
