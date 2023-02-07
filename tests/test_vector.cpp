@@ -52,7 +52,8 @@ int test_vector(const Vec& vector)
 
 int main()
 {
-    using test_t = iter_const_reference_t<packed_iterator<float, 32, std::allocator<float>>>;
+    using test_t = iter_const_reference_t<packed_iterator<float, 32>>;
+
 
     packed_cx_vector<float>  v_def{};
     packed_cx_vector<float>  v_def_2(127);
