@@ -20,6 +20,7 @@ if( CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR )
     ENABLE_TESTING()
 
     add_test(NAME test_vector COMMAND test_vector)
+    add_test(NAME test_op COMMAND test_op)
 else()
 
 endif()

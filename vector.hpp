@@ -62,7 +62,7 @@ public:
                      U                     value,
                      const allocator_type& allocator = allocator_type())
     : m_allocator(allocator)
-    , m_length(length)
+    , m_size(length)
     , m_ptr(alloc_traits::allocate(m_allocator, num_packs(length) * PackSize * 2))
     {
         fill(begin(), end(), value);
@@ -378,8 +378,8 @@ private:
             alloc_traits::deallocate(m_allocator,
                                      m_ptr,
                                      num_packs(size()) * PackSize * 2);
-            m_ptr    = real_pointer();
-            m_length = 0;
+            m_ptr  = real_pointer();
+            m_size = 0;
         }
     }
 
@@ -441,10 +441,6 @@ public:
 
     ~packed_iterator() = default;
 
-    [[nodiscard]] value_type value() const
-    {
-        return {*m_ptr, *(m_ptr + PackSize)};
-    }
     [[nodiscard]] reference operator*() const
     {
         return reference(m_ptr);
@@ -566,6 +562,8 @@ class packed_subrange : public std::ranges::view_base
     template<typename TVec, std::size_t PackSizeVec, typename>
         requires packed_floating_point<TVec, PackSizeVec>
     friend class packed_cx_vector;
+
+    friend class internal::expression_base;
 
 public:
     using real_type       = T;
@@ -702,7 +700,7 @@ class packed_cx_ref
     friend class packed_subrange<T, PackSize, Const>;
     friend class packed_subrange<T, PackSize, false>;
 
-    friend class packed_cx_ref<T, PackSize, false>;
+    friend class packed_cx_ref<T, PackSize, true>;
 
 public:
     using real_type  = T;

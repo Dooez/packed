@@ -10,57 +10,53 @@
 
 namespace avx {
 template<typename T>
-inline auto add(typename reg<T>::type lhs, typename reg<T>::type rhs) ->
-    typename reg<T>::type;
+auto add(typename reg<T>::type lhs, typename reg<T>::type rhs) -> typename reg<T>::type;
 template<>
-inline auto add<float>(reg<float>::type lhs, reg<float>::type rhs) -> reg<float>::type
+auto add<float>(reg<float>::type lhs, reg<float>::type rhs) -> reg<float>::type
 {
     return _mm256_add_ps(lhs, rhs);
 }
 template<>
-inline auto add<double>(reg<double>::type lhs, reg<double>::type rhs) -> reg<double>::type
+auto add<double>(reg<double>::type lhs, reg<double>::type rhs) -> reg<double>::type
 {
     return _mm256_add_pd(lhs, rhs);
 }
 
 template<typename T>
-inline auto sub(typename reg<T>::type lhs, typename reg<T>::type rhs) ->
-    typename reg<T>::type;
+auto sub(typename reg<T>::type lhs, typename reg<T>::type rhs) -> typename reg<T>::type;
 template<>
-inline auto sub<float>(reg<float>::type lhs, reg<float>::type rhs) -> reg<float>::type
+auto sub<float>(reg<float>::type lhs, reg<float>::type rhs) -> reg<float>::type
 {
     return _mm256_sub_ps(lhs, rhs);
 }
 template<>
-inline auto sub<double>(reg<double>::type lhs, reg<double>::type rhs) -> reg<double>::type
+auto sub<double>(reg<double>::type lhs, reg<double>::type rhs) -> reg<double>::type
 {
     return _mm256_sub_pd(lhs, rhs);
 }
 
 template<typename T>
-inline auto mul(typename reg<T>::type lhs, typename reg<T>::type rhs) ->
-    typename reg<T>::type;
+auto mul(typename reg<T>::type lhs, typename reg<T>::type rhs) -> typename reg<T>::type;
 template<>
-inline auto mul<float>(reg<float>::type lhs, reg<float>::type rhs) -> reg<float>::type
+auto mul<float>(reg<float>::type lhs, reg<float>::type rhs) -> reg<float>::type
 {
     return _mm256_mul_ps(lhs, rhs);
 }
 template<>
-inline auto mul<double>(reg<double>::type lhs, reg<double>::type rhs) -> reg<double>::type
+auto mul<double>(reg<double>::type lhs, reg<double>::type rhs) -> reg<double>::type
 {
     return _mm256_mul_pd(lhs, rhs);
 }
 
 template<typename T>
-inline auto div(typename reg<T>::type lhs, typename reg<T>::type rhs) ->
-    typename reg<T>::type;
+auto div(typename reg<T>::type lhs, typename reg<T>::type rhs) -> typename reg<T>::type;
 template<>
-inline auto div<float>(reg<float>::type lhs, reg<float>::type rhs) -> reg<float>::type
+auto div<float>(reg<float>::type lhs, reg<float>::type rhs) -> reg<float>::type
 {
     return _mm256_div_ps(lhs, rhs);
 }
 template<>
-inline auto div<double>(reg<double>::type lhs, reg<double>::type rhs) -> reg<double>::type
+auto div<double>(reg<double>::type lhs, reg<double>::type rhs) -> reg<double>::type
 {
     return _mm256_div_pd(lhs, rhs);
 }
@@ -105,9 +101,8 @@ public:
         ;
     };
 
-    template<typename T, std::size_t PackSize, typename Allocator>
-        requires packed_floating_point<T, PackSize>
-    struct is_expression<packed_cx_vector<T, PackSize, Allocator>>
+    template<typename T, std::size_t PackSize, bool Const, std::size_t Extent>
+    struct is_expression<packed_subrange<T, PackSize, Const, Extent>>
     {
         static constexpr bool value = true;
     };
@@ -125,13 +120,12 @@ protected:
         return expression.aligned(offset);
     }
 
-    template<typename T, std::size_t PackSize, typename Allocator>
-        requires packed_floating_point<T, PackSize>
+    template<typename T, std::size_t PackSize, bool Const, std::size_t Extent>
     static constexpr bool
-    _aligned(const packed_cx_vector<T, PackSize, Allocator>& expression,
-             std::size_t                                     offset = 0)
+    _aligned(const packed_subrange<T, PackSize, Const, Extent>& expression,
+             std::size_t                                        offset = 0)
     {
-        return true;
+        return expression.begin().aligned(offset);
     }
 
     template<typename E>
@@ -146,14 +140,13 @@ protected:
         return expression.cx_reg(idx);
     }
 
-    template<typename T, std::size_t PackSize, typename Allocator>
-        requires packed_floating_point<T, PackSize>
+    template<typename T, std::size_t PackSize, bool Const, std::size_t Extent>
     static constexpr auto
-    _cx_reg(const packed_cx_vector<T, PackSize, Allocator>& expression, std::size_t idx)
-        -> avx::cx_reg<T>
+    _cx_reg(const packed_subrange<T, PackSize, Const, Extent>& expression,
+            std::size_t                                        idx) -> avx::cx_reg<T>
     {
-        auto real = avx::load(expression.m_ptr + expression.packed_idx(idx));
-        auto imag = avx::load(expression.m_ptr + expression.packed_idx(idx) + PackSize);
+        auto real = avx::load(&(*(expression.begin() + idx)));
+        auto imag = avx::load(&(*(expression.begin() + idx)) + PackSize);
         return {real, imag};
     }
 };
@@ -195,7 +188,7 @@ class add : private expression_base
 public:
     using real_type = typename E1::real_type;
 
-    auto size() const -> std::size_t
+    constexpr auto size() const -> std::size_t
     {
         return _size(m_lhs);
     }
@@ -234,8 +227,8 @@ private:
                 avx::add<real_type>(lhs.imag, rhs.imag)};
     };
 
-    const E1& m_lhs;
-    const E2& m_rhs;
+    const E1 m_lhs;
+    const E2 m_rhs;
 };
 
 template<typename E1, typename E2>
@@ -245,7 +238,7 @@ class sub : private expression_base
 public:
     using real_type = typename E1::real_type;
 
-    auto size() const -> std::size_t
+    constexpr auto size() const -> std::size_t
     {
         return _size(m_lhs);
     }
@@ -284,8 +277,8 @@ private:
                 avx::sub<real_type>(lhs.imag, rhs.imag)};
     };
 
-    const E1& m_lhs;
-    const E2& m_rhs;
+    const E1 m_lhs;
+    const E2 m_rhs;
 };
 
 template<typename E1, typename E2>
@@ -295,7 +288,7 @@ class mul : private expression_base
 public:
     using real_type = typename E1::real_type;
 
-    auto size() const -> std::size_t
+    constexpr auto size() const -> std::size_t
     {
         return _size(m_lhs);
     }
@@ -338,8 +331,8 @@ private:
         return {real, imag};
     };
 
-    const E1& m_lhs;
-    const E2& m_rhs;
+    const E1 m_lhs;
+    const E2 m_rhs;
 };
 
 template<typename E1, typename E2>
@@ -349,7 +342,7 @@ class div : private expression_base
 public:
     using real_type = typename E1::real_type;
 
-    auto size() const -> std::size_t
+    constexpr auto size() const -> std::size_t
     {
         return _size(m_lhs);
     }
@@ -396,8 +389,8 @@ private:
         return {avx::div<real_type>(real_, rhs_abs), avx::div<real_type>(imag_, rhs_abs)};
     };
 
-    const E1& m_lhs;
-    const E2& m_rhs;
+    const E1 m_lhs;
+    const E2 m_rhs;
 };
 
 }    // namespace internal
@@ -471,7 +464,7 @@ class scalar_add : private expression_base
 public:
     using real_type = typename E::real_type;
 
-    auto size() const -> std::size_t
+    constexpr auto size() const -> std::size_t
     {
         return _size(m_vector);
     }
@@ -522,7 +515,7 @@ class scalar_sub : private expression_base
 public:
     using real_type = typename E::real_type;
 
-    auto size() const -> std::size_t
+    constexpr auto size() const -> std::size_t
     {
         return _size(m_vector);
     }
@@ -571,7 +564,7 @@ class scalar_mul : private expression_base
 public:
     using real_type = typename E::real_type;
 
-    auto size() const -> std::size_t
+    constexpr auto size() const -> std::size_t
     {
         return _size(m_vector);
     }
@@ -627,7 +620,7 @@ class scalar_div : private expression_base
 public:
     using real_type = typename E::real_type;
 
-    auto size() const -> std::size_t
+    constexpr auto size() const -> std::size_t
     {
         return _size(m_vector);
     }
@@ -776,7 +769,7 @@ class rscalar_add : private expression_base
 public:
     using real_type = typename E::real_type;
 
-    auto size() const -> std::size_t
+    constexpr auto size() const -> std::size_t
     {
         return _size(m_vector);
     }
@@ -824,7 +817,7 @@ class rscalar_sub : private expression_base
 public:
     using real_type = typename E::real_type;
 
-    auto size() const -> std::size_t
+    constexpr auto size() const -> std::size_t
     {
         return _size(m_vector);
     }
@@ -870,7 +863,7 @@ class rscalar_mul : private expression_base
 public:
     using real_type = typename E::real_type;
 
-    auto size() const -> std::size_t
+    constexpr auto size() const -> std::size_t
     {
         return _size(m_vector);
     }
@@ -919,7 +912,7 @@ class rscalar_div : private expression_base
 public:
     using real_type = typename E::real_type;
 
-    auto size() const -> std::size_t
+    constexpr auto size() const -> std::size_t
     {
         return _size(m_vector);
     }
