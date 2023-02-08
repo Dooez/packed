@@ -101,10 +101,10 @@ public:
                     } -> std::same_as<avx::cx_reg<typename E::real_type>>;
 
                 is_scalar<E>::value || requires {
-                                    {
-                                        expression.size()
-                                        } -> std::same_as<std::size_t>;
-                                };
+                                           {
+                                               expression.size()
+                                               } -> std::same_as<std::size_t>;
+                                       };
             };
         ;
     };
@@ -167,7 +167,10 @@ concept compatible_expressions =
     vector_expression<E1> && vector_expression<E2> &&
     std::same_as<typename E1::real_type, typename E2::real_type>;
 
+template<typename T>
+concept always_true = true;
 }    // namespace internal
+
 
 // #region expression
 
@@ -198,7 +201,13 @@ public:
 
     constexpr auto size() const -> std::size_t
     {
-        return _size(m_lhs);
+        if constexpr (is_scalar<E1>::value)
+        {
+            return _size(m_rhs);
+        } else
+        {
+            return _size(m_lhs);
+        }
     }
 
 private:
@@ -212,7 +221,10 @@ private:
     : m_lhs(lhs)
     , m_rhs(rhs)
     {
-        assert(lhs.size() == rhs.size());
+        if constexpr (!is_scalar<E1>::value && !is_scalar<E2>::value)
+        {
+            assert(lhs.size() == rhs.size());
+        };
     };
 
     constexpr bool aligned(std::size_t offset = 0) const
@@ -248,7 +260,13 @@ public:
 
     constexpr auto size() const -> std::size_t
     {
-        return _size(m_lhs);
+        if constexpr (is_scalar<E1>::value)
+        {
+            return _size(m_rhs);
+        } else
+        {
+            return _size(m_lhs);
+        }
     }
 
 private:
@@ -262,7 +280,10 @@ private:
     : m_lhs(lhs)
     , m_rhs(rhs)
     {
-        assert(lhs.size() == rhs.size());
+        if constexpr (!is_scalar<E1>::value && !is_scalar<E2>::value)
+        {
+            assert(lhs.size() == rhs.size());
+        };
     };
 
     constexpr bool aligned(std::size_t offset = 0) const
@@ -298,7 +319,13 @@ public:
 
     constexpr auto size() const -> std::size_t
     {
-        return _size(m_lhs);
+        if constexpr (is_scalar<E1>::value)
+        {
+            return _size(m_rhs);
+        } else
+        {
+            return _size(m_lhs);
+        }
     }
 
 private:
@@ -312,7 +339,10 @@ private:
     : m_lhs(lhs)
     , m_rhs(rhs)
     {
-        assert(lhs.size() == rhs.size());
+        if constexpr (!is_scalar<E1>::value && !is_scalar<E2>::value)
+        {
+            assert(lhs.size() == rhs.size());
+        };
     };
 
     constexpr bool aligned(std::size_t offset = 0) const
@@ -352,7 +382,13 @@ public:
 
     constexpr auto size() const -> std::size_t
     {
-        return _size(m_lhs);
+        if constexpr (is_scalar<E1>::value)
+        {
+            return _size(m_rhs);
+        } else
+        {
+            return _size(m_lhs);
+        }
     }
 
 private:
@@ -366,7 +402,10 @@ private:
     : m_lhs(lhs)
     , m_rhs(rhs)
     {
-        assert(lhs.size() == rhs.size());
+        if constexpr (!is_scalar<E1>::value && !is_scalar<E2>::value)
+        {
+            assert(lhs.size() == rhs.size());
+        };
     };
 
     constexpr bool aligned(std::size_t offset = 0) const
@@ -473,8 +512,8 @@ public:
     using real_type = typename E::real_type;
 
 private:
-    template<typename T, std::size_t PackSize, typename Allocator>
-        requires packed_floating_point<T, PackSize>
+    template<typename Tvec, std::size_t PackSize, typename Allocator>
+        requires packed_floating_point<Tvec, PackSize>
     friend class packed_cx_vector;
     friend class expression_base;
 
@@ -502,10 +541,11 @@ private:
 
     auto cx_reg(std::size_t idx) const -> avx::cx_reg<real_type>
     {
-        return {avx::broadcast(&m_value.real()), avx::broadcast(&m_value.imag())};
+        const auto& value = reinterpret_cast<const real_type(&)[2]>(m_value);
+        return {avx::broadcast(&(value[0])), avx::broadcast(&(value[1]))};
     };
 
-    std::complex<real_type> m_value;
+    const std::complex<real_type> m_value;
 };
 
 template<typename E>
@@ -520,52 +560,52 @@ template<typename E>
     requires internal::vector_expression<E>
 auto operator+(const E& vector, std::complex<typename E::real_type> scalar)
 {
-    return vector + internal::packed_scalar(scalar);
+    return vector + internal::packed_scalar<E>(scalar);
 }
 template<typename E>
     requires internal::vector_expression<E>
 auto operator+(std::complex<typename E::real_type> scalar, const E& vector)
 {
-    return internal::packed_scalar(scalar) + vector;
+    return internal::packed_scalar<E>(scalar) + vector;
 }
 
 template<typename E>
     requires internal::vector_expression<E>
 auto operator-(const E& vector, std::complex<typename E::real_type> scalar)
 {
-    return vector - internal::packed_scalar(scalar);
+    return vector - internal::packed_scalar<E>(scalar);
 }
 template<typename E>
     requires internal::vector_expression<E>
 auto operator-(std::complex<typename E::real_type> scalar, const E& vector)
 {
-    return internal::packed_scalar(scalar) - vector;
+    return internal::packed_scalar<E>(scalar) - vector;
 }
 
 template<typename E>
     requires internal::vector_expression<E>
 auto operator*(const E& vector, std::complex<typename E::real_type> scalar)
 {
-    return vector * internal::packed_scalar(scalar);
+    return vector * internal::packed_scalar<E>(scalar);
 }
 template<typename E>
     requires internal::vector_expression<E>
 auto operator*(std::complex<typename E::real_type> scalar, const E& vector)
 {
-    return internal::packed_scalar(scalar) * vector;
+    return internal::packed_scalar<E>(scalar) * vector;
 }
 
 template<typename E>
     requires internal::vector_expression<E>
 auto operator/(const E& vector, std::complex<typename E::real_type> scalar)
 {
-    return vector / internal::packed_scalar(scalar);
+    return vector / internal::packed_scalar<E>(scalar);
 }
 template<typename E>
     requires internal::vector_expression<E>
 auto operator/(std::complex<typename E::real_type> scalar, const E& vector)
 {
-    return internal::packed_scalar(scalar) / vector;
+    return internal::packed_scalar<E>(scalar) / vector;
 }
 
 // #endregion complex scalar
@@ -855,5 +895,83 @@ auto operator/(typename E::real_type lhs, const E& rhs)
 }
 
 // #endregion real scalar
+
+// #region vector
+
+template<typename T, std::size_t PackSize, typename Allocator, typename E>
+    requires packed_floating_point<T, PackSize> &&
+             (!std::same_as<packed_cx_vector<T, PackSize, Allocator>, E>) &&
+             requires(packed_subrange<T, PackSize> subrange, E e) { e + subrange; }
+auto operator+(const E&                                        expression,
+               const packed_cx_vector<T, PackSize, Allocator>& vector)
+{
+    return expression + packed_subrange(vector.begin(), vector.size());
+};
+template<typename T, std::size_t PackSize, typename Allocator, typename E>
+    requires packed_floating_point<T, PackSize> &&
+             requires(packed_subrange<T, PackSize> subrange, E e) { subrange + e; }
+auto operator+(const packed_cx_vector<T, PackSize, Allocator>& vector,
+               const E&                                        expression)
+{
+    return packed_subrange(vector.begin(), vector.size()) + expression;
+};
+
+template<typename T, std::size_t PackSize, typename Allocator, typename E>
+    requires packed_floating_point<T, PackSize> &&
+             (!std::same_as<packed_cx_vector<T, PackSize, Allocator>, E>) &&
+             requires(packed_subrange<T, PackSize> subrange, E e) { e - subrange; } &&
+             true
+auto operator-(const E&                                        expression,
+               const packed_cx_vector<T, PackSize, Allocator>& vector)
+{
+    return expression - packed_subrange(vector.begin(), vector.size());
+};
+template<typename T, std::size_t PackSize, typename Allocator, typename E>
+    requires packed_floating_point<T, PackSize> &&
+             requires(packed_subrange<T, PackSize> subrange, E e) { subrange - e; }
+auto operator-(const packed_cx_vector<T, PackSize, Allocator>& vector,
+               const E&                                        expression)
+{
+    return packed_subrange(vector.begin(), vector.size()) - expression;
+};
+
+template<typename T, std::size_t PackSize, typename Allocator, typename E>
+    requires packed_floating_point<T, PackSize> &&
+             (!std::same_as<packed_cx_vector<T, PackSize, Allocator>, E>) &&
+             requires(packed_subrange<T, PackSize> subrange, E e) { e* subrange; } && true
+auto operator*(const E&                                        expression,
+               const packed_cx_vector<T, PackSize, Allocator>& vector)
+{
+    return expression * packed_subrange(vector.begin(), vector.size());
+};
+template<typename T, std::size_t PackSize, typename Allocator, typename E>
+    requires packed_floating_point<T, PackSize> &&
+             requires(packed_subrange<T, PackSize> subrange, E e) { subrange* e; }
+auto operator*(const packed_cx_vector<T, PackSize, Allocator>& vector,
+               const E&                                        expression)
+{
+    return packed_subrange(vector.begin(), vector.size()) * expression;
+};
+
+template<typename T, std::size_t PackSize, typename Allocator, typename E>
+    requires packed_floating_point<T, PackSize> &&
+             (!std::same_as<packed_cx_vector<T, PackSize, Allocator>, E>) &&
+             requires(packed_subrange<T, PackSize> subrange, E e) { e / subrange; } &&
+             true
+auto operator/(const E&                                        expression,
+               const packed_cx_vector<T, PackSize, Allocator>& vector)
+{
+    return expression / packed_subrange(vector.begin(), vector.size());
+};
+template<typename T, std::size_t PackSize, typename Allocator, typename E>
+    requires packed_floating_point<T, PackSize> &&
+             requires(packed_subrange<T, PackSize> subrange, E e) { subrange / e; }
+auto operator/(const packed_cx_vector<T, PackSize, Allocator>& vector,
+               const E&                                        expression)
+{
+    return packed_subrange(vector.begin(), vector.size()) / expression;
+};
+
+    // #endregion vector
 
 #endif

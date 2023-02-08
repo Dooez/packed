@@ -580,6 +580,9 @@ private:
     using size_t =
         std::conditional_t<Extent == std::dynamic_extent, size_type, std::monostate>;
 
+public:
+    packed_subrange() = delete;
+
     packed_subrange(const iterator& begin, size_type size)
         requires(Extent == std::dynamic_extent)
     : m_begin(begin)
@@ -588,9 +591,6 @@ private:
     packed_subrange(const iterator& begin)
         requires(Extent != std::dynamic_extent)
     : m_begin(begin){};
-
-public:
-    packed_subrange() = default;
 
     packed_subrange(const packed_subrange&) noexcept = default;
     packed_subrange(packed_subrange&&) noexcept      = default;
