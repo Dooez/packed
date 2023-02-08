@@ -50,54 +50,54 @@ struct reg<double>
 };
 
 template<typename T>
-inline auto load(const T* source) -> typename reg<T>::type;
+auto load(const T* source) -> typename reg<T>::type;
 template<>
-inline auto load<float>(const float* source) -> reg<float>::type
+auto load<float>(const float* source) -> reg<float>::type
 {
     return _mm256_loadu_ps(source);
 }
 template<>
-inline auto load<double>(const double* source) -> reg<double>::type
+auto load<double>(const double* source) -> reg<double>::type
 {
     return _mm256_loadu_pd(source);
 }
 
 template<typename T>
-inline auto broadcast(const T* source) -> typename reg<T>::type;
+auto broadcast(const T* source) -> typename reg<T>::type;
 template<>
-inline auto broadcast<float>(const float* source) -> reg<float>::type
+auto broadcast<float>(const float* source) -> reg<float>::type
 {
     return _mm256_broadcast_ss(source);
 }
 template<>
-inline auto broadcast<double>(const double* source) -> reg<double>::type
+auto broadcast<double>(const double* source) -> reg<double>::type
 {
     return _mm256_broadcast_sd(source);
 }
 
 template<typename T>
-inline auto store(T* dest, typename reg<T>::type reg) -> void;
+auto store(T* dest, typename reg<T>::type reg) -> void;
 template<>
-inline auto store<float>(float* dest, reg<float>::type reg) -> void
+auto store<float>(float* dest, reg<float>::type reg) -> void
 {
     return _mm256_storeu_ps(dest, reg);
 }
 template<>
-inline auto store<double>(double* dest, reg<double>::type reg) -> void
+auto store<double>(double* dest, reg<double>::type reg) -> void
 {
     return _mm256_storeu_pd(dest, reg);
 }
 
 template<typename T>
-inline auto store_s(T* dest, typename reg<T>::type reg) -> void;
+auto store_s(T* dest, typename reg<T>::type reg) -> void;
 template<>
-inline auto store_s<float>(float* dest, reg<float>::type reg) -> void
+auto store_s<float>(float* dest, reg<float>::type reg) -> void
 {
     const auto reg128 = _mm256_castps256_ps128(reg);
     return _mm_store_ss(dest, reg128);
 }
 template<>
-inline auto store_s<double>(double* dest, reg<double>::type reg) -> void
+auto store_s<double>(double* dest, reg<double>::type reg) -> void
 {
     const auto reg128 = _mm256_castpd256_pd128(reg);
     return _mm_store_sd(dest, reg128);
