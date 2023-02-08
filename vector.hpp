@@ -531,7 +531,7 @@ private:
 };
 
 template<typename T, std::size_t PackSize, bool Const, std::size_t Extent>
-class packed_subrange : std::ranges::view_base
+class packed_subrange : public std::ranges::view_base
 {
     template<typename TVec, std::size_t PackSizeVec, typename>
         requires packed_floating_point<TVec, PackSizeVec>
@@ -667,9 +667,10 @@ class packed_cx_ref
     friend class packed_cx_vector;
 
     friend class packed_iterator<T, PackSize, Const>;
+    friend class packed_iterator<T, PackSize, false>;
 
     friend class packed_subrange<T, PackSize, Const>;
-    friend class packed_subrange<T, PackSize>;
+    friend class packed_subrange<T, PackSize, false>;
 
     friend class packed_cx_ref<T, PackSize, false>;
 
@@ -695,6 +696,7 @@ public:
 
     ~packed_cx_ref() = default;
 
+    // NOLINTNEXTLINE (*assign*) Proxy reference, see std::indirectly_writable
     packed_cx_ref& operator=(const packed_cx_ref& other) const
         requires(!Const)
     {
@@ -702,6 +704,7 @@ public:
         *(m_ptr + PackSize) = *(other.m_ptr + PackSize);
         return *this;
     }
+    // NOLINTNEXTLINE (*assign*) Proxy reference, see std::indirectly_writable
     packed_cx_ref& operator=(packed_cx_ref&& other) const
         requires(!Const)
     {
@@ -713,7 +716,7 @@ public:
     template<typename U>
         requires std::is_convertible_v<U, value_type>
     auto& operator=(const U& other) const
-        requires requires { !Const; }
+        requires(!Const)
     {
         auto tmp            = static_cast<value_type>(other);
         *m_ptr              = tmp.real();

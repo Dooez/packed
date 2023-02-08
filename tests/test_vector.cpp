@@ -1,4 +1,4 @@
-#include <assert.h>
+#include <cassert>
 #include <iostream>
 #include <type_traits>
 #include <vector.hpp>
@@ -43,32 +43,37 @@ int test_vector(const Vec& vector)
 {
     auto size = vector.size();
 
+    using real_type = typename Vec::real_type;
+
+    constexpr auto vals = std::make_tuple(13.1, 11U, 1131.3F, -.3, 1.3);
+
     auto allocator = vector.get_allocator();
     using Alloc    = decltype(allocator);
     auto vec_def   = Vec();
     auto vec_size  = Vec(size);
-    auto vec_val   = Vec(size, 13.1);
-    if (!check_val(vec_val, 13.1))
+    auto vec_val   = Vec(size, std::get<0>(vals));
+    if (!check_val(vec_val, std::get<0>(vals)))
     {
         return 1;
     }
-    auto vec_val_u = Vec(size, 11U);
-    if (!check_val(vec_val_u, 11U))
+    auto vec_val_u = Vec(size, std::get<1>(vals));
+    if (!check_val(vec_val_u, std::get<1>(vals)))
     {
         return 1;
     }
-    auto vec_val_f = Vec(size, 1131.3F);
-    if (!check_val(vec_val_f, 1131.3F))
+    auto vec_val_f = Vec(size, std::get<2>(vals));
+    if (!check_val(vec_val_f, std::get<2>(vals)))
     {
         return 1;
     }
-    auto vec_val_d = Vec(size, 0.3);
-    if (!check_val(vec_val_d, .3))
+    auto vec_val_d = Vec(size, std::get<3>(vals));
+    if (!check_val(vec_val_d, std::get<3>(vals)))
     {
         return 1;
     }
-    auto vec_val_f_cx = Vec(size, std::complex<float>(1.3, 0.3));
-    if (!check_val(vec_val_f_cx, std::complex<float>(1.3, 0.3)))
+    auto cx_val = std::complex<real_type>(std::get<3>(vals), std::get<4>(vals));
+    auto vec_val_f_cx = Vec(size, cx_val);
+    if (!check_val(vec_val_f_cx, cx_val))
     {
         return 1;
     }
@@ -87,78 +92,88 @@ int test_vector(const Vec& vector)
 template<typename Vec>
 int test_subvector(const Vec& vector)
 {
-    auto size = vector.size();
+    auto size       = vector.size();
+    using real_type = typename Vec::real_type;
+
+    constexpr std::array<real_type, 2> vals {0.5533, 0.1313};
 
     auto allocator = vector.get_allocator();
     using Alloc    = decltype(allocator);
     auto vec_def   = Vec();
     auto vec_size  = Vec(size);
-    auto vec_2     = Vec(size, 0.1313);
+    auto vec_2     = Vec(size, vals[1]);
     auto sub       = vec_size.subrange(0, size);
-    sub.fill(0.5533);
-    if (!check_val(vec_size, 0.5533))
+    sub.fill(vals[0]);
+    if (!check_val(vec_size, vals[0]))
     {
         return 1;
     }
-    using sub_t = std::remove_cvref_t<decltype(sub)>;
+    auto sub2 = vec_2.subrange(0, size);
+    sub.copy(sub2);
+    if (!check_val(vec_size, vals[1]))
+    {
+        return 1;
+    }
 
-    auto sub2 = vec_size.template subrange<13>(0);
-    std::cout << sub2.size() << "\n";
-    // static_assert(std::indirectly_copyable<std::ranges::iterator_t<std::vector<int>>,
-    //                                        std::vector<int>::iterator>);
-    // // static_assert(std::indirectly_writable<)
-    // static_assert(
-    //     std::indirectly_copyable<typename Vec::iterator, typename sub_t::iterator>);
-    // std::ranges::copy(sub, vec_2.begin());
-
-    // sub.copy(vec_2);
     return 0;
 }
 
+template<typename T>
+constexpr void concept_test()
+{
+    // NOLINTNEXTLINE(*using*)
+    using namespace std::ranges;
+    constexpr std::size_t pack_size = 8;
 
-template<std::indirectly_readable T>
-using iter_const_reference_t =
-    std::common_reference_t<const std::iter_value_t<T>&&, std::iter_reference_t<T>>;
+    using vector_t         = packed_cx_vector<T>;
+    using iterator_t       = packed_iterator<T, pack_size>;
+    using cont_iterator_t  = packed_iterator<T, pack_size, true>;
+    using subrange_t       = packed_subrange<T, pack_size>;
+    using const_subrange_t = packed_subrange<T, pack_size, true>;
+
+    static_assert(range<vector_t>);
+    static_assert(sized_range<vector_t>);
+    static_assert(input_range<vector_t>);
+    static_assert(output_range<vector_t, std::complex<T>>);
+    static_assert(!output_range<const vector_t, std::complex<T>>);
+    static_assert(random_access_range<vector_t>);
+    static_assert(common_range<vector_t>);
+
+    static_assert(std::random_access_iterator<iterator_t>);
+    static_assert(!std::output_iterator<cont_iterator_t, std::complex<T>>);
+
+    static_assert(range<subrange_t>);
+    static_assert(sized_range<subrange_t>);
+    static_assert(input_range<subrange_t>);
+    static_assert(output_range<subrange_t, std::complex<T>>);
+    static_assert(random_access_range<subrange_t>);
+    static_assert(common_range<subrange_t>);
+    static_assert(viewable_range<subrange_t>);
+
+    static_assert(range<const_subrange_t>);
+    static_assert(sized_range<const_subrange_t>);
+    static_assert(input_range<const_subrange_t>);
+    static_assert(!output_range<const_subrange_t, std::complex<T>>);
+    static_assert(random_access_range<const_subrange_t>);
+    static_assert(common_range<const_subrange_t>);
+    static_assert(viewable_range<const_subrange_t>);
+    // static_assert(constant_range<const_subrange_t>); c++23
+};
+
 
 int main()
 {
-    using test_t = iter_const_reference_t<packed_iterator<float, 32>>;
+    concept_test<float>();
+    concept_test<double>();
 
-
-    packed_cx_vector<float>  v_def{};
-    packed_cx_vector<float>  v_def_2(127);
-    packed_cx_vector<float>  v_def_3(127);
-    packed_cx_vector<double> v_def_d(127);
-
-    auto res = test_vector(v_def_2);
-    res += test_subvector(v_def_2);
-
-
-    if (res > 0)
+    int res = 0;
+    for (uint i = 0; i < 128; ++i)
     {
-        return res;
+        auto v_def = packed_cx_vector<float>(127);
+
+        res += test_vector(v_def);
+        res += test_subvector(v_def);
     }
 
-    test_vector(v_def_d);
-
-    auto val_x = 0;
-    for (auto val : v_def_2)
-    {
-        val = val_x;
-        val_x += 1;
-    }
-
-    std::complex<float> val   = 1;
-    const auto&         conv2 = v_def_2;
-    fill(v_def_2.begin(), v_def_2.end(), val);
-    packed_copy(v_def_2.begin(), v_def_2.end(), v_def_3.begin());
-    //
-    //     for (uint i = 0; i < v_def_2.size(); ++i)
-    //     {
-    //         std::cout << v_def_2[i].value() << "\n";
-    //     }
-    std::cout << "\n";
-
-    std::cout << "Hello world\n";
-    return 0;
+    return res;
 }
