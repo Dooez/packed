@@ -4,6 +4,8 @@
 #include <complex>
 #include <cstring>
 #include <immintrin.h>
+#include <span>
+#include <variant>
 
 template<std::size_t N>
 concept power_of_two = requires { (N & (N - 1)) == 0; };
@@ -16,11 +18,18 @@ template<typename T, std::size_t PackSize, typename Allocator>
     requires packed_floating_point<T, PackSize>
 class packed_cx_vector;
 
-template<typename T, std::size_t PackSize, typename Allocator, bool Const = false>
+template<typename T, std::size_t PackSize, bool Const = false>
 class packed_cx_ref;
 
-template<typename T, std::size_t PackSize, typename Allocator, bool Const = false>
+template<typename T, std::size_t PackSize, bool Const = false>
 class packed_iterator;
+
+template<typename T,
+         std::size_t PackSize,
+         bool        Const  = false,
+         std::size_t Extent = std::dynamic_extent>
+class packed_subrange;
+
 
 /**
  * @brief alias for templated avx2 types and functions
@@ -41,54 +50,54 @@ struct reg<double>
 };
 
 template<typename T>
-inline auto load(const T* source) -> typename reg<T>::type;
+auto load(const T* source) -> typename reg<T>::type;
 template<>
-inline auto load<float>(const float* source) -> reg<float>::type
+auto load<float>(const float* source) -> reg<float>::type
 {
     return _mm256_loadu_ps(source);
 }
 template<>
-inline auto load<double>(const double* source) -> reg<double>::type
+auto load<double>(const double* source) -> reg<double>::type
 {
     return _mm256_loadu_pd(source);
 }
 
 template<typename T>
-inline auto broadcast(const T* source) -> typename reg<T>::type;
+auto broadcast(const T* source) -> typename reg<T>::type;
 template<>
-inline auto broadcast<float>(const float* source) -> reg<float>::type
+auto broadcast<float>(const float* source) -> reg<float>::type
 {
     return _mm256_broadcast_ss(source);
 }
 template<>
-inline auto broadcast<double>(const double* source) -> reg<double>::type
+auto broadcast<double>(const double* source) -> reg<double>::type
 {
     return _mm256_broadcast_sd(source);
 }
 
 template<typename T>
-inline auto store(T* dest, typename reg<T>::type reg) -> void;
+auto store(T* dest, typename reg<T>::type reg) -> void;
 template<>
-inline auto store<float>(float* dest, reg<float>::type reg) -> void
+auto store<float>(float* dest, reg<float>::type reg) -> void
 {
     return _mm256_storeu_ps(dest, reg);
 }
 template<>
-inline auto store<double>(double* dest, reg<double>::type reg) -> void
+auto store<double>(double* dest, reg<double>::type reg) -> void
 {
     return _mm256_storeu_pd(dest, reg);
 }
 
 template<typename T>
-inline auto store_s(T* dest, typename reg<T>::type reg) -> void;
+auto store_s(T* dest, typename reg<T>::type reg) -> void;
 template<>
-inline auto store_s<float>(float* dest, reg<float>::type reg) -> void
+auto store_s<float>(float* dest, reg<float>::type reg) -> void
 {
     const auto reg128 = _mm256_castps256_ps128(reg);
     return _mm_store_ss(dest, reg128);
 }
 template<>
-inline auto store_s<double>(double* dest, reg<double>::type reg) -> void
+auto store_s<double>(double* dest, reg<double>::type reg) -> void
 {
     const auto reg128 = _mm256_castpd256_pd128(reg);
     return _mm_store_sd(dest, reg128);
@@ -97,20 +106,20 @@ inline auto store_s<double>(double* dest, reg<double>::type reg) -> void
 
 }    // namespace avx
 
-template<typename T, std::size_t PackSize, typename Allocator, bool Const>
-inline void packed_copy(packed_iterator<T, PackSize, Allocator, Const> first,
-                        packed_iterator<T, PackSize, Allocator, Const> last,
-                        packed_iterator<T, PackSize, Allocator>        d_first)
+template<typename T, std::size_t PackSize, bool Const>
+inline void packed_copy(packed_iterator<T, PackSize, Const> first,
+                        packed_iterator<T, PackSize, Const> last,
+                        packed_iterator<T, PackSize>        d_first)
 {
-    packed_copy(packed_iterator<T, PackSize, Allocator, true>(first),
-                packed_iterator<T, PackSize, Allocator, true>(last),
+    packed_copy(packed_iterator<T, PackSize, true>(first),
+                packed_iterator<T, PackSize, true>(last),
                 d_first);
 }
 
-template<typename T, std::size_t PackSize, typename Allocator>
-void packed_copy(packed_iterator<T, PackSize, Allocator, true> first,
-                 packed_iterator<T, PackSize, Allocator, true> last,
-                 packed_iterator<T, PackSize, Allocator>       d_first)
+template<typename T, std::size_t PackSize>
+void packed_copy(packed_iterator<T, PackSize, true> first,
+                 packed_iterator<T, PackSize, true> last,
+                 packed_iterator<T, PackSize>       d_first)
 {
     while (first < std::min(first.align_upper(), last))
     {
@@ -135,10 +144,10 @@ void packed_copy(packed_iterator<T, PackSize, Allocator, true> first,
 };
 
 
-template<typename T, std::size_t PackSize, typename Allocator>
-void set(packed_iterator<T, PackSize, Allocator> first,
-         packed_iterator<T, PackSize, Allocator> last,
-         std::complex<T>                         value)
+template<typename T, std::size_t PackSize>
+void fill(packed_iterator<T, PackSize> first,
+          packed_iterator<T, PackSize> last,
+          std::complex<T>              value)
 {
     constexpr std::size_t reg_size = 32 / sizeof(T);
 
@@ -171,13 +180,13 @@ void set(packed_iterator<T, PackSize, Allocator> first,
     }
 };
 
-template<typename T, std::size_t PackSize, typename Allocator, typename U>
+template<typename T, std::size_t PackSize, typename U>
     requires std::convertible_to<U, std::complex<T>>
-inline void set(packed_iterator<T, PackSize, Allocator> first,
-                packed_iterator<T, PackSize, Allocator> last,
-                U                                       value)
+inline void fill(packed_iterator<T, PackSize> first,
+                 packed_iterator<T, PackSize> last,
+                 U                            value)
 {
     auto value_cx = std::complex<T>(value);
-    set(first, last, value_cx);
+    fill(first, last, value_cx);
 };
 #endif
