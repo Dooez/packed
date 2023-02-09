@@ -3,7 +3,6 @@
 #include <complex>
 // #include <iostream>
 #include <memory>
-#include <ranges>
 #include <vector>
 /**
  * @brief Vector of complex floating point values.
@@ -37,6 +36,8 @@ public:
 
     using iterator       = packed_iterator<T, PackSize, false>;
     using const_iterator = packed_iterator<T, PackSize, true>;
+
+    static constexpr size_type pack_size = PackSize;
 
 public:
     packed_cx_vector() noexcept(noexcept(allocator_type())) = default;
@@ -212,22 +213,35 @@ public:
     {
         assert(m_size == other.size());
 
-        std::size_t idx = 0;
-        if (other.aligned())
+        auto it_this  = begin();
+        auto it_other = other.begin();
+
+        if (it_other.aligned())
         {
             constexpr auto reg_size = 32 / sizeof(T);
-            for (; idx <= num_packs(m_size) * PackSize / reg_size; idx += reg_size)
-            {
-                auto data = other.cx_reg(idx);
-                auto ptr  = m_ptr + packed_idx(idx);
 
-                avx::store(ptr, data.real);
-                avx::store(ptr + PackSize, data.imag);
+            auto aligned_size = (end() - 1).align_lower() - it_this;
+
+            auto ptr = &(*it_this);
+            for (long i = 0; i < aligned_size; i += pack_size)
+            {
+                auto offset = i * 2;
+                for (uint i_reg = 0; i_reg < pack_size; i_reg += reg_size)
+                {
+                    auto data = it_other.cx_reg(offset + i_reg);
+
+                    avx::store(ptr + offset + i_reg, data.real);
+                    avx::store(ptr + offset + i_reg + PackSize, data.imag);
+                }
             }
+            it_this += aligned_size;
+            it_other += aligned_size;
         }
-        for (; idx < m_size; ++idx)
+        while (it_this < end())
         {
-            (*this)[idx] = other[idx];
+            *it_this = *it_other;
+            ++it_this;
+            ++it_other;
         }
         return *this;
     };
