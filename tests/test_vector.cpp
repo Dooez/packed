@@ -71,7 +71,7 @@ int test_vector(const Vec& vector)
     {
         return 1;
     }
-    auto cx_val = std::complex<real_type>(std::get<3>(vals), std::get<4>(vals));
+    auto cx_val       = std::complex<real_type>(std::get<3>(vals), std::get<4>(vals));
     auto vec_val_f_cx = Vec(size, cx_val);
     if (!check_val(vec_val_f_cx, cx_val))
     {
@@ -95,7 +95,7 @@ int test_subvector(const Vec& vector)
     auto size       = vector.size();
     using real_type = typename Vec::real_type;
 
-    constexpr std::array<real_type, 2> vals {0.5533, 0.1313};
+    constexpr std::array<real_type, 2> vals{0.5533, 0.1313};
 
     auto allocator = vector.get_allocator();
     using Alloc    = decltype(allocator);
@@ -131,6 +131,7 @@ constexpr void concept_test()
     using subrange_t       = packed_subrange<T, pack_size>;
     using const_subrange_t = packed_subrange<T, pack_size, true>;
 
+    static_assert(!view<vector_t>);
     static_assert(range<vector_t>);
     static_assert(sized_range<vector_t>);
     static_assert(input_range<vector_t>);

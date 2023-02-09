@@ -208,7 +208,7 @@ public:
     }
 
     template<typename E>
-        requires internal::vector_expression<E>
+        requires(!std::same_as<E, packed_cx_vector>) && internal::vector_expression<E> // clang preferes this overload to normal copy assignment
     packed_cx_vector& operator=(const E& other)
     {
         assert(m_size == other.size());

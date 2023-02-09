@@ -72,7 +72,26 @@ struct cx_reg
     typename reg<T>::type real;
     typename reg<T>::type imag;
 };
+template<typename T>
+inline auto add(cx_reg<T> lhs, cx_reg<T> rhs) -> cx_reg<T>
+{
+    return {add(lhs.real, rhs.real), add(lhs.imag, rhs.imag)};
+}
+template<typename T>
+inline auto sub(cx_reg<T> lhs, cx_reg<T> rhs) -> cx_reg<T>
+{
+    return {sub(lhs.real, rhs.real), sub(lhs.imag, rhs.imag)};
+}
+template<typename T>
+inline auto mul(cx_reg<T> lhs, cx_reg<T> rhs) -> cx_reg<T>
+{
+    const auto real =
+        avx::sub<T>(avx::mul<T>(lhs.real, rhs.real), avx::mul<T>(lhs.imag, rhs.imag));
+    const auto imag =
+        avx::add<T>(avx::mul<T>(lhs.real, rhs.imag), avx::mul<T>(lhs.imag, rhs.real));
 
+    return {real, imag};
+}
 }    // namespace avx
 
 namespace internal {
@@ -91,11 +110,11 @@ public:
     {
         static constexpr bool value =
             requires(E expression, std::size_t idx) {
-                requires std::ranges::view<E>;
-
                 typename E::real_type;
 
                 typename E::iterator;
+
+                std::ranges::view<E>;
 
                 requires requires(typename E::iterator iter) {
                              {
@@ -111,11 +130,9 @@ public:
                     expression[idx]
                     } -> std::convertible_to<std::complex<typename E::real_type>>;
 
-                is_scalar<E>::value || requires {
-                                           {
-                                               expression.size()
-                                               } -> std::same_as<std::size_t>;
-                                       };
+                {
+                    expression.size()
+                    } -> std::same_as<std::size_t>;
             };
     };
 
@@ -129,8 +146,8 @@ protected:
     /**
      * @brief Evaluates slice of the expression with offset;
      * Slice size is determined by avx register size; No checks are performed.
-     * 
-     * @param expression 
+     *
+     * @param expression
      * @param idx offset
      * @return auto evaluated complex register
      */
@@ -142,9 +159,9 @@ protected:
     /**
      * @brief Loads data from iterator with offset.
      * No checks are performed.
-     * 
+     *
      * @param it iterator
-     * @param idx data offset 
+     * @param idx data offset
      * @return avx::cx_reg<T> loaded complex register
      */
     template<typename T, std::size_t PackSize, bool Const>
@@ -728,13 +745,7 @@ public:
         {
             const auto lhs = _cx_reg(m_lhs, idx);
             const auto rhs = _cx_reg(m_rhs, idx);
-
-            auto real = avx::sub<real_type>(avx::mul<real_type>(lhs.real, rhs.real),
-                                            avx::mul<real_type>(lhs.imag, rhs.imag));
-            auto imag = avx::add<real_type>(avx::mul<real_type>(lhs.real, rhs.imag),
-                                            avx::mul<real_type>(lhs.imag, rhs.real));
-
-            return {real, imag};
+            return avx::mul(lhs, rhs);
         }
 
         lhs_iterator m_lhs;
