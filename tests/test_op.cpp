@@ -296,9 +296,6 @@ int main()
     packed_cx_vector<float> vec(123);
     // vec = vec + 123 + 15;
 
-    for(auto val: vec){
-        std::cout<< abs(val.value()) << " ";
-    }
 
     return res;
 }

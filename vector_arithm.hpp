@@ -686,7 +686,7 @@ private:
         return {avx::add<real_type>(scalar, vector.real), vector.imag};
     };
 
-    const E&  m_vector;
+    const E   m_vector;
     real_type m_scalar;
 };
 
@@ -732,7 +732,7 @@ private:
         return {avx::sub<real_type>(scalar, vector.real), vector.imag};
     };
 
-    const E&  m_vector;
+    const E   m_vector;
     real_type m_scalar;
 };
 
@@ -781,7 +781,7 @@ private:
                 avx::mul<real_type>(vector.imag, scalar)};
     };
 
-    const E&  m_vector;
+    const E   m_vector;
     real_type m_scalar;
 };
 
@@ -836,7 +836,7 @@ private:
         return {real, imag};
     };
 
-    const E&  m_vector;
+    const E   m_vector;
     real_type m_scalar;
 };
 

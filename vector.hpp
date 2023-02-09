@@ -398,7 +398,6 @@ private:
     }
 };
 
-
 template<typename T, std::size_t PackSize, bool Const>
 class packed_iterator
 {
@@ -439,7 +438,7 @@ public:
     packed_iterator& operator=(const packed_iterator& other) noexcept = default;
     packed_iterator& operator=(packed_iterator&& other) noexcept      = default;
 
-    ~packed_iterator() = default;
+    ~packed_iterator() noexcept = default;
 
     [[nodiscard]] reference operator*() const
     {
@@ -581,21 +580,21 @@ private:
         std::conditional_t<Extent == std::dynamic_extent, size_type, std::monostate>;
 
 public:
-    packed_subrange() = delete;
+    packed_subrange() noexcept = default;
 
-    packed_subrange(const iterator& begin, size_type size)
+    packed_subrange(const iterator& begin, size_type size) noexcept
         requires(Extent == std::dynamic_extent)
     : m_begin(begin)
     , m_size(size){};
 
-    packed_subrange(const iterator& begin)
+    explicit packed_subrange(const iterator& begin) noexcept
         requires(Extent != std::dynamic_extent)
     : m_begin(begin){};
 
     packed_subrange(const packed_subrange&) noexcept = default;
     packed_subrange(packed_subrange&&) noexcept      = default;
 
-    ~packed_subrange() = default;
+    ~packed_subrange() noexcept = default;
 
     packed_subrange& operator=(packed_subrange&&) noexcept      = default;
     packed_subrange& operator=(const packed_subrange&) noexcept = default;
