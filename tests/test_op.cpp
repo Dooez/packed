@@ -13,7 +13,7 @@ void asm_test_fun(packed_cx_vector<double>& v1,
              packed_cx_vector<double>& v2,
              std::complex<double>      v3)
 {
-    // v1 = v1 + v2;
+    v1 = v1 + v2;
 }
 template<typename T>
     requires std::floating_point<T>

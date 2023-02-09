@@ -92,6 +92,63 @@ inline auto mul(cx_reg<T> lhs, cx_reg<T> rhs) -> cx_reg<T>
 
     return {real, imag};
 }
+template<typename T>
+inline auto div(cx_reg<T> lhs, cx_reg<T> rhs) -> cx_reg<T>
+{
+    const auto rhs_abs = avx::add<real_type>(avx::mul<real_type>(rhs.real, rhs.real),
+                                             avx::mul<real_type>(rhs.imag, rhs.imag));
+
+    const auto real_ = avx::add<real_type>(avx::mul<real_type>(lhs.real, rhs.real),
+                                           avx::mul<real_type>(lhs.imag, rhs.imag));
+
+    const auto imag_ = avx::sub<real_type>(avx::mul<real_type>(lhs.imag, rhs.real),
+                                           avx::mul<real_type>(lhs.real, rhs.imag));
+
+    return {avx::div<real_type>(real_, rhs_abs), avx::div<real_type>(imag_, rhs_abs)};
+}
+
+template<typename T>
+inline auto add(typename reg<T>::type lhs, cx_reg<T> rhs) -> cx_reg<T>
+{
+    return {add(lhs rhs.real), rhs.imag};
+}
+template<typename T>
+inline auto sub(typename reg<T>::type lhs, cx_reg<T> rhs) -> cx_reg<T>
+{
+    return {sub(lhs, rhs.real), rhs.imag};
+}
+template<typename T>
+inline auto mul(typename reg<T>::type lhs, cx_reg<T> rhs) -> cx_reg<T>
+{
+    return {avx::mul<T>(lhs, rhs.real), avx::mul<T>(lhs, rhs.imag)};
+}
+template<typename T>
+inline auto div(typename reg<T>::type lhs, cx_reg<T> rhs) -> cx_reg<T>
+{
+    return {avx::div<T>(lhs, rhs.real), avx::div<T>(lhs, rhs.imag)};
+}
+
+template<typename T>
+inline auto add(cx_reg<T> lhs, typename reg<T>::type rhs) -> cx_reg<T>
+{
+    return {add(lhs.real, rhs), lhs.imag};
+}
+template<typename T>
+inline auto sub(cx_reg<T> lhs, typename reg<T>::type rhs) -> cx_reg<T>
+{
+    return {sub(lhs.real, rhs), lhs.imag};
+}
+template<typename T>
+inline auto mul(cx_reg<T> lhs, typename reg<T>::type rhs) -> cx_reg<T>
+{
+    return {avx::mul<T>(lhs.real, rhs), avx::mul<T>(lhs.imag, rhs)};
+}
+template<typename T>
+inline auto div(cx_reg<T> lhs, typename reg<T>::type rhs) -> cx_reg<T>
+{
+    return {avx::div<T>(lhs.real, rhs), avx::div<T>(lhs.imag, rhs)};
+}
+
 }    // namespace avx
 
 namespace internal {
@@ -110,21 +167,13 @@ public:
     {
         static constexpr bool value =
             requires(E expression, std::size_t idx) {
+                requires std::ranges::view<E>;
+
+                requires std::ranges::random_access_range<E>;
+
                 typename E::real_type;
 
                 typename E::iterator;
-
-                std::ranges::view<E>;
-
-                requires requires(typename E::iterator iter) {
-                             {
-                                 iter.aligned(idx)
-                                 } -> std::same_as<bool>;
-
-                             requires std::convertible_to<
-                                 std::iter_value_t<typename E::iterator>,
-                                 std::complex<typename E::real_type>>;
-                         };
 
                 {
                     expression[idx]
@@ -133,6 +182,21 @@ public:
                 {
                     expression.size()
                     } -> std::same_as<std::size_t>;
+
+
+                requires requires(typename E::iterator iter) {
+                             {
+                                 iter.aligned(idx)
+                                 } -> std::same_as<bool>;
+
+                             {
+                                 iter.cx_reg(idx)
+                                 } -> std::same_as<avx::cx_reg<typename E::real_type>>;
+
+                             requires std::convertible_to<
+                                 std::iter_value_t<typename E::iterator>,
+                                 std::complex<typename E::real_type>>;
+                         };
             };
     };
 
@@ -1225,53 +1289,249 @@ auto operator/(typename E::real_type lhs, const E& rhs);
 
 namespace internal {
 
-template<typename E>
-    requires vector_expression<E>
-class rscalar_add : private expression_base
+template<typename E, typename S>
+    requires vector_expression<E> &&
+                 (std::same_as<typename E::real_type, S> ||
+                  std::same_as<std::complex<typename E::real_type>, S>)
+class scalar_add
+: public std::ranges::view_base
+, private expression_base
 {
-public:
-    using real_type = typename E::real_type;
-
-    constexpr auto size() const -> std::size_t
-    {
-        return _size(m_vector);
-    }
-
-private:
     template<typename T, std::size_t PackSize, typename Allocator>
         requires packed_floating_point<T, PackSize>
     friend class ::packed_cx_vector;
     friend class expression_base;
 
-    friend auto operator+<E>(const E& lhs, typename E::real_type rhs);
-    friend auto operator+<E>(typename E::real_type lhs, const E& rhs);
-    friend auto operator-<E>(const E& lhs, typename E::real_type rhs);
+public:
+    using real_type = typename E::real_type;
 
-    rscalar_add(real_type scalar, const E& vector)
-    : m_scalar(scalar)
-    , m_vector(vector){};
-
-    constexpr bool aligned(std::size_t offset = 0) const
+    class iterator : private expression_base
     {
-        return _aligned(m_vector, offset);
+        template<typename T, std::size_t PackSize, typename Allocator>
+            requires packed_floating_point<T, PackSize>
+        friend class ::packed_cx_vector;
+        friend class expression_base;
+        friend class scalar_add;
+
+        using vector_iterator = typename E::iterator;
+
+        iterator(S scalar, vector_iterator iterator)
+        : m_scalar(std::move(scalar))
+        , m_vector(std::move(iterator)){};
+
+    public:
+        using real_type       = scalar_add::real_type;
+        using value_type      = const std::complex<real_type>;
+        using difference_type = std::ptrdiff_t;
+
+        using iterator_concept = std::random_access_iterator_tag;
+
+
+        iterator() = default;
+
+        iterator(const iterator& other) noexcept = default;
+        iterator(iterator&& other) noexcept      = default;
+
+        ~iterator() = default;
+
+        iterator& operator=(const iterator& other) noexcept = default;
+        iterator& operator=(iterator&& other) noexcept      = default;
+
+        // NOLINTNEXTLINE (*const*)
+        [[nodiscard]] auto operator*() const -> value_type
+        {
+            return m_scalar + value_type(*m_vector);
+        }
+        // NOLINTNEXTLINE (*const*)
+        [[nodiscard]] auto operator[](difference_type idx) const -> value_type
+        {
+            return m_scalar + value_type(*(m_vector + idx));
+        }
+
+        [[nodiscard]] bool operator==(const iterator& other) const noexcept
+        {
+            return (m_vector == other.m_vector);
+        }
+        [[nodiscard]] auto operator<=>(const iterator& other) const noexcept
+        {
+            return (m_vector <=> other.m_vector);
+        }
+
+        auto operator++() noexcept -> iterator&
+        {
+            ++m_vector;
+            return *this;
+        }
+        auto operator++(int) noexcept -> iterator
+        {
+            auto copy = *this;
+            ++(*this);
+            return copy;
+        }
+        auto operator--() noexcept -> iterator&
+        {
+            --m_vector;
+        }
+        auto operator--(int) noexcept -> iterator
+        {
+            auto copy = *this;
+            --(*this);
+            return copy;
+        }
+
+        auto operator+=(difference_type n) noexcept -> iterator&
+        {
+            m_vector += n;
+            return *this;
+        }
+        auto operator-=(difference_type n) noexcept -> iterator&
+        {
+            return (*this) += -n;
+        }
+
+        [[nodiscard]] friend auto operator+(iterator it, difference_type n) noexcept
+            -> iterator
+        {
+            it += n;
+            return it;
+        }
+        [[nodiscard]] friend auto operator+(difference_type n, iterator it) noexcept
+            -> iterator
+        {
+            it += n;
+            return it;
+        }
+        [[nodiscard]] friend auto operator-(iterator it, difference_type n) noexcept
+            -> iterator
+        {
+            it -= n;
+            return it;
+        }
+        [[nodiscard]] friend auto operator-(iterator lhs, iterator rhs) noexcept
+        {
+            return lhs.m_vector - rhs.m_vector;
+        }
+
+        [[nodiscard]] bool aligned(std::size_t offset = 0) const noexcept
+        {
+            return m_vector.aligned(offset);
+        }
+
+    private:
+        auto cx_reg(std::size_t idx) const -> avx::cx_reg<real_type>
+        {
+            const auto scalar = avx::broadcast<;
+            const auto vector = _cx_reg(m_vector, idx);
+
+            return avx::add(scalar, iterator);
+        }
+
+        lhs_iterator m_scalar;
+        vector_iterator m_vector;
+    };
+
+    scalar_add() noexcept = default;
+
+    scalar_add(scalar_add&& other) noexcept
+    : m_scalar(std::move(other.m_scalar))
+    , m_vector(std::move(other.m_vector)){};
+
+    scalar_add(const scalar_add&) noexcept = delete;
+
+    scalar_add& operator=(scalar_add&& other) noexcept
+    {
+        m_scalar = other.m_scalar;
+        m_vector = other.m_vector;
+    };
+
+    scalar_add& operator=(const scalar_add&) noexcept = delete;
+
+    ~scalar_add() noexcept = default;
+
+    constexpr auto size() const noexcept -> std::size_t
+    {
+        return m_scalar.size();
     }
 
     auto operator[](std::size_t idx) const
     {
-        return m_scalar + std::complex<real_type>(_element(m_vector, idx));
+        return std::complex<real_type>(m_scalar[idx]) + std::complex<real_type>(m_vector[idx]);
     };
 
-    auto cx_reg(std::size_t idx) const -> avx::cx_reg<real_type>
+    [[nodiscard]] auto begin() const noexcept -> iterator
     {
-        const auto scalar = avx::broadcast(&m_scalar);
-        const auto vector = _cx_reg(m_vector, idx);
+        return iterator(m_scalar.begin(), m_vector.begin());
+    }
+    [[nodiscard]] auto end() const noexcept -> iterator
+    {
+        return iterator(m_scalar.end(), m_vector.end());
+    }
 
-        return {avx::add<real_type>(scalar, vector.real), vector.imag};
+    constexpr bool aligned(std::size_t offset = 0) const noexcept
+    {
+        return _aligned(m_scalar, offset) && _aligned(m_vector, offset);
+    }
+
+private:
+    scalar_add(const E& scalar, const E2& iterator)
+    : m_scalar(scalar)
+    , m_vector(iterator)
+    {
+        if constexpr (!is_scalar<E>::value && !is_scalar<E2>::value)
+        {
+            assert(scalar.size() == iterator.size());
+        };
     };
 
     const E   m_vector;
     real_type m_scalar;
 };
+//
+// class scalar_add : private expression_base
+// {
+// public:
+//     using real_type = typename E::real_type;
+//
+//     constexpr auto size() const -> std::size_t
+//     {
+//         return _size(m_vector);
+//     }
+//
+// private:
+//     template<typename T, std::size_t PackSize, typename Allocator>
+//         requires packed_floating_point<T, PackSize>
+//     friend class ::packed_cx_vector;
+//     friend class expression_base;
+//
+//     friend auto operator+<E>(const E& lhs, S rhs);
+//     friend auto operator+<E>(S lhs, const E& rhs);
+//     friend auto operator-<E>(const E& lhs, S rhs);
+//
+//     scalar_add(real_type scalar, const E& vector)
+//     : m_scalar(scalar)
+//     , m_vector(vector){};
+//
+//     constexpr bool aligned(std::size_t offset = 0) const
+//     {
+//         return _aligned(m_vector, offset);
+//     }
+//
+//     auto operator[](std::size_t idx) const
+//     {
+//         return m_scalar + std::complex<real_type>(_element(m_vector, idx));
+//     };
+//
+//     auto cx_reg(std::size_t idx) const -> avx::cx_reg<real_type>
+//     {
+//         const auto scalar = avx::broadcast(&m_scalar);
+//         const auto vector = _cx_reg(m_vector, idx);
+//
+//         return {avx::add<real_type>(scalar, vector.real), vector.imag};
+//     };
+//
+//     const E   m_vector;
+//     real_type m_scalar;
+// };
 
 template<typename E>
     requires vector_expression<E>
@@ -1429,20 +1689,20 @@ template<typename E>
     requires internal::vector_expression<E>
 auto operator+(const E& lhs, typename E::real_type rhs)
 {
-    return internal::rscalar_add(rhs, lhs);
+    return internal::scalar_add(rhs, lhs);
 }
 template<typename E>
     requires internal::vector_expression<E>
 auto operator+(typename E::real_type lhs, const E& rhs)
 {
-    return internal::rscalar_add(lhs, rhs);
+    return internal::scalar_add(lhs, rhs);
 }
 
 template<typename E>
     requires internal::vector_expression<E>
 auto operator-(const E& lhs, typename E::real_type rhs)
 {
-    return internal::rscalar_add(-rhs, lhs);
+    return internal::scalar_add(-rhs, lhs);
 }
 template<typename E>
     requires internal::vector_expression<E>
