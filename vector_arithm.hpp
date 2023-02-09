@@ -86,7 +86,6 @@ struct is_scalar
 class expression_base
 {
 public:
-
     template<typename E>
     struct is_expression
     {
@@ -250,11 +249,11 @@ public:
 
         [[nodiscard]] bool operator==(const iterator& other) const noexcept
         {
-            return (non_scalar() == other.non_scalar());
+            return (m_lhs == other.m_lhs);
         }
         [[nodiscard]] auto operator<=>(const iterator& other) const noexcept
         {
-            return (non_scalar() <=> other.non_scalar());
+            return (m_lhs <=> other.m_lhs);
         }
 
         auto operator++() noexcept -> iterator&
@@ -312,7 +311,7 @@ public:
         }
         [[nodiscard]] friend auto operator-(iterator lhs, iterator rhs) noexcept
         {
-            return lhs.non_scalar() - rhs.non_scalar();
+            return lhs.m_lhs - rhs.m_lhs;
         }
 
         [[nodiscard]] bool aligned(std::size_t offset = 0) const noexcept
@@ -328,17 +327,6 @@ public:
 
             return {avx::add<real_type>(lhs.real, rhs.real),
                     avx::add<real_type>(lhs.imag, rhs.imag)};
-        }
-
-        constexpr const auto& non_scalar() const noexcept
-        {
-            if constexpr (!is_scalar<E1>::value)
-            {
-                return m_lhs;
-            } else
-            {
-                return m_rhs;
-            }
         }
 
         lhs_iterator m_lhs;
@@ -365,7 +353,7 @@ public:
 
     constexpr auto size() const noexcept -> std::size_t
     {
-        return non_scalar().size();
+        return m_lhs.size();
     }
 
     auto operator[](std::size_t idx) const
@@ -398,46 +386,198 @@ private:
         };
     };
 
-    constexpr const auto& non_scalar() const noexcept
-    {
-        if constexpr (!is_scalar<E1>::value)
-        {
-            return m_lhs;
-        } else
-        {
-            return m_rhs;
-        }
-    };
-
     const E1 m_lhs;
     const E2 m_rhs;
 };
 
 template<typename E1, typename E2>
     requires compatible_expressions<E1, E2>
-class sub : private expression_base
+class sub
+: public std::ranges::view_base
+, private expression_base
 {
-public:
-    using real_type = typename E1::real_type;
-
-    constexpr auto size() const -> std::size_t
-    {
-        if constexpr (is_scalar<E1>::value)
-        {
-            return _size(m_rhs);
-        } else
-        {
-            return _size(m_lhs);
-        }
-    }
-
-private:
     template<typename T, std::size_t PackSize, typename Allocator>
         requires packed_floating_point<T, PackSize>
     friend class ::packed_cx_vector;
     friend class expression_base;
     friend auto operator-<E1, E2>(const E1& lhs, const E2& rhs);
 
+public:
+    using real_type = typename E1::real_type;
+
+    class iterator : private expression_base
+    {
+        template<typename T, std::size_t PackSize, typename Allocator>
+            requires packed_floating_point<T, PackSize>
+        friend class ::packed_cx_vector;
+        friend class expression_base;
+        friend class sub;
+
+        using lhs_iterator = typename E1::iterator;
+        using rhs_iterator = typename E2::iterator;
+
+        iterator(lhs_iterator lhs, rhs_iterator rhs)
+        : m_lhs(std::move(lhs))
+        , m_rhs(std::move(rhs)){};
+
+    public:
+        using real_type       = sub::real_type;
+        using value_type      = const std::complex<real_type>;
+        using difference_type = std::ptrdiff_t;
+
+        using iterator_concept = std::random_access_iterator_tag;
+
+
+        iterator() = default;
+
+        iterator(const iterator& other) noexcept = default;
+        iterator(iterator&& other) noexcept      = default;
+
+        ~iterator() = default;
+
+        iterator& operator=(const iterator& other) noexcept = default;
+        iterator& operator=(iterator&& other) noexcept      = default;
+
+        // NOLINTNEXTLINE (*const*)
+        [[nodiscard]] auto operator*() const -> value_type
+        {
+            return value_type(*m_lhs) - value_type(*m_rhs);
+        }
+        // NOLINTNEXTLINE (*const*)
+        [[nodiscard]] auto operator[](difference_type idx) const -> value_type
+        {
+            return value_type(*(m_lhs + idx)) - value_type(*(m_rhs + idx));
+        }
+
+        [[nodiscard]] bool operator==(const iterator& other) const noexcept
+        {
+            return (m_lhs == other.m_lhs);
+        }
+        [[nodiscard]] auto operator<=>(const iterator& other) const noexcept
+        {
+            return (m_lhs <=> other.m_lhs);
+        }
+
+        auto operator++() noexcept -> iterator&
+        {
+            ++m_lhs;
+            ++m_rhs;
+            return *this;
+        }
+        auto operator++(int) noexcept -> iterator
+        {
+            auto copy = *this;
+            ++(*this);
+            return copy;
+        }
+        auto operator--() noexcept -> iterator&
+        {
+            --m_lhs;
+            --m_rhs;
+        }
+        auto operator--(int) noexcept -> iterator
+        {
+            auto copy = *this;
+            --(*this);
+            return copy;
+        }
+
+        auto operator+=(difference_type n) noexcept -> iterator&
+        {
+            m_lhs += n;
+            m_rhs += n;
+            return *this;
+        }
+        auto operator-=(difference_type n) noexcept -> iterator&
+        {
+            return (*this) += -n;
+        }
+
+        [[nodiscard]] friend auto operator+(iterator it, difference_type n) noexcept
+            -> iterator
+        {
+            it += n;
+            return it;
+        }
+        [[nodiscard]] friend auto operator+(difference_type n, iterator it) noexcept
+            -> iterator
+        {
+            it += n;
+            return it;
+        }
+        [[nodiscard]] friend auto operator-(iterator it, difference_type n) noexcept
+            -> iterator
+        {
+            it -= n;
+            return it;
+        }
+        [[nodiscard]] friend auto operator-(iterator lhs, iterator rhs) noexcept
+        {
+            return lhs.m_lhs - rhs.m_lhs;
+        }
+
+        [[nodiscard]] bool aligned(std::size_t offset = 0) const noexcept
+        {
+            return m_lhs.aligned(offset) && m_rhs.aligned(offset);
+        }
+
+    private:
+        auto cx_reg(std::size_t idx) const -> avx::cx_reg<real_type>
+        {
+            const auto lhs = _cx_reg(m_lhs, idx);
+            const auto rhs = _cx_reg(m_rhs, idx);
+
+            return {avx::sub<real_type>(lhs.real, rhs.real),
+                    avx::sub<real_type>(lhs.imag, rhs.imag)};
+        }
+
+        lhs_iterator m_lhs;
+        rhs_iterator m_rhs;
+    };
+
+    sub() noexcept = default;
+
+    sub(sub&& other) noexcept
+    : m_lhs(std::move(other.m_lhs))
+    , m_rhs(std::move(other.m_rhs)){};
+
+    sub(const sub&) noexcept = delete;
+
+    sub& operator=(sub&& other) noexcept
+    {
+        m_lhs = other.m_lhs;
+        m_rhs = other.m_rhs;
+    };
+
+    sub& operator=(const sub&) noexcept = delete;
+
+    ~sub() noexcept = default;
+
+    constexpr auto size() const noexcept -> std::size_t
+    {
+        return m_lhs.size();
+    }
+
+    auto operator[](std::size_t idx) const
+    {
+        return std::complex<real_type>(m_lhs[idx]) - std::complex<real_type>(m_rhs[idx]);
+    };
+
+    [[nodiscard]] auto begin() const noexcept -> iterator
+    {
+        return iterator(m_lhs.begin(), m_rhs.begin());
+    }
+    [[nodiscard]] auto end() const noexcept -> iterator
+    {
+        return iterator(m_lhs.end(), m_rhs.end());
+    }
+
+    constexpr bool aligned(std::size_t offset = 0) const noexcept
+    {
+        return _aligned(m_lhs, offset) && _aligned(m_rhs, offset);
+    }
+
+private:
     sub(const E1& lhs, const E2& rhs)
     : m_lhs(lhs)
     , m_rhs(rhs)
@@ -448,55 +588,202 @@ private:
         };
     };
 
-    constexpr bool aligned(std::size_t offset = 0) const
-    {
-        return _aligned(m_lhs, offset) && _aligned(m_rhs, offset);
-    }
-
-    auto operator[](std::size_t idx) const
-    {
-        return std::complex<real_type>(_element(m_lhs, idx)) -
-               std::complex<real_type>(_element(m_rhs, idx));
-    };
-
-    auto cx_reg(std::size_t idx) const -> avx::cx_reg<real_type>
-    {
-        const auto lhs = _cx_reg(m_lhs, idx);
-        const auto rhs = _cx_reg(m_rhs, idx);
-
-        return {avx::sub<real_type>(lhs.real, rhs.real),
-                avx::sub<real_type>(lhs.imag, rhs.imag)};
-    };
-
     const E1 m_lhs;
     const E2 m_rhs;
 };
 
 template<typename E1, typename E2>
     requires compatible_expressions<E1, E2>
-class mul : private expression_base
+class mul
+: public std::ranges::view_base
+, private expression_base
 {
-public:
-    using real_type = typename E1::real_type;
-
-    constexpr auto size() const -> std::size_t
-    {
-        if constexpr (is_scalar<E1>::value)
-        {
-            return _size(m_rhs);
-        } else
-        {
-            return _size(m_lhs);
-        }
-    }
-
-private:
     template<typename T, std::size_t PackSize, typename Allocator>
         requires packed_floating_point<T, PackSize>
     friend class ::packed_cx_vector;
     friend class expression_base;
     friend auto operator*<E1, E2>(const E1& lhs, const E2& rhs);
 
+public:
+    using real_type = typename E1::real_type;
+
+    class iterator : private expression_base
+    {
+        template<typename T, std::size_t PackSize, typename Allocator>
+            requires packed_floating_point<T, PackSize>
+        friend class ::packed_cx_vector;
+        friend class expression_base;
+        friend class mul;
+
+        using lhs_iterator = typename E1::iterator;
+        using rhs_iterator = typename E2::iterator;
+
+        iterator(lhs_iterator lhs, rhs_iterator rhs)
+        : m_lhs(std::move(lhs))
+        , m_rhs(std::move(rhs)){};
+
+    public:
+        using real_type       = mul::real_type;
+        using value_type      = const std::complex<real_type>;
+        using difference_type = std::ptrdiff_t;
+
+        using iterator_concept = std::random_access_iterator_tag;
+
+
+        iterator() = default;
+
+        iterator(const iterator& other) noexcept = default;
+        iterator(iterator&& other) noexcept      = default;
+
+        ~iterator() = default;
+
+        iterator& operator=(const iterator& other) noexcept = default;
+        iterator& operator=(iterator&& other) noexcept      = default;
+
+        // NOLINTNEXTLINE (*const*)
+        [[nodiscard]] auto operator*() const -> value_type
+        {
+            return value_type(*m_lhs) * value_type(*m_rhs);
+        }
+        // NOLINTNEXTLINE (*const*)
+        [[nodiscard]] auto operator[](difference_type idx) const -> value_type
+        {
+            return value_type(*(m_lhs + idx)) * value_type(*(m_rhs + idx));
+        }
+
+        [[nodiscard]] bool operator==(const iterator& other) const noexcept
+        {
+            return (m_lhs == other.m_lhs);
+        }
+        [[nodiscard]] auto operator<=>(const iterator& other) const noexcept
+        {
+            return (m_lhs <=> other.m_lhs);
+        }
+
+        auto operator++() noexcept -> iterator&
+        {
+            ++m_lhs;
+            ++m_rhs;
+            return *this;
+        }
+        auto operator++(int) noexcept -> iterator
+        {
+            auto copy = *this;
+            ++(*this);
+            return copy;
+        }
+        auto operator--() noexcept -> iterator&
+        {
+            --m_lhs;
+            --m_rhs;
+        }
+        auto operator--(int) noexcept -> iterator
+        {
+            auto copy = *this;
+            --(*this);
+            return copy;
+        }
+
+        auto operator+=(difference_type n) noexcept -> iterator&
+        {
+            m_lhs += n;
+            m_rhs += n;
+            return *this;
+        }
+        auto operator-=(difference_type n) noexcept -> iterator&
+        {
+            return (*this) += -n;
+        }
+
+        [[nodiscard]] friend auto operator+(iterator it, difference_type n) noexcept
+            -> iterator
+        {
+            it += n;
+            return it;
+        }
+        [[nodiscard]] friend auto operator+(difference_type n, iterator it) noexcept
+            -> iterator
+        {
+            it += n;
+            return it;
+        }
+        [[nodiscard]] friend auto operator-(iterator it, difference_type n) noexcept
+            -> iterator
+        {
+            it -= n;
+            return it;
+        }
+        [[nodiscard]] friend auto operator-(iterator lhs, iterator rhs) noexcept
+        {
+            return lhs.m_lhs - rhs.m_lhs;
+        }
+
+        [[nodiscard]] bool aligned(std::size_t offset = 0) const noexcept
+        {
+            return m_lhs.aligned(offset) && m_rhs.aligned(offset);
+        }
+
+    private:
+        auto cx_reg(std::size_t idx) const -> avx::cx_reg<real_type>
+        {
+            const auto lhs = _cx_reg(m_lhs, idx);
+            const auto rhs = _cx_reg(m_rhs, idx);
+
+            auto real = avx::sub<real_type>(avx::mul<real_type>(lhs.real, rhs.real),
+                                            avx::mul<real_type>(lhs.imag, rhs.imag));
+            auto imag = avx::add<real_type>(avx::mul<real_type>(lhs.real, rhs.imag),
+                                            avx::mul<real_type>(lhs.imag, rhs.real));
+
+            return {real, imag};
+        }
+
+        lhs_iterator m_lhs;
+        rhs_iterator m_rhs;
+    };
+
+    mul() noexcept = default;
+
+    mul(mul&& other) noexcept
+    : m_lhs(std::move(other.m_lhs))
+    , m_rhs(std::move(other.m_rhs)){};
+
+    mul(const mul&) noexcept = delete;
+
+    mul& operator=(mul&& other) noexcept
+    {
+        m_lhs = other.m_lhs;
+        m_rhs = other.m_rhs;
+    };
+
+    mul& operator=(const mul&) noexcept = delete;
+
+    ~mul() noexcept = default;
+
+    constexpr auto size() const noexcept -> std::size_t
+    {
+        return m_lhs.size();
+    }
+
+    auto operator[](std::size_t idx) const
+    {
+        return std::complex<real_type>(m_lhs[idx]) * std::complex<real_type>(m_rhs[idx]);
+    };
+
+    [[nodiscard]] auto begin() const noexcept -> iterator
+    {
+        return iterator(m_lhs.begin(), m_rhs.begin());
+    }
+    [[nodiscard]] auto end() const noexcept -> iterator
+    {
+        return iterator(m_lhs.end(), m_rhs.end());
+    }
+
+    constexpr bool aligned(std::size_t offset = 0) const noexcept
+    {
+        return _aligned(m_lhs, offset) && _aligned(m_rhs, offset);
+    }
+
+private:
     mul(const E1& lhs, const E2& rhs)
     : m_lhs(lhs)
     , m_rhs(rhs)
@@ -507,59 +794,210 @@ private:
         };
     };
 
-    constexpr bool aligned(std::size_t offset = 0) const
-    {
-        return _aligned(m_lhs, offset) && _aligned(m_rhs, offset);
-    }
-
-    auto operator[](std::size_t idx) const
-    {
-        return std::complex<real_type>(_element(m_lhs, idx)) *
-               std::complex<real_type>(_element(m_rhs, idx));
-    };
-
-    auto cx_reg(std::size_t idx) const -> avx::cx_reg<real_type>
-    {
-        const auto lhs = _cx_reg(m_lhs, idx);
-        const auto rhs = _cx_reg(m_rhs, idx);
-
-        auto real = avx::sub<real_type>(avx::mul<real_type>(lhs.real, rhs.real),
-                                        avx::mul<real_type>(lhs.imag, rhs.imag));
-        auto imag = avx::add<real_type>(avx::mul<real_type>(lhs.real, rhs.imag),
-                                        avx::mul<real_type>(lhs.imag, rhs.real));
-
-        return {real, imag};
-    };
-
     const E1 m_lhs;
     const E2 m_rhs;
 };
 
 template<typename E1, typename E2>
     requires compatible_expressions<E1, E2>
-class div : private expression_base
+class div
+: public std::ranges::view_base
+, private expression_base
 {
-public:
-    using real_type = typename E1::real_type;
-
-    constexpr auto size() const -> std::size_t
-    {
-        if constexpr (is_scalar<E1>::value)
-        {
-            return _size(m_rhs);
-        } else
-        {
-            return _size(m_lhs);
-        }
-    }
-
-private:
     template<typename T, std::size_t PackSize, typename Allocator>
         requires packed_floating_point<T, PackSize>
     friend class ::packed_cx_vector;
     friend class expression_base;
     friend auto operator/<E1, E2>(const E1& lhs, const E2& rhs);
 
+public:
+    using real_type = typename E1::real_type;
+
+    class iterator : private expression_base
+    {
+        template<typename T, std::size_t PackSize, typename Allocator>
+            requires packed_floating_point<T, PackSize>
+        friend class ::packed_cx_vector;
+        friend class expression_base;
+        friend class div;
+
+        using lhs_iterator = typename E1::iterator;
+        using rhs_iterator = typename E2::iterator;
+
+        iterator(lhs_iterator lhs, rhs_iterator rhs)
+        : m_lhs(std::move(lhs))
+        , m_rhs(std::move(rhs)){};
+
+    public:
+        using real_type       = div::real_type;
+        using value_type      = const std::complex<real_type>;
+        using difference_type = std::ptrdiff_t;
+
+        using iterator_concept = std::random_access_iterator_tag;
+
+
+        iterator() = default;
+
+        iterator(const iterator& other) noexcept = default;
+        iterator(iterator&& other) noexcept      = default;
+
+        ~iterator() = default;
+
+        iterator& operator=(const iterator& other) noexcept = default;
+        iterator& operator=(iterator&& other) noexcept      = default;
+
+        // NOLINTNEXTLINE (*const*)
+        [[nodiscard]] auto operator*() const -> value_type
+        {
+            return value_type(*m_lhs) / value_type(*m_rhs);
+        }
+        // NOLINTNEXTLINE (*const*)
+        [[nodiscard]] auto operator[](difference_type idx) const -> value_type
+        {
+            return value_type(*(m_lhs + idx)) / value_type(*(m_rhs + idx));
+        }
+
+        [[nodiscard]] bool operator==(const iterator& other) const noexcept
+        {
+            return (m_lhs == other.m_lhs);
+        }
+        [[nodiscard]] auto operator<=>(const iterator& other) const noexcept
+        {
+            return (m_lhs <=> other.m_lhs);
+        }
+
+        auto operator++() noexcept -> iterator&
+        {
+            ++m_lhs;
+            ++m_rhs;
+            return *this;
+        }
+        auto operator++(int) noexcept -> iterator
+        {
+            auto copy = *this;
+            ++(*this);
+            return copy;
+        }
+        auto operator--() noexcept -> iterator&
+        {
+            --m_lhs;
+            --m_rhs;
+        }
+        auto operator--(int) noexcept -> iterator
+        {
+            auto copy = *this;
+            --(*this);
+            return copy;
+        }
+
+        auto operator+=(difference_type n) noexcept -> iterator&
+        {
+            m_lhs += n;
+            m_rhs += n;
+            return *this;
+        }
+        auto operator-=(difference_type n) noexcept -> iterator&
+        {
+            return (*this) += -n;
+        }
+
+        [[nodiscard]] friend auto operator+(iterator it, difference_type n) noexcept
+            -> iterator
+        {
+            it += n;
+            return it;
+        }
+        [[nodiscard]] friend auto operator+(difference_type n, iterator it) noexcept
+            -> iterator
+        {
+            it += n;
+            return it;
+        }
+        [[nodiscard]] friend auto operator-(iterator it, difference_type n) noexcept
+            -> iterator
+        {
+            it -= n;
+            return it;
+        }
+        [[nodiscard]] friend auto operator-(iterator lhs, iterator rhs) noexcept
+        {
+            return lhs.m_lhs - rhs.m_lhs;
+        }
+
+        [[nodiscard]] bool aligned(std::size_t offset = 0) const noexcept
+        {
+            return m_lhs.aligned(offset) && m_rhs.aligned(offset);
+        }
+
+    private:
+        auto cx_reg(std::size_t idx) const -> avx::cx_reg<real_type>
+        {
+            const auto lhs = _cx_reg(m_lhs, idx);
+            const auto rhs = _cx_reg(m_rhs, idx);
+
+            const auto rhs_abs =
+                avx::add<real_type>(avx::mul<real_type>(rhs.real, rhs.real),
+                                    avx::mul<real_type>(rhs.imag, rhs.imag));
+
+            const auto real_ =
+                avx::add<real_type>(avx::mul<real_type>(lhs.real, rhs.real),
+                                    avx::mul<real_type>(lhs.imag, rhs.imag));
+
+            const auto imag_ =
+                avx::sub<real_type>(avx::mul<real_type>(lhs.imag, rhs.real),
+                                    avx::mul<real_type>(lhs.real, rhs.imag));
+
+            return {avx::div<real_type>(real_, rhs_abs),
+                    avx::div<real_type>(imag_, rhs_abs)};
+        }
+
+        lhs_iterator m_lhs;
+        rhs_iterator m_rhs;
+    };
+
+    div() noexcept = default;
+
+    div(div&& other) noexcept
+    : m_lhs(std::move(other.m_lhs))
+    , m_rhs(std::move(other.m_rhs)){};
+
+    div(const div&) noexcept = delete;
+
+    div& operator=(div&& other) noexcept
+    {
+        m_lhs = other.m_lhs;
+        m_rhs = other.m_rhs;
+    };
+
+    div& operator=(const div&) noexcept = delete;
+
+    ~div() noexcept = default;
+
+    constexpr auto size() const noexcept -> std::size_t
+    {
+        return m_lhs.size();
+    }
+
+    auto operator[](std::size_t idx) const
+    {
+        return std::complex<real_type>(m_lhs[idx]) / std::complex<real_type>(m_rhs[idx]);
+    };
+
+    [[nodiscard]] auto begin() const noexcept -> iterator
+    {
+        return iterator(m_lhs.begin(), m_rhs.begin());
+    }
+    [[nodiscard]] auto end() const noexcept -> iterator
+    {
+        return iterator(m_lhs.end(), m_rhs.end());
+    }
+
+    constexpr bool aligned(std::size_t offset = 0) const noexcept
+    {
+        return _aligned(m_lhs, offset) && _aligned(m_rhs, offset);
+    }
+
+private:
     div(const E1& lhs, const E2& rhs)
     : m_lhs(lhs)
     , m_rhs(rhs)
@@ -568,34 +1006,6 @@ private:
         {
             assert(lhs.size() == rhs.size());
         };
-    };
-
-    constexpr bool aligned(std::size_t offset = 0) const
-    {
-        return _aligned(m_lhs, offset) && _aligned(m_rhs, offset);
-    }
-
-    auto operator[](std::size_t idx) const
-    {
-        return std::complex<real_type>(_element(m_lhs, idx)) /
-               std::complex<real_type>(_element(m_rhs, idx));
-    };
-
-    auto cx_reg(std::size_t idx) const -> avx::cx_reg<real_type>
-    {
-        const auto lhs = _cx_reg(m_lhs, idx);
-        const auto rhs = _cx_reg(m_rhs, idx);
-
-        const auto rhs_abs = avx::add<real_type>(avx::mul<real_type>(rhs.real, rhs.real),
-                                                 avx::mul<real_type>(rhs.imag, rhs.imag));
-
-        const auto real_ = avx::add<real_type>(avx::mul<real_type>(lhs.real, rhs.real),
-                                               avx::mul<real_type>(lhs.imag, rhs.imag));
-
-        const auto imag_ = avx::sub<real_type>(avx::mul<real_type>(lhs.imag, rhs.real),
-                                               avx::mul<real_type>(lhs.real, rhs.imag));
-
-        return {avx::div<real_type>(real_, rhs_abs), avx::div<real_type>(imag_, rhs_abs)};
     };
 
     const E1 m_lhs;
@@ -1076,11 +1486,8 @@ auto operator+(const packed_cx_vector<T, PackSize, Allocator>& vector,
     return packed_subrange(vector.begin(), vector.size()) + expression;
 };
 
-template<typename T, std::size_t PackSize, typename Allocator, typename E>
-    requires packed_floating_point<T, PackSize> &&
-             (!std::same_as<packed_cx_vector<T, PackSize, Allocator>, E>) &&
-             requires(packed_subrange<T, PackSize> subrange, E e) { e - subrange; } &&
-             true
+template<typename E, typename T, std::size_t PackSize, typename Allocator>
+    requires internal::vector_expression<E> && packed_floating_point<T, PackSize>
 auto operator-(const E&                                        expression,
                const packed_cx_vector<T, PackSize, Allocator>& vector)
 {
@@ -1095,10 +1502,8 @@ auto operator-(const packed_cx_vector<T, PackSize, Allocator>& vector,
     return packed_subrange(vector.begin(), vector.size()) - expression;
 };
 
-template<typename T, std::size_t PackSize, typename Allocator, typename E>
-    requires packed_floating_point<T, PackSize> &&
-             (!std::same_as<packed_cx_vector<T, PackSize, Allocator>, E>) &&
-             requires(packed_subrange<T, PackSize> subrange, E e) { e* subrange; } && true
+template<typename E, typename T, std::size_t PackSize, typename Allocator>
+    requires internal::vector_expression<E> && packed_floating_point<T, PackSize>
 auto operator*(const E&                                        expression,
                const packed_cx_vector<T, PackSize, Allocator>& vector)
 {
@@ -1113,11 +1518,8 @@ auto operator*(const packed_cx_vector<T, PackSize, Allocator>& vector,
     return packed_subrange(vector.begin(), vector.size()) * expression;
 };
 
-template<typename T, std::size_t PackSize, typename Allocator, typename E>
-    requires packed_floating_point<T, PackSize> &&
-             (!std::same_as<packed_cx_vector<T, PackSize, Allocator>, E>) &&
-             requires(packed_subrange<T, PackSize> subrange, E e) { e / subrange; } &&
-             true
+template<typename E, typename T, std::size_t PackSize, typename Allocator>
+    requires internal::vector_expression<E> && packed_floating_point<T, PackSize>
 auto operator/(const E&                                        expression,
                const packed_cx_vector<T, PackSize, Allocator>& vector)
 {

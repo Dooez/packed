@@ -137,43 +137,43 @@ int test_arithm(std::size_t length)
     auto stdvec1 = std::vector<std::complex<T>>(length);
     auto stdvec2 = std::vector<std::complex<T>>(length);
     auto stdvecr = std::vector<std::complex<T>>(length);
-// 
-//     for (uint i = 0; i < length; ++i)
-//     {
-//         vec1[i]       = i * std::numeric_limits<T>::epsilon();
-//         vec2[i]       = i + 1;
-//         stdvec1.at(i) = i * std::numeric_limits<T>::epsilon();
-//         stdvec2.at(i) = i + 1;
-//     }
-// 
-// 
-//     const T    rval = 13.123 + 13 * std::numeric_limits<T>::epsilon();
-//     const auto val  = std::complex<T>(rval, rval);
-// 
-//     auto stdrval = std::vector<T>(length, rval);
-//     auto stdval  = std::vector<std::complex<T>>(length, val);
-// 
+
+    for (uint i = 0; i < length; ++i)
+    {
+        vec1[i]       = i * std::numeric_limits<T>::epsilon();
+        vec2[i]       = i + 1;
+        stdvec1.at(i) = i * std::numeric_limits<T>::epsilon();
+        stdvec2.at(i) = i + 1;
+    }
+
+
+    const T    rval = 13.123 + 13 * std::numeric_limits<T>::epsilon();
+    const auto val  = std::complex<T>(rval, rval);
+
+    auto stdrval = std::vector<T>(length, rval);
+    auto stdval  = std::vector<std::complex<T>>(length, val);
+
     vecr = vec1 + vec2;
-//     if (!test_add(stdvec1, stdvec2, vecr))
-//     {
-//         return 1;
-//     }
-//     vecr = vec1 - vec2;
-//     if (!test_sub(stdvec1, stdvec2, vecr))
-//     {
-//         return 1;
-//     }
-// 
-//     vecr = vec1 * vec2;
-//     if (!test_mul(stdvec1, stdvec2, vecr))
-//     {
-//         return 1;
-//     }
-//     vecr = vec1 / vec2;
-//     if (!test_div(stdvec1, stdvec2, vecr))
-//     {
-//         return 1;
-//     }
+    if (!test_add(stdvec1, stdvec2, vecr))
+    {
+        return 1;
+    }
+    vecr = vec1 - vec2;
+    if (!test_sub(stdvec1, stdvec2, vecr))
+    {
+        return 1;
+    }
+
+    vecr = vec1 * vec2;
+    if (!test_mul(stdvec1, stdvec2, vecr))
+    {
+        return 1;
+    }
+    vecr = vec1 / vec2;
+    if (!test_div(stdvec1, stdvec2, vecr))
+    {
+        return 1;
+    }
 // 
 //     vecr = rval + vec2;
 //     if (!test_add(stdrval, stdvec2, vecr))
@@ -273,7 +273,6 @@ int test_arithm(std::size_t length)
 int main()
 {
 
-    
     int res = 0;
     for (uint i = 1; i < 64; ++i)
     {
