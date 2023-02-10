@@ -49,55 +49,39 @@ struct reg<double>
     using type = __m256d;
 };
 
-template<typename T>
-auto load(const T* source) -> typename reg<T>::type;
-template<>
-auto load<float>(const float* source) -> reg<float>::type
+inline auto load(const float* source) -> reg<float>::type
 {
     return _mm256_loadu_ps(source);
 }
-template<>
-auto load<double>(const double* source) -> reg<double>::type
+inline auto load(const double* source) -> reg<double>::type
 {
     return _mm256_loadu_pd(source);
 }
 
-template<typename T>
-auto broadcast(const T* source) -> typename reg<T>::type;
-template<>
-auto broadcast<float>(const float* source) -> reg<float>::type
+inline auto broadcast(const float* source) -> reg<float>::type
 {
     return _mm256_broadcast_ss(source);
 }
-template<>
-auto broadcast<double>(const double* source) -> reg<double>::type
+inline auto broadcast(const double* source) -> reg<double>::type
 {
     return _mm256_broadcast_sd(source);
 }
 
-template<typename T>
-auto store(T* dest, typename reg<T>::type reg) -> void;
-template<>
-auto store<float>(float* dest, reg<float>::type reg) -> void
+void store(float* dest, reg<float>::type reg)
 {
     return _mm256_storeu_ps(dest, reg);
 }
-template<>
-auto store<double>(double* dest, reg<double>::type reg) -> void
+void store(double* dest, reg<double>::type reg)
 {
     return _mm256_storeu_pd(dest, reg);
 }
 
-template<typename T>
-auto store_s(T* dest, typename reg<T>::type reg) -> void;
-template<>
-auto store_s<float>(float* dest, reg<float>::type reg) -> void
+void store_s(float* dest, reg<float>::type reg)
 {
     const auto reg128 = _mm256_castps256_ps128(reg);
     return _mm_store_ss(dest, reg128);
 }
-template<>
-auto store_s<double>(double* dest, reg<double>::type reg) -> void
+void store_s(double* dest, reg<double>::type reg)
 {
     const auto reg128 = _mm256_castpd256_pd128(reg);
     return _mm_store_sd(dest, reg128);

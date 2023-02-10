@@ -10,8 +10,8 @@
 
 
 void asm_test_fun(packed_cx_vector<double>& v1,
-             packed_cx_vector<double>& v2,
-             std::complex<double>      v3)
+                  packed_cx_vector<double>& v2,
+                  std::complex<double>      v3)
 {
     v1 = v1 + v2;
 }
@@ -152,119 +152,119 @@ int test_arithm(std::size_t length)
 
     auto stdrval = std::vector<T>(length, rval);
     auto stdval  = std::vector<std::complex<T>>(length, val);
-//
-//     vecr = vec1 + vec2;
-//     if (!test_add(stdvec1, stdvec2, vecr))
-//     {
-//         return 1;
-//     }
-//     vecr = vec1 - vec2;
-//     if (!test_sub(stdvec1, stdvec2, vecr))
-//     {
-//         return 1;
-//     }
-//
-//     vecr = vec1 * vec2;
-//     if (!test_mul(stdvec1, stdvec2, vecr))
-//     {
-//         return 1;
-//     }
-//     vecr = vec1 / vec2;
-//     if (!test_div(stdvec1, stdvec2, vecr))
-//     {
-//         return 1;
-//     }
-//
-//     vecr = rval + vec2;
-//     if (!test_add(stdrval, stdvec2, vecr))
-//     {
-//         return 1;
-//     }
-//     vecr = rval - vec2;
-//     if (!test_sub(stdrval, stdvec2, vecr))
-//     {
-//         return 1;
-//     }
-//     vecr = rval * vec2;
-//     if (!test_mul(stdrval, stdvec2, vecr))
-//     {
-//         return 1;
-//     }
-//     vecr = rval / vec2;
-//     if (!test_div(stdrval, stdvec2, vecr))
-//     {
-//         return 1;
-//     }
-//
-//     vecr = vec1 + rval;
-//     if (!test_add(stdvec1, stdrval, vecr))
-//     {
-//         return 1;
-//     }
-//     vecr = vec1 - rval;
-//     if (!test_sub(stdvec1, stdrval, vecr))
-//     {
-//         return 1;
-//     }
-//     vecr = vec1 * rval;
-//     if (!test_mul(stdvec1, stdrval, vecr))
-//     {
-//         return 1;
-//     }
-//     vecr = vec1 / rval;
-//     if (!test_div(stdvec1, stdrval, vecr))
-//     {
-//         return 1;
-//     }
-//
-//     vecr = val + vec2;
-//     if (!test_add(stdval, stdvec2, vecr))
-//     {
-//         return 1;
-//     }
-//     vecr = val - vec2;
-//     if (!test_sub(stdval, stdvec2, vecr))
-//     {
-//         return 1;
-//     }
-//     vecr = val * vec2;
-//     if (!test_mul(stdval, stdvec2, vecr))
-//     {
-//         return 1;
-//     }
-//     vecr = val / vec2;
-//     if (!test_div(stdval, stdvec2, vecr))
-//     {
-//         return 1;
-//     }
-//
-//     vecr = vec1 + val;
-//     if (!test_add(stdvec1, stdval, vecr))
-//     {
-//         return 1;
-//     }
-//     vecr = vec1 - val;
-//     if (!test_sub(stdvec1, stdval, vecr))
-//     {
-//         return 1;
-//     }
-//     vecr = vec1 * val;
-//     if (!test_mul(stdvec1, stdval, vecr))
-//     {
-//         return 1;
-//     }
-//     vecr = vec1 / val;
-//     if (!test_div(stdvec1, stdval, vecr))
-//     {
-//         return 1;
-//     }
-//
-//     vecr = (rval + (val * vec1 * rval)) + (val + (rval / vec2 * val)) + val;
-//     if (!test_compound(stdvec1, stdvec2, vecr, rval, val))
-//     {
-//         return 1;
-//     }
-//
+
+    vecr = vec1 + vec2;
+    if (!test_add(stdvec1, stdvec2, vecr))
+    {
+        return 1;
+    }
+    vecr = vec1 - vec2;
+    if (!test_sub(stdvec1, stdvec2, vecr))
+    {
+        return 1;
+    }
+
+    vecr = vec1 * vec2;
+    if (!test_mul(stdvec1, stdvec2, vecr))
+    {
+        return 1;
+    }
+    vecr = vec1 / vec2;
+    if (!test_div(stdvec1, stdvec2, vecr))
+    {
+        return 1;
+    }
+
+    vecr = rval + vec2;
+    if (!test_add(stdrval, stdvec2, vecr))
+    {
+        return 1;
+    }
+    //     vecr = rval - vec2;
+    //     if (!test_sub(stdrval, stdvec2, vecr))
+    //     {
+    //         return 1;
+    //     }
+    //     vecr = rval * vec2;
+    //     if (!test_mul(stdrval, stdvec2, vecr))
+    //     {
+    //         return 1;
+    //     }
+    //     vecr = rval / vec2;
+    //     if (!test_div(stdrval, stdvec2, vecr))
+    //     {
+    //         return 1;
+    //     }
+    //
+    vecr = vec1 + rval;
+    if (!test_add(stdvec1, stdrval, vecr))
+    {
+        return 1;
+    }
+    //     vecr = vec1 - rval;
+    //     if (!test_sub(stdvec1, stdrval, vecr))
+    //     {
+    //         return 1;
+    //     }
+    //     vecr = vec1 * rval;
+    //     if (!test_mul(stdvec1, stdrval, vecr))
+    //     {
+    //         return 1;
+    //     }
+    //     vecr = vec1 / rval;
+    //     if (!test_div(stdvec1, stdrval, vecr))
+    //     {
+    //         return 1;
+    //     }
+    //
+        vecr = val + vec2;
+        if (!test_add(stdval, stdvec2, vecr))
+        {
+            return 1;
+        }
+    //     vecr = val - vec2;
+    //     if (!test_sub(stdval, stdvec2, vecr))
+    //     {
+    //         return 1;
+    //     }
+    //     vecr = val * vec2;
+    //     if (!test_mul(stdval, stdvec2, vecr))
+    //     {
+    //         return 1;
+    //     }
+    //     vecr = val / vec2;
+    //     if (!test_div(stdval, stdvec2, vecr))
+    //     {
+    //         return 1;
+    //     }
+    //
+        vecr = vec1 + val;
+        if (!test_add(stdvec1, stdval, vecr))
+        {
+            return 1;
+        }
+    //     vecr = vec1 - val;
+    //     if (!test_sub(stdvec1, stdval, vecr))
+    //     {
+    //         return 1;
+    //     }
+    //     vecr = vec1 * val;
+    //     if (!test_mul(stdvec1, stdval, vecr))
+    //     {
+    //         return 1;
+    //     }
+    //     vecr = vec1 / val;
+    //     if (!test_div(stdvec1, stdval, vecr))
+    //     {
+    //         return 1;
+    //     }
+    //
+    //     vecr = (rval + (val * vec1 * rval)) + (val + (rval / vec2 * val)) + val;
+    //     if (!test_compound(stdvec1, stdvec2, vecr, rval, val))
+    //     {
+    //         return 1;
+    //     }
+    //
 
     return 0;
 }
@@ -272,7 +272,6 @@ int test_arithm(std::size_t length)
 
 int main()
 {
-
     int res = 0;
     for (uint i = 1; i < 64; ++i)
     {
