@@ -60,7 +60,6 @@ inline auto broadcast(const std::complex<T>& source) -> cx_reg<T>
     const auto& value = reinterpret_cast<const T(&)[2]>(source);
     return {avx::broadcast(&(value[0])), avx::broadcast(&(value[1]))};
 }
-
 template<typename T>
 inline auto broadcast(const T& source) -> typename reg<T>::type
 {
@@ -154,12 +153,6 @@ inline auto div(cx_reg<T> lhs, typename reg<T>::type rhs) -> cx_reg<T>
 
 namespace internal {
 
-template<typename E>
-struct is_scalar
-{
-    static constexpr bool value = false;
-};
-
 class expression_base
 {
 public:
@@ -252,26 +245,53 @@ concept compatible_scalar =
     vector_expression<Expression> &&
     (std::same_as<typename Expression::real_type, Scalar> ||
      std::same_as<std::complex<typename Expression::real_type>, Scalar>);
+
 }    // namespace internal
 
-
-// #region expression
+// #region forward declarations
 
 template<typename E1, typename E2>
     requires internal::compatible_expressions<E1, E2>
 auto operator+(const E1& lhs, const E2& rhs);
-
 template<typename E1, typename E2>
     requires internal::compatible_expressions<E1, E2>
 auto operator-(const E1& lhs, const E2& rhs);
-
 template<typename E1, typename E2>
     requires internal::compatible_expressions<E1, E2>
 auto operator*(const E1& lhs, const E2& rhs);
-
 template<typename E1, typename E2>
     requires internal::compatible_expressions<E1, E2>
 auto operator/(const E1& lhs, const E2& rhs);
+
+template<typename E, typename S>
+    requires internal::compatible_scalar<E, S>
+auto operator+(const E& vector, S scalar);
+template<typename E, typename S>
+    requires internal::compatible_scalar<E, S>
+auto operator+(S scalar, const E& vector);
+
+template<typename E, typename S>
+    requires internal::compatible_scalar<E, S>
+auto operator-(const E& vector, S scalar);
+template<typename E, typename S>
+    requires internal::compatible_scalar<E, S>
+auto operator-(S scalar, const E& vector);
+
+template<typename E, typename S>
+    requires internal::compatible_scalar<E, S>
+auto operator*(const E& vector, S scalar);
+template<typename E, typename S>
+    requires internal::compatible_scalar<E, S>
+auto operator*(S scalar, const E& vector);
+
+template<typename E, typename S>
+    requires internal::compatible_scalar<E, S>
+auto operator/(const E& vector, S scalar);
+template<typename E, typename S>
+    requires internal::compatible_scalar<E, S>
+auto operator/(S scalar, const E& vector);
+
+// #endregion forward declarations
 
 namespace internal {
 
@@ -466,10 +486,7 @@ private:
     : m_lhs(lhs)
     , m_rhs(rhs)
     {
-        if constexpr (!is_scalar<E1>::value && !is_scalar<E2>::value)
-        {
-            assert(lhs.size() == rhs.size());
-        };
+        assert(lhs.size() == rhs.size());
     };
 
     const E1 m_lhs;
@@ -667,10 +684,7 @@ private:
     : m_lhs(lhs)
     , m_rhs(rhs)
     {
-        if constexpr (!is_scalar<E1>::value && !is_scalar<E2>::value)
-        {
-            assert(lhs.size() == rhs.size());
-        };
+        assert(lhs.size() == rhs.size());
     };
 
     const E1 m_lhs;
@@ -867,10 +881,7 @@ private:
     : m_lhs(lhs)
     , m_rhs(rhs)
     {
-        if constexpr (!is_scalar<E1>::value && !is_scalar<E2>::value)
-        {
-            assert(lhs.size() == rhs.size());
-        };
+        assert(lhs.size() == rhs.size());
     };
 
     const E1 m_lhs;
@@ -1077,79 +1088,12 @@ private:
     : m_lhs(lhs)
     , m_rhs(rhs)
     {
-        if constexpr (!is_scalar<E1>::value && !is_scalar<E2>::value)
-        {
-            assert(lhs.size() == rhs.size());
-        };
+        assert(lhs.size() == rhs.size());
     };
 
     const E1 m_lhs;
     const E2 m_rhs;
 };
-
-}    // namespace internal
-
-template<typename E1, typename E2>
-    requires internal::compatible_expressions<E1, E2>
-auto operator+(const E1& lhs, const E2& rhs)
-{
-    return internal::add(lhs, rhs);
-};
-
-template<typename E1, typename E2>
-    requires internal::compatible_expressions<E1, E2>
-auto operator-(const E1& lhs, const E2& rhs)
-{
-    return internal::sub(lhs, rhs);
-};
-
-template<typename E1, typename E2>
-    requires internal::compatible_expressions<E1, E2>
-auto operator*(const E1& lhs, const E2& rhs)
-{
-    return internal::mul(lhs, rhs);
-};
-
-template<typename E1, typename E2>
-    requires internal::compatible_expressions<E1, E2>
-auto operator/(const E1& lhs, const E2& rhs)
-{
-    return internal::div(lhs, rhs);
-};
-
-// #endregion expression
-
-// #region scalar
-
-template<typename E, typename S>
-    requires internal::compatible_scalar<E, S>
-auto operator+(const E& vector, S scalar);
-template<typename E, typename S>
-    requires internal::compatible_scalar<E, S>
-auto operator+(S scalar, const E& vector);
-
-template<typename E, typename S>
-    requires internal::compatible_scalar<E, S>
-auto operator-(const E& vector, S scalar);
-template<typename E, typename S>
-    requires internal::compatible_scalar<E, S>
-auto operator-(S scalar, const E& vector);
-
-template<typename E, typename S>
-    requires internal::compatible_scalar<E, S>
-auto operator*(const E& vector, S scalar);
-template<typename E, typename S>
-    requires internal::compatible_scalar<E, S>
-auto operator*(S scalar, const E& vector);
-
-template<typename E, typename S>
-    requires internal::compatible_scalar<E, S>
-auto operator/(const E& vector, S scalar);
-template<typename E, typename S>
-    requires internal::compatible_scalar<E, S>
-auto operator/(S scalar, const E& vector);
-
-namespace internal {
 
 template<typename E, typename S>
     requires compatible_scalar<E, S>
@@ -1924,118 +1868,91 @@ private:
     S       m_scalar;
 };
 
-
 }    // namespace internal
 
 
+template<typename E1, typename E2>
+    requires internal::compatible_expressions<E1, E2>
+inline auto operator+(const E1& lhs, const E2& rhs)
+{
+    return internal::add(lhs, rhs);
+};
+template<typename E1, typename E2>
+    requires internal::compatible_expressions<E1, E2>
+inline auto operator-(const E1& lhs, const E2& rhs)
+{
+    return internal::sub(lhs, rhs);
+};
+template<typename E1, typename E2>
+    requires internal::compatible_expressions<E1, E2>
+inline auto operator*(const E1& lhs, const E2& rhs)
+{
+    return internal::mul(lhs, rhs);
+};
+template<typename E1, typename E2>
+    requires internal::compatible_expressions<E1, E2>
+inline auto operator/(const E1& lhs, const E2& rhs)
+{
+    return internal::div(lhs, rhs);
+};
+
 template<typename E, typename S>
     requires internal::compatible_scalar<E, S>
-auto operator+(const E& vector, S scalar)
+inline auto operator+(const E& vector, S scalar)
 {
     return internal::scalar_add(scalar, vector);
 }
 template<typename E, typename S>
     requires internal::compatible_scalar<E, S>
-auto operator+(S scalar, const E& vector)
+inline auto operator+(S scalar, const E& vector)
 {
     return internal::scalar_add(scalar, vector);
 }
 
 template<typename E, typename S>
     requires internal::compatible_scalar<E, S>
-auto operator-(const E& vector, S scalar)
+inline auto operator-(const E& vector, S scalar)
 {
     return internal::scalar_add(-scalar, vector);
 }
 template<typename E, typename S>
     requires internal::compatible_scalar<E, S>
-auto operator-(S scalar, const E& vector)
+inline auto operator-(S scalar, const E& vector)
 {
     return internal::scalar_sub(scalar, vector);
 }
 
 template<typename E, typename S>
     requires internal::compatible_scalar<E, S>
-auto operator*(const E& vector, S scalar)
+inline auto operator*(const E& vector, S scalar)
 {
     return internal::scalar_mul(scalar, vector);
 }
 template<typename E, typename S>
     requires internal::compatible_scalar<E, S>
-auto operator*(S scalar, const E& vector)
+inline auto operator*(S scalar, const E& vector)
 {
     return internal::scalar_mul(scalar, vector);
 }
 
 template<typename E, typename S>
     requires internal::compatible_scalar<E, S>
-auto operator/(const E& vector, S scalar)
+inline auto operator/(const E& vector, S scalar)
 {
     return internal::scalar_mul(S(1) / scalar, vector);
 }
 template<typename E, typename S>
     requires internal::compatible_scalar<E, S>
-auto operator/(S scalar, const E& vector)
+inline auto operator/(S scalar, const E& vector)
 {
     return internal::scalar_div(scalar, vector);
 }
-
-
-// template<typename E>
-//     requires internal::vector_expression<E>
-// auto operator+(typename E::real_type lhs, const E& rhs)
-// {
-//     return internal::scalar_add(lhs, rhs);
-// }
-//
-// template<typename E>
-//     requires internal::vector_expression<E>
-// auto operator-(const E& lhs, typename E::real_type rhs)
-// {
-//     return internal::scalar_add(-rhs, lhs);
-// }
-// template<typename E>
-//     requires internal::vector_expression<E>
-// auto operator-(typename E::real_type lhs, const E& rhs)
-// {
-//     return internal::rscalar_sub(lhs, rhs);
-// }
-//
-// template<typename E>
-//     requires internal::vector_expression<E>
-// auto operator*(const E& lhs, typename E::real_type rhs)
-// {
-//     return internal::rscalar_mul(rhs, lhs);
-// }
-// template<typename E>
-//     requires internal::vector_expression<E>
-// auto operator*(typename E::real_type lhs, const E& rhs)
-// {
-//     return internal::rscalar_mul(lhs, rhs);
-// }
-//
-// template<typename E>
-//     requires internal::vector_expression<E>
-// auto operator/(const E& lhs, typename E::real_type rhs)
-// {
-//     return internal::rscalar_mul(1 / rhs, lhs);
-// }
-// template<typename E>
-//     requires internal::vector_expression<E>
-// auto operator/(typename E::real_type lhs, const E& rhs)
-// {
-//     return internal::rscalar_div(lhs, rhs);
-// }
-
-// #endregion scalar
-
-// #region vector
 
 template<typename E, typename T, std::size_t PackSize, typename Allocator>
     requires packed_floating_point<T, PackSize> &&
              (!std::same_as<E, packed_cx_vector<T, PackSize, Allocator>>) &&
              requires(packed_subrange<T, PackSize> subrange, E e) { e + subrange; }
-auto operator+(const E&                                        expression,
+inline auto operator+(const E&                                        expression,
                const packed_cx_vector<T, PackSize, Allocator>& vector)
 {
     return expression + packed_subrange(vector.begin(), vector.size());
@@ -2043,7 +1960,7 @@ auto operator+(const E&                                        expression,
 template<typename T, std::size_t PackSize, typename Allocator, typename E>
     requires packed_floating_point<T, PackSize> &&
              requires(packed_subrange<T, PackSize> subrange, E e) { subrange + e; }
-auto operator+(const packed_cx_vector<T, PackSize, Allocator>& vector,
+inline auto operator+(const packed_cx_vector<T, PackSize, Allocator>& vector,
                const E&                                        expression)
 {
     return packed_subrange(vector.begin(), vector.size()) + expression;
@@ -2053,7 +1970,7 @@ template<typename E, typename T, std::size_t PackSize, typename Allocator>
     requires packed_floating_point<T, PackSize> &&
              (!std::same_as<E, packed_cx_vector<T, PackSize, Allocator>>) &&
              requires(packed_subrange<T, PackSize> subrange, E e) { e - subrange; }
-auto operator-(const E&                                        expression,
+inline auto operator-(const E&                                        expression,
                const packed_cx_vector<T, PackSize, Allocator>& vector)
 {
     return expression - packed_subrange(vector.begin(), vector.size());
@@ -2061,7 +1978,7 @@ auto operator-(const E&                                        expression,
 template<typename T, std::size_t PackSize, typename Allocator, typename E>
     requires packed_floating_point<T, PackSize> &&
              requires(packed_subrange<T, PackSize> subrange, E e) { subrange - e; }
-auto operator-(const packed_cx_vector<T, PackSize, Allocator>& vector,
+inline auto operator-(const packed_cx_vector<T, PackSize, Allocator>& vector,
                const E&                                        expression)
 {
     return packed_subrange(vector.begin(), vector.size()) - expression;
@@ -2071,7 +1988,7 @@ template<typename E, typename T, std::size_t PackSize, typename Allocator>
     requires packed_floating_point<T, PackSize> &&
              (!std::same_as<E, packed_cx_vector<T, PackSize, Allocator>>) &&
              requires(packed_subrange<T, PackSize> subrange, E e) { e* subrange; }
-auto operator*(const E&                                        expression,
+inline auto operator*(const E&                                        expression,
                const packed_cx_vector<T, PackSize, Allocator>& vector)
 {
     return expression * packed_subrange(vector.begin(), vector.size());
@@ -2079,7 +1996,7 @@ auto operator*(const E&                                        expression,
 template<typename T, std::size_t PackSize, typename Allocator, typename E>
     requires packed_floating_point<T, PackSize> &&
              requires(packed_subrange<T, PackSize> subrange, E e) { subrange* e; }
-auto operator*(const packed_cx_vector<T, PackSize, Allocator>& vector,
+inline auto operator*(const packed_cx_vector<T, PackSize, Allocator>& vector,
                const E&                                        expression)
 {
     return packed_subrange(vector.begin(), vector.size()) * expression;
@@ -2089,7 +2006,7 @@ template<typename E, typename T, std::size_t PackSize, typename Allocator>
     requires packed_floating_point<T, PackSize> &&
              (!std::same_as<E, packed_cx_vector<T, PackSize, Allocator>>) &&
              requires(packed_subrange<T, PackSize> subrange, E e) { e / subrange; }
-auto operator/(const E&                                        expression,
+inline auto operator/(const E&                                        expression,
                const packed_cx_vector<T, PackSize, Allocator>& vector)
 {
     return expression / packed_subrange(vector.begin(), vector.size());
@@ -2097,12 +2014,11 @@ auto operator/(const E&                                        expression,
 template<typename T, std::size_t PackSize, typename Allocator, typename E>
     requires packed_floating_point<T, PackSize> &&
              requires(packed_subrange<T, PackSize> subrange, E e) { subrange / e; }
-auto operator/(const packed_cx_vector<T, PackSize, Allocator>& vector,
+inline auto operator/(const packed_cx_vector<T, PackSize, Allocator>& vector,
                const E&                                        expression)
 {
     return packed_subrange(vector.begin(), vector.size()) / expression;
 };
 
-    // #endregion vector
 
 #endif
