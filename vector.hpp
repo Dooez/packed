@@ -19,7 +19,7 @@ template<typename T,
     requires packed_floating_point<T, PackSize>
 class packed_cx_vector
 {
-    friend class internal::expression_base;
+    friend class internal::expression_traits;
 
 private:
     using alloc_traits = std::allocator_traits<Allocator>;
@@ -207,8 +207,8 @@ public:
         }
     }
 
-    template<typename E>
-        requires(!std::same_as<E, packed_cx_vector>) && internal::vector_expression<E> // clang preferes this overload to normal copy assignment
+    template<typename E>    // clang preferes this overload to normal copy assignment
+        requires(!std::same_as<E, packed_cx_vector>) && internal::vector_expression<E>
     packed_cx_vector& operator=(const E& other)
     {
         assert(m_size == other.size());
@@ -576,7 +576,7 @@ class packed_subrange : public std::ranges::view_base
         requires packed_floating_point<TVec, PackSizeVec>
     friend class packed_cx_vector;
 
-    friend class internal::expression_base;
+    friend class internal::expression_traits;
 
 public:
     using real_type       = T;
