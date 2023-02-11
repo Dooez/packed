@@ -102,13 +102,13 @@ int test_subvector(const Vec& vector)
     auto vec_def   = Vec();
     auto vec_size  = Vec(size);
     auto vec_2     = Vec(size, vals[1]);
-    auto sub       = vec_size.subrange(0, size);
+    auto sub       = packed_subrange(vec_size.begin(), size);
     sub.fill(vals[0]);
     if (!check_val(vec_size, vals[0]))
     {
         return 1;
     }
-    auto sub2 = vec_2.subrange(0, size);
+    auto sub2 = packed_subrange(vec_2.begin(), size);
 
     sub.assign(sub * sub2);
     if (!check_val(vec_size, vals[1]))

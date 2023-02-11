@@ -321,7 +321,7 @@ public:
     {
         return m_size;
     };
-    [[nodiscard]] auto length() const noexcept -> size_type
+    [[nodiscard]] constexpr auto length() const noexcept -> size_type
     {
         return size();
     };
@@ -365,20 +365,6 @@ public:
     {
         return const_iterator(m_ptr + packed_idx(size()), size());
     }
-
-    [[nodiscard]] auto subrange(size_type idx_start, size_type idx_end)
-        -> packed_subrange<T, PackSize>
-    {
-        return packed_subrange<T, PackSize>(begin() + idx_start, idx_end - idx_start);
-    }
-
-    template<std::size_t Size>
-    [[nodiscard]] auto subrange(size_type idx_start)
-        -> packed_subrange<T, PackSize, false, Size>
-    {
-        return packed_subrange<T, PackSize, false, Size>(begin() + idx_start);
-    }
-
 
 private:
     [[no_unique_address]] allocator_type m_allocator{};
@@ -536,10 +522,11 @@ public:
     }
 
     template<bool OConst>
-    [[nodiscard]] difference_type
-    operator-(const packed_iterator<T, PackSize, OConst>& other) const noexcept
+    [[nodiscard]] friend auto
+    operator-(const packed_iterator&                      lhs,
+              const packed_iterator<T, PackSize, OConst>& rhs) noexcept -> difference_type
     {
-        return m_idx - other.m_idx;
+        return lhs.m_idx - rhs.m_idx;
     }
 
     [[nodiscard]] bool aligned(difference_type idx = 0) const noexcept
@@ -551,7 +538,7 @@ public:
      *
      * @return packed_iterator
      */
-    [[nodiscard]] packed_iterator align_lower() const noexcept
+    [[nodiscard]] auto align_lower() const noexcept -> packed_iterator
     {
         return *this - m_idx % PackSize;
     }
@@ -560,7 +547,7 @@ public:
      *
      * @return packed_iterator
      */
-    [[nodiscard]] packed_iterator align_upper() const noexcept
+    [[nodiscard]] auto align_upper() const noexcept -> packed_iterator
     {
         return m_idx % PackSize == 0 ? *this : *this + PackSize - m_idx % PackSize;
     }
@@ -587,8 +574,7 @@ public:
     using iterator       = packed_iterator<T, PackSize, Const>;
     using const_iterator = packed_iterator<T, PackSize, true>;
 
-    using reference       = typename iterator::reference;
-    using const_reference = typename const_iterator::reference;
+    using reference = typename iterator::reference;
 
     static constexpr size_type pack_size = PackSize;
 
@@ -627,11 +613,7 @@ public:
         first.swap(second);
     }
 
-    [[nodiscard]] auto begin() -> iterator
-    {
-        return m_begin;
-    }
-    [[nodiscard]] auto begin() const -> const_iterator
+    [[nodiscard]] auto begin() const -> iterator
     {
         return m_begin;
     }
@@ -639,11 +621,7 @@ public:
     {
         return m_begin;
     }
-    [[nodiscard]] auto end() -> iterator
-    {
-        return m_begin + size();
-    }
-    [[nodiscard]] auto end() const -> const_iterator
+    [[nodiscard]] auto end() const -> iterator
     {
         return m_begin + size();
     }
@@ -652,11 +630,7 @@ public:
         return m_begin + size();
     }
 
-    [[nodiscard]] auto operator[](difference_type idx) -> reference
-    {
-        return *(m_begin + idx);
-    }
-    [[nodiscard]] auto operator[](difference_type idx) const -> const_reference
+    [[nodiscard]] auto operator[](difference_type idx) const -> reference
     {
         return *(m_begin + idx);
     }
@@ -671,7 +645,7 @@ public:
             return Extent;
         }
     };
-    [[nodiscard]] bool empty() const
+    [[nodiscard]] constexpr bool empty() const
     {
         return size() == 0;
     }
@@ -703,7 +677,7 @@ public:
     {
         assert(size() == expression.size());
 
-        auto it_this  = begin();
+        auto it_this = begin();
         auto it_expr = expression.begin();
 
         if (it_expr.aligned())

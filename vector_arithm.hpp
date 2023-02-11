@@ -301,10 +301,8 @@ public:
         friend class add;
 
     private:
-        using lhs_iterator =
-            std::remove_cvref_t<decltype(std::declval<const E1>().begin())>;
-        using rhs_iterator =
-            std::remove_cvref_t<decltype(std::declval<const E2>().begin())>;
+        using lhs_iterator = decltype(std::declval<const E1>().begin());
+        using rhs_iterator = decltype(std::declval<const E2>().begin());
 
         iterator(lhs_iterator lhs, rhs_iterator rhs)
         : m_lhs(std::move(lhs))
@@ -487,10 +485,8 @@ public:
         friend class sub;
 
     private:
-        using lhs_iterator =
-            std::remove_cvref_t<decltype(std::declval<const E1>().begin())>;
-        using rhs_iterator =
-            std::remove_cvref_t<decltype(std::declval<const E2>().begin())>;
+        using lhs_iterator = decltype(std::declval<const E1>().begin());
+        using rhs_iterator = decltype(std::declval<const E2>().begin());
 
         iterator(lhs_iterator lhs, rhs_iterator rhs)
         : m_lhs(std::move(lhs))
@@ -673,10 +669,8 @@ public:
         friend class mul;
 
     private:
-        using lhs_iterator =
-            std::remove_cvref_t<decltype(std::declval<const E1>().begin())>;
-        using rhs_iterator =
-            std::remove_cvref_t<decltype(std::declval<const E2>().begin())>;
+        using lhs_iterator = decltype(std::declval<const E1>().begin());
+        using rhs_iterator = decltype(std::declval<const E2>().begin());
 
         iterator(lhs_iterator lhs, rhs_iterator rhs)
         : m_lhs(std::move(lhs))
@@ -859,10 +853,8 @@ public:
         friend class div;
 
     private:
-        using lhs_iterator =
-            std::remove_cvref_t<decltype(std::declval<const E1>().begin())>;
-        using rhs_iterator =
-            std::remove_cvref_t<decltype(std::declval<const E2>().begin())>;
+        using lhs_iterator = decltype(std::declval<const E1>().begin());
+        using rhs_iterator = decltype(std::declval<const E2>().begin());
 
         iterator(lhs_iterator lhs, rhs_iterator rhs)
         : m_lhs(std::move(lhs))
@@ -1047,8 +1039,7 @@ public:
         friend class scalar_add;
 
     private:
-        using vector_iterator =
-            std::remove_cvref_t<decltype(std::declval<const E>().begin())>;
+        using vector_iterator = decltype(std::declval<const E>().begin());
 
         iterator(S scalar, vector_iterator vector)
         : m_vector(std::move(vector))
@@ -1225,8 +1216,7 @@ public:
         friend class scalar_sub;
 
     private:
-        using vector_iterator =
-            std::remove_cvref_t<decltype(std::declval<const E>().begin())>;
+        using vector_iterator = decltype(std::declval<const E>().begin());
 
         iterator(S scalar, vector_iterator vector)
         : m_vector(std::move(vector))
@@ -1405,8 +1395,7 @@ public:
         friend class scalar_mul;
 
     private:
-        using vector_iterator =
-            std::remove_cvref_t<decltype(std::declval<const E>().begin())>;
+        using vector_iterator = decltype(std::declval<const E>().begin());
 
         iterator(S scalar, vector_iterator vector)
         : m_vector(std::move(vector))
@@ -1583,8 +1572,7 @@ public:
         friend class scalar_div;
 
     private:
-        using vector_iterator =
-            std::remove_cvref_t<decltype(std::declval<const E>().begin())>;
+        using vector_iterator = decltype(std::declval<const E>().begin());
 
         iterator(S scalar, vector_iterator vector)
         : m_vector(std::move(vector))
