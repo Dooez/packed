@@ -222,7 +222,7 @@ public:
      */
     template<typename T, std::size_t PackSize, bool Const>
     static constexpr auto cx_reg(const packed_iterator<T, PackSize, Const>& iterator,
-                                  std::size_t idx) -> avx::cx_reg<T>
+                                 std::size_t idx) -> avx::cx_reg<T>
     {
         auto real = avx::load(&(*iterator) + idx);
         auto imag = avx::load(&(*iterator) + idx + PackSize);
@@ -1043,27 +1043,18 @@ class scalar_add
 : public std::ranges::view_base
 , private expression_traits
 {
-    template<typename T, std::size_t PackSize, typename Allocator>
-        requires packed_floating_point<T, PackSize>
-    friend class ::packed_cx_vector;
-    friend class expression_traits;
-
-    friend auto ::operator+(const E& vector, S scalar);
-    friend auto ::operator+(S scalar, const E& vector);
-    friend auto ::operator-(const E& vector, S scalar);
+    friend auto operator+<E,S>(const E& vector, S scalar);
+    friend auto operator+<E,S>(S scalar, const E& vector);
+    friend auto operator-<E,S>(const E& vector, S scalar);
 
 public:
     using real_type = typename E::real_type;
 
     class iterator : private expression_traits
     {
-        template<typename T, std::size_t PackSize, typename Allocator>
-            requires packed_floating_point<T, PackSize>
-        friend class ::packed_cx_vector;
-        friend class expression_traits;
         friend class scalar_add;
 
-
+    private:
         using vector_iterator = typename E::iterator;
 
         iterator(S scalar, vector_iterator vector)
@@ -1071,10 +1062,9 @@ public:
         , m_scalar(std::move(scalar)){};
 
     public:
-        using real_type       = scalar_add::real_type;
-        using value_type      = const std::complex<real_type>;
-        using difference_type = std::ptrdiff_t;
-
+        using real_type        = scalar_add::real_type;
+        using value_type       = const std::complex<real_type>;
+        using difference_type  = std::ptrdiff_t;
         using iterator_concept = std::random_access_iterator_tag;
 
         iterator() = default;
@@ -1086,6 +1076,71 @@ public:
 
         iterator& operator=(const iterator& other) noexcept = default;
         iterator& operator=(iterator&& other) noexcept      = default;
+
+
+        [[nodiscard]] bool operator==(const iterator& other) const noexcept
+        {
+            return (m_vector == other.m_vector);
+        }
+        [[nodiscard]] auto operator<=>(const iterator& other) const noexcept
+        {
+            return (m_vector <=> other.m_vector);
+        }
+
+        auto operator++() noexcept -> iterator&
+        {
+            ++m_vector;
+            return *this;
+        }
+        auto operator++(int) noexcept -> iterator
+        {
+            auto copy = *this;
+            ++(*this);
+            return copy;
+        }
+        auto operator--() noexcept -> iterator&
+        {
+            --m_vector;
+        }
+        auto operator--(int) noexcept -> iterator
+        {
+            auto copy = *this;
+            --(*this);
+            return copy;
+        }
+
+        auto operator+=(difference_type n) noexcept -> iterator&
+        {
+            m_vector += n;
+            return *this;
+        }
+        auto operator-=(difference_type n) noexcept -> iterator&
+        {
+            return (*this) += -n;
+        }
+
+        [[nodiscard]] friend auto operator+(iterator it, difference_type n) noexcept
+            -> iterator
+        {
+            it += n;
+            return it;
+        }
+        [[nodiscard]] friend auto operator+(difference_type n, iterator it) noexcept
+            -> iterator
+        {
+            it += n;
+            return it;
+        }
+        [[nodiscard]] friend auto operator-(iterator it, difference_type n) noexcept
+            -> iterator
+        {
+            it -= n;
+            return it;
+        }
+        [[nodiscard]] friend auto operator-(iterator lhs, iterator rhs) noexcept
+        {
+            return lhs.m_vector - rhs.m_vector;
+        }
 
         // NOLINTNEXTLINE (*const*)
         [[nodiscard]] auto operator*() const -> value_type
@@ -1097,6 +1152,110 @@ public:
         {
             return m_scalar + value_type(*(m_vector + idx));
         }
+        auto cx_reg(std::size_t idx) const -> avx::cx_reg<real_type>
+        {
+            const auto scalar = avx::broadcast(m_scalar);
+            const auto vector = expression_traits::cx_reg(m_vector, idx);
+
+            return avx::add(scalar, vector);
+        }
+
+        [[nodiscard]] constexpr bool aligned(std::size_t offset = 0) const noexcept
+        {
+            return m_vector.aligned(offset);
+        }
+
+    private:
+        vector_iterator m_vector;
+        S               m_scalar;
+    };
+
+private:
+    scalar_add(S scalar, const E& vector)
+    : m_vector(vector)
+    , m_scalar(scalar){};
+
+public:
+    scalar_add() noexcept = default;
+
+    scalar_add(scalar_add&& other) noexcept = default;
+    scalar_add(const scalar_add&) noexcept  = default;
+
+    ~scalar_add() noexcept = default;
+
+    scalar_add& operator=(scalar_add&& other) noexcept
+    {
+        m_scalar = std::move(other.m_scalar);
+        m_vector = std::move(other.m_vector);
+        return *this;
+    };
+    scalar_add& operator=(const scalar_add&) noexcept = delete;
+
+    [[nodiscard]] auto begin() const noexcept -> iterator
+    {
+        return iterator(m_scalar, m_vector.begin());
+    }
+    [[nodiscard]] auto end() const noexcept -> iterator
+    {
+        return iterator(m_scalar, m_vector.end());
+    }
+
+    [[nodiscard]] auto operator[](std::size_t idx) const
+    {
+        return m_scalar + std::complex<real_type>(m_vector[idx]);
+    }
+    [[nodiscard]] constexpr auto size() const noexcept -> std::size_t
+    {
+        return m_vector.size();
+    }
+    [[nodiscard]] constexpr bool aligned(std::size_t offset = 0) const noexcept
+    {
+        return _aligned(m_vector, offset);
+    }
+
+private:
+    const E m_vector;
+    S       m_scalar;
+};
+
+template<typename E, typename S>
+    requires compatible_scalar<E, S>
+class scalar_sub
+: public std::ranges::view_base
+, private expression_traits
+{
+    friend auto operator-<E,S>(S scalar, const E& vector);
+
+public:
+    using real_type = typename E::real_type;
+
+    class iterator : private expression_traits
+    {
+        friend class scalar_sub;
+
+    private:
+        using vector_iterator = typename E::iterator;
+
+        iterator(S scalar, vector_iterator vector)
+        : m_vector(std::move(vector))
+        , m_scalar(std::move(scalar)){};
+
+    public:
+        using real_type        = scalar_sub::real_type;
+        using value_type       = const std::complex<real_type>;
+        using difference_type  = std::ptrdiff_t;
+        using iterator_concept = std::random_access_iterator_tag;
+
+        iterator() = default;
+
+        iterator(const iterator& other) noexcept = default;
+        iterator(iterator&& other) noexcept      = default;
+
+        ~iterator() = default;
+
+        iterator& operator=(const iterator& other) noexcept = default;
+        iterator& operator=(iterator&& other) noexcept      = default;
+
 
         [[nodiscard]] bool operator==(const iterator& other) const noexcept
         {
@@ -1161,123 +1320,6 @@ public:
         {
             return lhs.m_vector - rhs.m_vector;
         }
-
-        [[nodiscard]] bool aligned(std::size_t offset = 0) const noexcept
-        {
-            return m_vector.aligned(offset);
-        }
-
-    private:
-        auto cx_reg(std::size_t idx) const -> avx::cx_reg<real_type>
-        {
-            const auto scalar = avx::broadcast(m_scalar);
-            const auto vector = expression_traits::cx_reg(m_vector, idx);
-
-            return avx::add(scalar, vector);
-        }
-
-        vector_iterator m_vector;
-        S               m_scalar;
-    };
-
-    scalar_add() noexcept = default;
-
-    scalar_add(scalar_add&& other) noexcept
-    : m_scalar(std::move(other.m_scalar))
-    , m_vector(std::move(other.m_vector)){};
-
-    scalar_add(const scalar_add&) noexcept = default;
-
-    scalar_add& operator=(scalar_add&& other) noexcept
-    {
-        m_scalar = other.m_scalar;
-        m_vector = other.m_vector;
-    };
-
-    scalar_add& operator=(const scalar_add&) noexcept = delete;
-
-    ~scalar_add() noexcept = default;
-
-    constexpr auto size() const noexcept -> std::size_t
-    {
-        return m_vector.size();
-    }
-
-    auto operator[](std::size_t idx) const
-    {
-        return m_scalar + std::complex<real_type>(m_vector[idx]);
-    };
-
-    [[nodiscard]] auto begin() const noexcept -> iterator
-    {
-        return iterator(m_scalar, m_vector.begin());
-    }
-    [[nodiscard]] auto end() const noexcept -> iterator
-    {
-        return iterator(m_scalar, m_vector.end());
-    }
-
-    constexpr bool aligned(std::size_t offset = 0) const noexcept
-    {
-        return _aligned(m_vector, offset);
-    }
-
-private:
-    scalar_add(S scalar, const E& vector)
-    : m_vector(vector)
-    , m_scalar(scalar){};
-
-    const E m_vector;
-    S       m_scalar;
-};
-
-template<typename E, typename S>
-    requires compatible_scalar<E, S>
-class scalar_sub
-: public std::ranges::view_base
-, private expression_traits
-{
-    template<typename T, std::size_t PackSize, typename Allocator>
-        requires packed_floating_point<T, PackSize>
-    friend class ::packed_cx_vector;
-    friend class expression_traits;
-
-    friend auto ::operator-(S scalar, const E& vector);
-
-public:
-    using real_type = typename E::real_type;
-
-    class iterator : private expression_traits
-    {
-        template<typename T, std::size_t PackSize, typename Allocator>
-            requires packed_floating_point<T, PackSize>
-        friend class ::packed_cx_vector;
-        friend class expression_traits;
-        friend class scalar_sub;
-
-
-        using vector_iterator = typename E::iterator;
-
-        iterator(S scalar, vector_iterator vector)
-        : m_vector(std::move(vector))
-        , m_scalar(std::move(scalar)){};
-
-    public:
-        using real_type       = scalar_sub::real_type;
-        using value_type      = const std::complex<real_type>;
-        using difference_type = std::ptrdiff_t;
-
-        using iterator_concept = std::random_access_iterator_tag;
-
-        iterator() = default;
-
-        iterator(const iterator& other) noexcept = default;
-        iterator(iterator&& other) noexcept      = default;
-
-        ~iterator() = default;
-
-        iterator& operator=(const iterator& other) noexcept = default;
-        iterator& operator=(iterator&& other) noexcept      = default;
 
         // NOLINTNEXTLINE (*const*)
         [[nodiscard]] auto operator*() const -> value_type
@@ -1289,6 +1331,112 @@ public:
         {
             return m_scalar - value_type(*(m_vector + idx));
         }
+        auto cx_reg(std::size_t idx) const -> avx::cx_reg<real_type>
+        {
+            const auto scalar = avx::broadcast(m_scalar);
+            const auto vector = expression_traits::cx_reg(m_vector, idx);
+
+            return avx::sub(scalar, vector);
+        }
+
+        [[nodiscard]] constexpr bool aligned(std::size_t offset = 0) const noexcept
+        {
+            return m_vector.aligned(offset);
+        }
+
+    private:
+        vector_iterator m_vector;
+        S               m_scalar;
+    };
+
+private:
+    scalar_sub(S scalar, const E& vector)
+    : m_vector(vector)
+    , m_scalar(scalar){};
+
+public:
+    scalar_sub() noexcept = default;
+
+    scalar_sub(scalar_sub&& other) noexcept = default;
+    scalar_sub(const scalar_sub&) noexcept  = default;
+
+    ~scalar_sub() noexcept = default;
+
+    scalar_sub& operator=(scalar_sub&& other) noexcept
+    {
+        m_scalar = std::move(other.m_scalar);
+        m_vector = std::move(other.m_vector);
+        return *this;
+    };
+    scalar_sub& operator=(const scalar_sub&) noexcept = delete;
+
+    [[nodiscard]] auto begin() const noexcept -> iterator
+    {
+        return iterator(m_scalar, m_vector.begin());
+    }
+    [[nodiscard]] auto end() const noexcept -> iterator
+    {
+        return iterator(m_scalar, m_vector.end());
+    }
+
+    [[nodiscard]] auto operator[](std::size_t idx) const
+    {
+        return m_scalar - std::complex<real_type>(m_vector[idx]);
+    }
+    [[nodiscard]] constexpr auto size() const noexcept -> std::size_t
+    {
+        return m_vector.size();
+    }
+    [[nodiscard]] constexpr bool aligned(std::size_t offset = 0) const noexcept
+    {
+        return _aligned(m_vector, offset);
+    }
+
+private:
+    const E m_vector;
+    S       m_scalar;
+};
+
+template<typename E, typename S>
+    requires compatible_scalar<E, S>
+class scalar_mul
+: public std::ranges::view_base
+, private expression_traits
+{
+    friend auto operator*<E,S>(const E& vector, S scalar);
+    friend auto operator*<E,S>(S scalar, const E& vector);
+    friend auto operator/<E,S>(const E& vector, S scalar);
+
+public:
+    using real_type = typename E::real_type;
+
+    class iterator : private expression_traits
+    {
+        friend class scalar_mul;
+
+    private:
+        using vector_iterator = typename E::iterator;
+
+        iterator(S scalar, vector_iterator vector)
+        : m_vector(std::move(vector))
+        , m_scalar(std::move(scalar)){};
+
+    public:
+        using real_type        = scalar_mul::real_type;
+        using value_type       = const std::complex<real_type>;
+        using difference_type  = std::ptrdiff_t;
+        using iterator_concept = std::random_access_iterator_tag;
+
+        iterator() = default;
+
+        iterator(const iterator& other) noexcept = default;
+        iterator(iterator&& other) noexcept      = default;
+
+        ~iterator() = default;
+
+        iterator& operator=(const iterator& other) noexcept = default;
+        iterator& operator=(iterator&& other) noexcept      = default;
+
 
         [[nodiscard]] bool operator==(const iterator& other) const noexcept
         {
@@ -1353,125 +1501,6 @@ public:
         {
             return lhs.m_vector - rhs.m_vector;
         }
-
-        [[nodiscard]] bool aligned(std::size_t offset = 0) const noexcept
-        {
-            return m_vector.aligned(offset);
-        }
-
-    private:
-        auto cx_reg(std::size_t idx) const -> avx::cx_reg<real_type>
-        {
-            const auto scalar = avx::broadcast(m_scalar);
-            const auto vector = expression_traits::cx_reg(m_vector, idx);
-
-            return avx::sub(scalar, vector);
-        }
-
-        vector_iterator m_vector;
-        S               m_scalar;
-    };
-
-    scalar_sub() noexcept = default;
-
-    scalar_sub(scalar_sub&& other) noexcept
-    : m_scalar(std::move(other.m_scalar))
-    , m_vector(std::move(other.m_vector)){};
-
-    scalar_sub(const scalar_sub&) noexcept = default;
-
-    scalar_sub& operator=(scalar_sub&& other) noexcept
-    {
-        m_scalar = other.m_scalar;
-        m_vector = other.m_vector;
-    };
-
-    scalar_sub& operator=(const scalar_sub&) noexcept = delete;
-
-    ~scalar_sub() noexcept = default;
-
-    constexpr auto size() const noexcept -> std::size_t
-    {
-        return m_vector.size();
-    }
-
-    auto operator[](std::size_t idx) const
-    {
-        return m_scalar - std::complex<real_type>(m_vector[idx]);
-    };
-
-    [[nodiscard]] auto begin() const noexcept -> iterator
-    {
-        return iterator(m_scalar, m_vector.begin());
-    }
-    [[nodiscard]] auto end() const noexcept -> iterator
-    {
-        return iterator(m_scalar, m_vector.end());
-    }
-
-    constexpr bool aligned(std::size_t offset = 0) const noexcept
-    {
-        return _aligned(m_vector, offset);
-    }
-
-private:
-    scalar_sub(S scalar, const E& vector)
-    : m_vector(vector)
-    , m_scalar(scalar){};
-
-    const E m_vector;
-    S       m_scalar;
-};
-
-template<typename E, typename S>
-    requires compatible_scalar<E, S>
-class scalar_mul
-: public std::ranges::view_base
-, private expression_traits
-{
-    template<typename T, std::size_t PackSize, typename Allocator>
-        requires packed_floating_point<T, PackSize>
-    friend class ::packed_cx_vector;
-    friend class expression_traits;
-
-    friend auto ::operator*(const E& vector, S scalar);
-    friend auto ::operator*(S scalar, const E& vector);
-    friend auto ::operator/(const E& vector, S scalar);
-
-public:
-    using real_type = typename E::real_type;
-
-    class iterator : private expression_traits
-    {
-        template<typename T, std::size_t PackSize, typename Allocator>
-            requires packed_floating_point<T, PackSize>
-        friend class ::packed_cx_vector;
-        friend class expression_traits;
-        friend class scalar_mul;
-
-
-        using vector_iterator = typename E::iterator;
-
-        iterator(S scalar, vector_iterator vector)
-        : m_vector(std::move(vector))
-        , m_scalar(std::move(scalar)){};
-
-    public:
-        using real_type       = scalar_mul::real_type;
-        using value_type      = const std::complex<real_type>;
-        using difference_type = std::ptrdiff_t;
-
-        using iterator_concept = std::random_access_iterator_tag;
-
-        iterator() = default;
-
-        iterator(const iterator& other) noexcept = default;
-        iterator(iterator&& other) noexcept      = default;
-
-        ~iterator() = default;
-
-        iterator& operator=(const iterator& other) noexcept = default;
-        iterator& operator=(iterator&& other) noexcept      = default;
 
         // NOLINTNEXTLINE (*const*)
         [[nodiscard]] auto operator*() const -> value_type
@@ -1483,77 +1512,6 @@ public:
         {
             return m_scalar * value_type(*(m_vector + idx));
         }
-
-        [[nodiscard]] bool operator==(const iterator& other) const noexcept
-        {
-            return (m_vector == other.m_vector);
-        }
-        [[nodiscard]] auto operator<=>(const iterator& other) const noexcept
-        {
-            return (m_vector <=> other.m_vector);
-        }
-
-        auto operator++() noexcept -> iterator&
-        {
-            ++m_vector;
-            return *this;
-        }
-        auto operator++(int) noexcept -> iterator
-        {
-            auto copy = *this;
-            ++(*this);
-            return copy;
-        }
-        auto operator--() noexcept -> iterator&
-        {
-            --m_vector;
-        }
-        auto operator--(int) noexcept -> iterator
-        {
-            auto copy = *this;
-            --(*this);
-            return copy;
-        }
-
-        auto operator+=(difference_type n) noexcept -> iterator&
-        {
-            m_vector += n;
-            return *this;
-        }
-        auto operator-=(difference_type n) noexcept -> iterator&
-        {
-            return (*this) += -n;
-        }
-
-        [[nodiscard]] friend auto operator+(iterator it, difference_type n) noexcept
-            -> iterator
-        {
-            it += n;
-            return it;
-        }
-        [[nodiscard]] friend auto operator+(difference_type n, iterator it) noexcept
-            -> iterator
-        {
-            it += n;
-            return it;
-        }
-        [[nodiscard]] friend auto operator-(iterator it, difference_type n) noexcept
-            -> iterator
-        {
-            it -= n;
-            return it;
-        }
-        [[nodiscard]] friend auto operator-(iterator lhs, iterator rhs) noexcept
-        {
-            return lhs.m_vector - rhs.m_vector;
-        }
-
-        [[nodiscard]] bool aligned(std::size_t offset = 0) const noexcept
-        {
-            return m_vector.aligned(offset);
-        }
-
-    private:
         auto cx_reg(std::size_t idx) const -> avx::cx_reg<real_type>
         {
             const auto scalar = avx::broadcast(m_scalar);
@@ -1562,37 +1520,36 @@ public:
             return avx::mul(scalar, vector);
         }
 
+        [[nodiscard]] constexpr bool aligned(std::size_t offset = 0) const noexcept
+        {
+            return m_vector.aligned(offset);
+        }
+
+    private:
         vector_iterator m_vector;
         S               m_scalar;
     };
 
+private:
+    scalar_mul(S scalar, const E& vector)
+    : m_vector(vector)
+    , m_scalar(scalar){};
+
+public:
     scalar_mul() noexcept = default;
 
-    scalar_mul(scalar_mul&& other) noexcept
-    : m_scalar(std::move(other.m_scalar))
-    , m_vector(std::move(other.m_vector)){};
-
-    scalar_mul(const scalar_mul&) noexcept = default;
-
-    scalar_mul& operator=(scalar_mul&& other) noexcept
-    {
-        m_scalar = other.m_scalar;
-        m_vector = other.m_vector;
-    };
-
-    scalar_mul& operator=(const scalar_mul&) noexcept = delete;
+    scalar_mul(scalar_mul&& other) noexcept = default;
+    scalar_mul(const scalar_mul&) noexcept  = default;
 
     ~scalar_mul() noexcept = default;
 
-    constexpr auto size() const noexcept -> std::size_t
+    scalar_mul& operator=(scalar_mul&& other) noexcept
     {
-        return m_vector.size();
-    }
-
-    auto operator[](std::size_t idx) const
-    {
-        return m_scalar * std::complex<real_type>(m_vector[idx]);
+        m_scalar = std::move(other.m_scalar);
+        m_vector = std::move(other.m_vector);
+        return *this;
     };
+    scalar_mul& operator=(const scalar_mul&) noexcept = delete;
 
     [[nodiscard]] auto begin() const noexcept -> iterator
     {
@@ -1603,16 +1560,20 @@ public:
         return iterator(m_scalar, m_vector.end());
     }
 
-    constexpr bool aligned(std::size_t offset = 0) const noexcept
+    [[nodiscard]] auto operator[](std::size_t idx) const
+    {
+        return m_scalar * std::complex<real_type>(m_vector[idx]);
+    }
+    [[nodiscard]] constexpr auto size() const noexcept -> std::size_t
+    {
+        return m_vector.size();
+    }
+    [[nodiscard]] constexpr bool aligned(std::size_t offset = 0) const noexcept
     {
         return _aligned(m_vector, offset);
     }
 
 private:
-    scalar_mul(S scalar, const E& vector)
-    : m_vector(vector)
-    , m_scalar(scalar){};
-
     const E m_vector;
     S       m_scalar;
 };
@@ -1623,25 +1584,16 @@ class scalar_div
 : public std::ranges::view_base
 , private expression_traits
 {
-    template<typename T, std::size_t PackSize, typename Allocator>
-        requires packed_floating_point<T, PackSize>
-    friend class ::packed_cx_vector;
-    friend class expression_traits;
-
-    friend auto ::operator/(S scalar, const E& vector);
+    friend auto operator/<E,S>(S scalar, const E& vector);
 
 public:
     using real_type = typename E::real_type;
 
     class iterator : private expression_traits
     {
-        template<typename T, std::size_t PackSize, typename Allocator>
-            requires packed_floating_point<T, PackSize>
-        friend class ::packed_cx_vector;
-        friend class expression_traits;
         friend class scalar_div;
 
-
+    private:
         using vector_iterator = typename E::iterator;
 
         iterator(S scalar, vector_iterator vector)
@@ -1649,10 +1601,9 @@ public:
         , m_scalar(std::move(scalar)){};
 
     public:
-        using real_type       = scalar_div::real_type;
-        using value_type      = const std::complex<real_type>;
-        using difference_type = std::ptrdiff_t;
-
+        using real_type        = scalar_div::real_type;
+        using value_type       = const std::complex<real_type>;
+        using difference_type  = std::ptrdiff_t;
         using iterator_concept = std::random_access_iterator_tag;
 
         iterator() = default;
@@ -1665,16 +1616,6 @@ public:
         iterator& operator=(const iterator& other) noexcept = default;
         iterator& operator=(iterator&& other) noexcept      = default;
 
-        // NOLINTNEXTLINE (*const*)
-        [[nodiscard]] auto operator*() const -> value_type
-        {
-            return m_scalar / value_type(*m_vector);
-        }
-        // NOLINTNEXTLINE (*const*)
-        [[nodiscard]] auto operator[](difference_type idx) const -> value_type
-        {
-            return m_scalar / value_type(*(m_vector + idx));
-        }
 
         [[nodiscard]] bool operator==(const iterator& other) const noexcept
         {
@@ -1740,52 +1681,54 @@ public:
             return lhs.m_vector - rhs.m_vector;
         }
 
-        [[nodiscard]] bool aligned(std::size_t offset = 0) const noexcept
+        // NOLINTNEXTLINE (*const*)
+        [[nodiscard]] auto operator*() const -> value_type
         {
-            return m_vector.aligned(offset);
+            return m_scalar / value_type(*m_vector);
         }
-
-    private:
+        // NOLINTNEXTLINE (*const*)
+        [[nodiscard]] auto operator[](difference_type idx) const -> value_type
+        {
+            return m_scalar / value_type(*(m_vector + idx));
+        }
         auto cx_reg(std::size_t idx) const -> avx::cx_reg<real_type>
         {
             const auto scalar = avx::broadcast(m_scalar);
             const auto vector = expression_traits::cx_reg(m_vector, idx);
 
             return avx::div(scalar, vector);
-            return vector;
         }
 
+        [[nodiscard]] constexpr bool aligned(std::size_t offset = 0) const noexcept
+        {
+            return m_vector.aligned(offset);
+        }
+
+    private:
         vector_iterator m_vector;
         S               m_scalar;
     };
 
+private:
+    scalar_div(S scalar, const E& vector)
+    : m_vector(vector)
+    , m_scalar(scalar){};
+
+public:
     scalar_div() noexcept = default;
 
-    scalar_div(scalar_div&& other) noexcept
-    : m_scalar(std::move(other.m_scalar))
-    , m_vector(std::move(other.m_vector)){};
-
-    scalar_div(const scalar_div&) noexcept = default;
-
-    scalar_div& operator=(scalar_div&& other) noexcept
-    {
-        m_scalar = other.m_scalar;
-        m_vector = other.m_vector;
-    };
-
-    scalar_div& operator=(const scalar_div&) noexcept = delete;
+    scalar_div(scalar_div&& other) noexcept = default;
+    scalar_div(const scalar_div&) noexcept  = default;
 
     ~scalar_div() noexcept = default;
 
-    constexpr auto size() const noexcept -> std::size_t
+    scalar_div& operator=(scalar_div&& other) noexcept
     {
-        return m_vector.size();
-    }
-
-    auto operator[](std::size_t idx) const
-    {
-        return m_scalar / std::complex<real_type>(m_vector[idx]);
+        m_scalar = std::move(other.m_scalar);
+        m_vector = std::move(other.m_vector);
+        return *this;
     };
+    scalar_div& operator=(const scalar_div&) noexcept = delete;
 
     [[nodiscard]] auto begin() const noexcept -> iterator
     {
@@ -1796,16 +1739,20 @@ public:
         return iterator(m_scalar, m_vector.end());
     }
 
-    constexpr bool aligned(std::size_t offset = 0) const noexcept
+    [[nodiscard]] auto operator[](std::size_t idx) const
+    {
+        return m_scalar / std::complex<real_type>(m_vector[idx]);
+    }
+    [[nodiscard]] constexpr auto size() const noexcept -> std::size_t
+    {
+        return m_vector.size();
+    }
+    [[nodiscard]] constexpr bool aligned(std::size_t offset = 0) const noexcept
     {
         return _aligned(m_vector, offset);
     }
 
 private:
-    scalar_div(S scalar, const E& vector)
-    : m_vector(vector)
-    , m_scalar(scalar){};
-
     const E m_vector;
     S       m_scalar;
 };
