@@ -211,7 +211,7 @@ public:
         requires(!std::same_as<E, packed_cx_vector>) && internal::vector_expression<E>
     packed_cx_vector& operator=(const E& other)
     {
-        assert(m_size == other.size());
+        assert(size() == other.size());
 
         auto it_this  = begin();
         auto it_other = other.begin();
@@ -220,7 +220,7 @@ public:
         {
             constexpr auto reg_size = 32 / sizeof(T);
 
-            auto aligned_size = (end() - 1).align_lower() - it_this;
+            auto aligned_size = end().align_lower() - it_this;
 
             auto ptr = &(*it_this);
             for (long i = 0; i < aligned_size; i += pack_size)
@@ -228,7 +228,8 @@ public:
                 auto offset = i * 2;
                 for (uint i_reg = 0; i_reg < pack_size; i_reg += reg_size)
                 {
-                    auto data = it_other.cx_reg(offset + i_reg);
+                    auto data =
+                        internal::expression_traits::cx_reg(it_other, offset + i_reg);
 
                     avx::store(ptr + offset + i_reg, data.real);
                     avx::store(ptr + offset + i_reg + PackSize, data.imag);
@@ -589,6 +590,8 @@ public:
     using reference       = typename iterator::reference;
     using const_reference = typename const_iterator::reference;
 
+    static constexpr size_type pack_size = PackSize;
+
 private:
     using size_t =
         std::conditional_t<Extent == std::dynamic_extent, size_type, std::monostate>;
@@ -687,12 +690,50 @@ public:
 
     template<typename R>
         requires(!Const) &&
-                std::convertible_to<std::ranges::range_value_t<R>,
-                                    std::complex<real_type>> &&
-                requires(R&& r, iterator it) { std::ranges::copy(r, it); }
-    void copy(const R& other)
+                (!internal::vector_expression<R>) && std::ranges::input_range<R> &&
+                std::indirectly_copyable<std::ranges::iterator_t<R>, iterator>
+    void assign(const R& range)
     {
-        std::ranges::copy(other, begin());
+        std::ranges::copy(range, begin());
+    };
+
+    template<typename E>
+        requires(!Const) && internal::vector_expression<E>
+    void assign(const E& expression)
+    {
+        assert(size() == expression.size());
+
+        auto it_this  = begin();
+        auto it_expr = expression.begin();
+
+        if (it_expr.aligned())
+        {
+            constexpr auto reg_size = 32 / sizeof(T);
+
+            auto aligned_size = end().align_lower() - it_this;
+
+            auto ptr = &(*it_this);
+            for (long i = 0; i < aligned_size; i += pack_size)
+            {
+                auto offset = i * 2;
+                for (uint i_reg = 0; i_reg < pack_size; i_reg += reg_size)
+                {
+                    auto data =
+                        internal::expression_traits::cx_reg(it_expr, offset + i_reg);
+
+                    avx::store(ptr + offset + i_reg, data.real);
+                    avx::store(ptr + offset + i_reg + PackSize, data.imag);
+                }
+            }
+            it_this += aligned_size;
+            it_expr += aligned_size;
+        }
+        while (it_this < end())
+        {
+            *it_this = *it_expr;
+            ++it_this;
+            ++it_expr;
+        }
     };
 
 private:

@@ -109,7 +109,8 @@ int test_subvector(const Vec& vector)
         return 1;
     }
     auto sub2 = vec_2.subrange(0, size);
-    sub.copy(sub2);
+
+    sub.assign(sub * sub2);
     if (!check_val(vec_size, vals[1]))
     {
         return 1;

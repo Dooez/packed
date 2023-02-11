@@ -153,51 +153,45 @@ inline auto div(cx_reg<T> lhs, typename reg<T>::type rhs) -> cx_reg<T>
 
 namespace internal {
 
-class expression_traits
+struct expression_traits
 {
-public:
     template<typename E>
-    struct is_expression
-    {
-        static constexpr bool value =
-            requires(E expression, std::size_t idx) {
-                requires std::ranges::view<E>;
+    static constexpr bool is_expression =
+        requires(E expression, std::size_t idx) {
+            requires std::ranges::view<E>;
 
-                requires std::ranges::random_access_range<E>;
+            requires std::ranges::random_access_range<E>;
 
-                typename E::real_type;
+            typename E::real_type;
 
-                {
-                    expression[idx]
-                    } -> std::convertible_to<std::complex<typename E::real_type>>;
+            {
+                expression[idx]
+                } -> std::convertible_to<std::complex<typename E::real_type>>;
 
-                typename E::iterator;
+            typename E::iterator;
 
-                {
-                    expression.size()
-                    } -> std::same_as<std::size_t>;
+            {
+                expression.size()
+                } -> std::same_as<std::size_t>;
 
-                requires requires(typename E::iterator iter) {
-                             {
-                                 iter.aligned(idx)
-                                 } -> std::same_as<bool>;
+            requires requires(typename E::iterator iter) {
+                         {
+                             iter.aligned(idx)
+                             } -> std::same_as<bool>;
 
-                             {
-                                 iter.cx_reg(idx)
-                                 } -> std::same_as<avx::cx_reg<typename E::real_type>>;
+                         {
+                             iter.cx_reg(idx)
+                             } -> std::same_as<avx::cx_reg<typename E::real_type>>;
 
-                             requires std::convertible_to<
-                                 std::iter_value_t<typename E::iterator>,
-                                 std::complex<typename E::real_type>>;
-                         };
-            };
-    };
+                         requires std::convertible_to<
+                             std::iter_value_t<typename E::iterator>,
+                             std::complex<typename E::real_type>>;
+                     };
+        };
 
     template<typename T, std::size_t PackSize, bool Const, std::size_t Extent>
-    struct is_expression<packed_subrange<T, PackSize, Const, Extent>>
-    {
-        static constexpr bool value = true;
-    };
+    static constexpr bool is_expression<packed_subrange<T, PackSize, Const, Extent>> =
+        true;
 
     /**
      * @brief Evaluates slice of the expression with offset;
@@ -231,10 +225,10 @@ public:
 };
 
 template<typename E>
-concept vector_expression = expression_traits::is_expression<E>::value;
+concept vector_expression = expression_traits::is_expression<E>;
 
 template<typename E1, typename E2>
-concept compatible_expressions =
+concept compatible_expression =
     vector_expression<E1> && vector_expression<E2> &&
     std::same_as<typename E1::real_type, typename E2::real_type>;
 
@@ -249,16 +243,16 @@ concept compatible_scalar =
 // #region operator forward declarations
 
 template<typename E1, typename E2>
-    requires internal::compatible_expressions<E1, E2>
+    requires internal::compatible_expression<E1, E2>
 auto operator+(const E1& lhs, const E2& rhs);
 template<typename E1, typename E2>
-    requires internal::compatible_expressions<E1, E2>
+    requires internal::compatible_expression<E1, E2>
 auto operator-(const E1& lhs, const E2& rhs);
 template<typename E1, typename E2>
-    requires internal::compatible_expressions<E1, E2>
+    requires internal::compatible_expression<E1, E2>
 auto operator*(const E1& lhs, const E2& rhs);
 template<typename E1, typename E2>
-    requires internal::compatible_expressions<E1, E2>
+    requires internal::compatible_expression<E1, E2>
 auto operator/(const E1& lhs, const E2& rhs);
 
 template<typename E, typename S>
@@ -294,23 +288,23 @@ auto operator/(S scalar, const E& vector);
 namespace internal {
 
 template<typename E1, typename E2>
-    requires compatible_expressions<E1, E2>
-class add
-: public std::ranges::view_base
-, private expression_traits
+    requires compatible_expression<E1, E2>
+class add : public std::ranges::view_base
 {
     friend auto operator+<E1, E2>(const E1& lhs, const E2& rhs);
 
 public:
     using real_type = typename E1::real_type;
 
-    class iterator : private expression_traits
+    class iterator
     {
         friend class add;
 
     private:
-        using lhs_iterator = typename E1::iterator;
-        using rhs_iterator = typename E2::iterator;
+        using lhs_iterator =
+            std::remove_cvref_t<decltype(std::declval<const E1>().begin())>;
+        using rhs_iterator =
+            std::remove_cvref_t<decltype(std::declval<const E2>().begin())>;
 
         iterator(lhs_iterator lhs, rhs_iterator rhs)
         : m_lhs(std::move(lhs))
@@ -480,23 +474,23 @@ private:
 };
 
 template<typename E1, typename E2>
-    requires compatible_expressions<E1, E2>
-class sub
-: public std::ranges::view_base
-, private expression_traits
+    requires compatible_expression<E1, E2>
+class sub : public std::ranges::view_base
 {
     friend auto operator-<E1, E2>(const E1& lhs, const E2& rhs);
 
 public:
     using real_type = typename E1::real_type;
 
-    class iterator : private expression_traits
+    class iterator
     {
         friend class sub;
 
     private:
-        using lhs_iterator = typename E1::iterator;
-        using rhs_iterator = typename E2::iterator;
+        using lhs_iterator =
+            std::remove_cvref_t<decltype(std::declval<const E1>().begin())>;
+        using rhs_iterator =
+            std::remove_cvref_t<decltype(std::declval<const E2>().begin())>;
 
         iterator(lhs_iterator lhs, rhs_iterator rhs)
         : m_lhs(std::move(lhs))
@@ -666,23 +660,23 @@ private:
 };
 
 template<typename E1, typename E2>
-    requires compatible_expressions<E1, E2>
-class mul
-: public std::ranges::view_base
-, private expression_traits
+    requires compatible_expression<E1, E2>
+class mul : public std::ranges::view_base
 {
     friend auto operator*<E1, E2>(const E1& lhs, const E2& rhs);
 
 public:
     using real_type = typename E1::real_type;
 
-    class iterator : private expression_traits
+    class iterator
     {
         friend class mul;
 
     private:
-        using lhs_iterator = typename E1::iterator;
-        using rhs_iterator = typename E2::iterator;
+        using lhs_iterator =
+            std::remove_cvref_t<decltype(std::declval<const E1>().begin())>;
+        using rhs_iterator =
+            std::remove_cvref_t<decltype(std::declval<const E2>().begin())>;
 
         iterator(lhs_iterator lhs, rhs_iterator rhs)
         : m_lhs(std::move(lhs))
@@ -852,23 +846,23 @@ private:
 };
 
 template<typename E1, typename E2>
-    requires compatible_expressions<E1, E2>
-class div
-: public std::ranges::view_base
-, private expression_traits
+    requires compatible_expression<E1, E2>
+class div : public std::ranges::view_base
 {
     friend auto operator/<E1, E2>(const E1& lhs, const E2& rhs);
 
 public:
     using real_type = typename E1::real_type;
 
-    class iterator : private expression_traits
+    class iterator
     {
         friend class div;
 
     private:
-        using lhs_iterator = typename E1::iterator;
-        using rhs_iterator = typename E2::iterator;
+        using lhs_iterator =
+            std::remove_cvref_t<decltype(std::declval<const E1>().begin())>;
+        using rhs_iterator =
+            std::remove_cvref_t<decltype(std::declval<const E2>().begin())>;
 
         iterator(lhs_iterator lhs, rhs_iterator rhs)
         : m_lhs(std::move(lhs))
@@ -1039,23 +1033,22 @@ private:
 
 template<typename E, typename S>
     requires compatible_scalar<E, S>
-class scalar_add
-: public std::ranges::view_base
-, private expression_traits
+class scalar_add : public std::ranges::view_base
 {
-    friend auto operator+<E,S>(const E& vector, S scalar);
-    friend auto operator+<E,S>(S scalar, const E& vector);
-    friend auto operator-<E,S>(const E& vector, S scalar);
+    friend auto operator+<E, S>(const E& vector, S scalar);
+    friend auto operator+<E, S>(S scalar, const E& vector);
+    friend auto operator-<E, S>(const E& vector, S scalar);
 
 public:
     using real_type = typename E::real_type;
 
-    class iterator : private expression_traits
+    class iterator
     {
         friend class scalar_add;
 
     private:
-        using vector_iterator = typename E::iterator;
+        using vector_iterator =
+            std::remove_cvref_t<decltype(std::declval<const E>().begin())>;
 
         iterator(S scalar, vector_iterator vector)
         : m_vector(std::move(vector))
@@ -1220,21 +1213,20 @@ private:
 
 template<typename E, typename S>
     requires compatible_scalar<E, S>
-class scalar_sub
-: public std::ranges::view_base
-, private expression_traits
+class scalar_sub : public std::ranges::view_base
 {
-    friend auto operator-<E,S>(S scalar, const E& vector);
+    friend auto operator-<E, S>(S scalar, const E& vector);
 
 public:
     using real_type = typename E::real_type;
 
-    class iterator : private expression_traits
+    class iterator
     {
         friend class scalar_sub;
 
     private:
-        using vector_iterator = typename E::iterator;
+        using vector_iterator =
+            std::remove_cvref_t<decltype(std::declval<const E>().begin())>;
 
         iterator(S scalar, vector_iterator vector)
         : m_vector(std::move(vector))
@@ -1399,23 +1391,22 @@ private:
 
 template<typename E, typename S>
     requires compatible_scalar<E, S>
-class scalar_mul
-: public std::ranges::view_base
-, private expression_traits
+class scalar_mul : public std::ranges::view_base
 {
-    friend auto operator*<E,S>(const E& vector, S scalar);
-    friend auto operator*<E,S>(S scalar, const E& vector);
-    friend auto operator/<E,S>(const E& vector, S scalar);
+    friend auto operator*<E, S>(const E& vector, S scalar);
+    friend auto operator*<E, S>(S scalar, const E& vector);
+    friend auto operator/<E, S>(const E& vector, S scalar);
 
 public:
     using real_type = typename E::real_type;
 
-    class iterator : private expression_traits
+    class iterator
     {
         friend class scalar_mul;
 
     private:
-        using vector_iterator = typename E::iterator;
+        using vector_iterator =
+            std::remove_cvref_t<decltype(std::declval<const E>().begin())>;
 
         iterator(S scalar, vector_iterator vector)
         : m_vector(std::move(vector))
@@ -1580,21 +1571,20 @@ private:
 
 template<typename E, typename S>
     requires compatible_scalar<E, S>
-class scalar_div
-: public std::ranges::view_base
-, private expression_traits
+class scalar_div : public std::ranges::view_base
 {
-    friend auto operator/<E,S>(S scalar, const E& vector);
+    friend auto operator/<E, S>(S scalar, const E& vector);
 
 public:
     using real_type = typename E::real_type;
 
-    class iterator : private expression_traits
+    class iterator
     {
         friend class scalar_div;
 
     private:
-        using vector_iterator = typename E::iterator;
+        using vector_iterator =
+            std::remove_cvref_t<decltype(std::declval<const E>().begin())>;
 
         iterator(S scalar, vector_iterator vector)
         : m_vector(std::move(vector))
@@ -1762,25 +1752,25 @@ private:
 // #region operator definitions
 
 template<typename E1, typename E2>
-    requires internal::compatible_expressions<E1, E2>
+    requires internal::compatible_expression<E1, E2>
 inline auto operator+(const E1& lhs, const E2& rhs)
 {
     return internal::add(lhs, rhs);
 };
 template<typename E1, typename E2>
-    requires internal::compatible_expressions<E1, E2>
+    requires internal::compatible_expression<E1, E2>
 inline auto operator-(const E1& lhs, const E2& rhs)
 {
     return internal::sub(lhs, rhs);
 };
 template<typename E1, typename E2>
-    requires internal::compatible_expressions<E1, E2>
+    requires internal::compatible_expression<E1, E2>
 inline auto operator*(const E1& lhs, const E2& rhs)
 {
     return internal::mul(lhs, rhs);
 };
 template<typename E1, typename E2>
-    requires internal::compatible_expressions<E1, E2>
+    requires internal::compatible_expression<E1, E2>
 inline auto operator/(const E1& lhs, const E2& rhs)
 {
     return internal::div(lhs, rhs);
@@ -1910,7 +1900,5 @@ inline auto operator/(const packed_cx_vector<T, PackSize, Allocator>& vector,
     return packed_subrange(vector.begin(), vector.size()) / expression;
 };
 
-
     // #endregion operator definitions
-
 #endif
