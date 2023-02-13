@@ -29,17 +29,11 @@
             ]
         },
         {
-            "name": "Launch",
+            "name": "(lldb) Launch",
             "type": "lldb",
             "request": "launch",
             "program": "${command:cmake.launchTargetPath}",
-            "cwd": "${fileDirname}",
-            "environment": [
-                {
-                    "name": "PATH",
-                    "value": "${env:PATH}:${command:cmake.getLaunchTargetDirectory}"
-                }
-            ]
+            "cwd": "${fileDirname}"
         },
     ]
 }
