@@ -2,10 +2,16 @@
 #define FFT_HPP
 
 #include "vector.hpp"
+
 #include <memory>
 
+namespace pcx {
+constexpr const std::size_t dynamic_size = -1;
 
-template<typename T, std::size_t PackSize, typename Allocator = std::allocator<T>>
+template<typename T,
+         std::size_t PackSize,
+         typename Allocator = std::allocator<T>,
+         std::size_t Size   = pcx::dynamic_size>
     requires pcx::packed_floating_point<T, PackSize>
 class fft_unit
 {
@@ -16,17 +22,19 @@ public:
     static constexpr auto pack_size = PackSize;
 
 private:
+    using size_t =
+        std::conditional_t<Size == pcx::dynamic_size, std::size_t, decltype([] {})>;
+
     using sort_allocator_type = typename std::allocator_traits<
         allocator_type>::template rebind_alloc<std::size_t>;
 
     struct packed_fft_core
     {
         packed_fft_core(std::size_t fft_size, allocator_type allocator)
-        : fft_size(fft_size)
-        , sort(get_sort(fft_size, static_cast<sort_allocator_type>(allocator)))
+            requires (Size == pcx::dynamic_size)
+        : sort(get_sort(fft_size, static_cast<sort_allocator_type>(allocator)))
         , twiddles(get_twiddles(fft_size, allocator)){};
 
-        std::size_t                                                           fft_size;
         std::pair<std::vector<std::size_t, sort_allocator_type>, std::size_t> sort;
         pcx::vector<real_type, pack_size, allocator_type>                     twiddles;
     };
@@ -49,12 +57,23 @@ public:
     fft_unit& operator=(const fft_unit& other)     = default;
     fft_unit& operator=(fft_unit&& other) noexcept = default;
 
+    [[nodiscard]] constexpr auto size() const -> std::size_t
+    {
+        if constexpr (Size == pcx::dynamic_size)
+        {
+            return m_size;
+        } else
+        {
+            return Size;
+        }
+    }
 
     template<typename VT, std::size_t VPackSize, typename VAllocator>
         requires std::same_as<VT, real_type> && requires { VPackSize == pack_size; }
     void fft_unit_test(const pcx::vector<VT, VPackSize, VAllocator>& test_vecor){};
 
 private:
+    [[no_unique_address]] size_t     m_size;
     std::shared_ptr<packed_fft_core> m_core{};
 
     static constexpr std::size_t register_size = 32 / sizeof(real_type);
@@ -365,5 +384,5 @@ void fft_internal(pcx::vector<T, PackSize, Allocator>& vector)
     _mm256_storeu_ps(&vector[7 * size / 8] + PackSize, shc7im);
 }
 
-
+}    // namespace pcx
 #endif
