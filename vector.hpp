@@ -39,7 +39,6 @@ public:
 
     static constexpr size_type pack_size = PackSize;
 
-public:
     packed_cx_vector() noexcept(noexcept(allocator_type())) = default;
 
     explicit packed_cx_vector(const allocator_type& allocator) noexcept(
@@ -48,10 +47,10 @@ public:
     , m_size(0)
     , m_ptr(nullptr){};
 
-    explicit packed_cx_vector(size_type             length,
+    explicit packed_cx_vector(size_type             size,
                               const allocator_type& allocator = allocator_type())
     : m_allocator(allocator)
-    , m_size(length)
+    , m_size(size)
     , m_ptr(alloc_traits::allocate(m_allocator, real_size(m_size)))
     {
         fill(begin(), end(), 0);
@@ -288,6 +287,7 @@ public:
         auto p_idx = packed_idx(idx);
         return reference(m_ptr + p_idx);
     }
+    // NOLINTNEXLINE (*const*) proxy reference
     [[nodiscard]] auto operator[](size_type idx) const -> const_reference
     {
         auto p_idx = packed_idx(idx);
@@ -325,17 +325,16 @@ public:
     {
         return size();
     };
-    void resize(size_type new_length)
+    void resize(size_type new_size)
     {
-        if (num_packs(new_length) != num_packs(m_size))
+        if (num_packs(new_size) != num_packs(m_size))
         {
-            real_type* new_ptr =
-                alloc_traits::allocate(m_allocator, real_size(new_length));
+            real_type* new_ptr = alloc_traits::allocate(m_allocator, real_size(new_size));
 
             packed_copy(begin(), end(), iterator(new_ptr, 0));
             deallocate();
 
-            m_size = new_length;
+            m_size = new_size;
             m_ptr  = new_ptr;
         }
     }
@@ -679,8 +678,14 @@ public:
 
         auto it_this = begin();
         auto it_expr = expression.begin();
-
-        if (it_expr.aligned())
+        auto aligned_begin = std::min(it_this.align_upper(), end());
+        while (it_this < aligned_begin)
+        {
+            *it_this = *it_expr;
+            ++it_this;
+            ++it_expr;
+        }
+        if (it_this.aligned() && it_expr.aligned())
         {
             constexpr auto reg_size = 32 / sizeof(T);
 
@@ -752,8 +757,14 @@ public:
 
     ~packed_cx_ref() = default;
 
-    // NOLINTNEXTLINE (*assign*) Proxy reference, see std::indirectly_writable
-    packed_cx_ref& operator=(const packed_cx_ref& other) const
+    packed_cx_ref& operator=(const packed_cx_ref& other)
+        requires(!Const)
+    {
+        *m_ptr              = *other.m_ptr;
+        *(m_ptr + PackSize) = *(other.m_ptr + PackSize);
+        return *this;
+    }
+    packed_cx_ref& operator=(packed_cx_ref&& other)
         requires(!Const)
     {
         *m_ptr              = *other.m_ptr;
@@ -761,7 +772,15 @@ public:
         return *this;
     }
     // NOLINTNEXTLINE (*assign*) Proxy reference, see std::indirectly_writable
-    packed_cx_ref& operator=(packed_cx_ref&& other) const
+    const packed_cx_ref& operator=(const packed_cx_ref& other) const
+        requires(!Const)
+    {
+        *m_ptr              = *other.m_ptr;
+        *(m_ptr + PackSize) = *(other.m_ptr + PackSize);
+        return *this;
+    }
+    // NOLINTNEXTLINE (*assign*) Proxy reference, see std::indirectly_writable
+    const packed_cx_ref& operator=(packed_cx_ref&& other) const
         requires(!Const)
     {
         *m_ptr              = *other.m_ptr;

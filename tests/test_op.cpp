@@ -260,7 +260,7 @@ int test_arithm(std::size_t length)
     }
 
     auto cmpnd = (rval + (val * vec1 * rval)) + (val + (rval / vec2 * val)) + val;
-    vecr = cmpnd;
+    vecr       = cmpnd;
     if (!test_compound(stdvec1, stdvec2, vecr, rval, val))
     {
         return 1;
@@ -269,6 +269,37 @@ int test_arithm(std::size_t length)
     return 0;
 }
 
+template<typename T>
+    requires std::floating_point<T>
+int test_subrange(std::size_t length)
+{
+    auto vec1 = packed_cx_vector<T>(length);
+    auto vec2 = packed_cx_vector<T>(length);
+    auto vecr = packed_cx_vector<T>(length);
+
+    auto stdvec1 = std::vector<std::complex<T>>(length);
+    auto stdvec2 = std::vector<std::complex<T>>(length);
+    auto stdvecr = std::vector<std::complex<T>>(length);
+
+    for (uint i = 1; i < length; ++i)
+    {
+        const auto v11 = packed_subrange(vec1.begin(), i);
+        auto       v12 = packed_subrange(vec1.cbegin() + i, length - i);
+        const auto v21 = packed_subrange(vec2.begin(), i);
+        const auto v22 = packed_subrange(vec2.cbegin() + i, length - i);
+        auto       vr1 = packed_subrange(vecr.begin(), i);
+        auto       vr2 = packed_subrange(vecr.begin() + i, length - i);
+
+        vr1.assign(v11 + v21);
+        vr2.assign(v12 + v22);
+
+        if (!test_add(stdvec1, stdvec2, vecr))
+        {
+            return 1;
+        }
+    }
+    return 0;
+}
 
 int main()
 {
@@ -287,6 +318,8 @@ int main()
     {
         res += test_arithm<float>(i);
         res += test_arithm<double>(i);
+        res += test_subrange<float>(i);
+        res += test_subrange<double>(i);
         if (res > 0)
         {
             std::cout << i << "\n";

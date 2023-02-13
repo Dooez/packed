@@ -110,7 +110,7 @@ int test_subvector(const Vec& vector)
     }
     auto sub2 = packed_subrange(vec_2.begin(), size);
 
-    sub.assign(sub * sub2);
+    sub.assign(sub2);
     if (!check_val(vec_size, vals[1]))
     {
         return 1;

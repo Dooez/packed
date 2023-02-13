@@ -155,44 +155,6 @@ namespace internal {
 
 struct expression_traits
 {
-    template<typename E>
-    static constexpr bool is_expression =
-        requires(E expression, std::size_t idx) {
-            requires std::ranges::view<E>;
-
-            requires std::ranges::random_access_range<E>;
-
-            typename E::real_type;
-
-            {
-                expression[idx]
-                } -> std::convertible_to<std::complex<typename E::real_type>>;
-
-            typename E::iterator;
-
-            {
-                expression.size()
-                } -> std::same_as<std::size_t>;
-
-            requires requires(typename E::iterator iter) {
-                         {
-                             iter.aligned(idx)
-                             } -> std::same_as<bool>;
-
-                         {
-                             iter.cx_reg(idx)
-                             } -> std::same_as<avx::cx_reg<typename E::real_type>>;
-
-                         requires std::convertible_to<
-                             std::iter_value_t<typename E::iterator>,
-                             std::complex<typename E::real_type>>;
-                     };
-        };
-
-    template<typename T, std::size_t PackSize, bool Const, std::size_t Extent>
-    static constexpr bool is_expression<packed_subrange<T, PackSize, Const, Extent>> =
-        true;
-
     /**
      * @brief Evaluates slice of the expression with offset;
      * Slice size is determined by avx register size; No checks are performed.
@@ -202,7 +164,7 @@ struct expression_traits
      * @return auto evaluated complex register
      */
     template<typename I>
-    static constexpr auto cx_reg(const I& iterator, std::size_t idx)
+    [[nodiscard]] static constexpr auto cx_reg(const I& iterator, std::size_t idx)
     {
         return iterator.cx_reg(idx);
     }
@@ -215,17 +177,45 @@ struct expression_traits
      * @return avx::cx_reg<T> loaded complex register
      */
     template<typename T, std::size_t PackSize, bool Const>
-    static constexpr auto cx_reg(const packed_iterator<T, PackSize, Const>& iterator,
-                                 std::size_t idx) -> avx::cx_reg<T>
+    [[nodiscard]] static constexpr auto
+    cx_reg(const packed_iterator<T, PackSize, Const>& iterator, std::size_t idx)
+        -> avx::cx_reg<T>
     {
         auto real = avx::load(&(*iterator) + idx);
         auto imag = avx::load(&(*iterator) + idx + PackSize);
         return {real, imag};
     }
+
+    template<typename I>
+    [[nodiscard]] static constexpr auto aligned(const I& iterator, std::size_t idx)
+    {
+        return iterator.aligned(idx);
+    }
 };
 
 template<typename E>
-concept vector_expression = expression_traits::is_expression<E>;
+concept vector_expression =
+    requires(E expression, std::size_t idx) {
+        requires std::ranges::view<E>;
+
+        requires std::ranges::random_access_range<E>;
+
+        requires std::ranges::sized_range<E>;
+
+        typename E::real_type;
+
+        requires std::convertible_to<std::iter_value_t<decltype(expression.begin())>,
+                                     std::complex<typename E::real_type>>;
+
+        {
+            expression_traits::aligned(expression.begin(), idx)
+            } -> std::same_as<bool>;
+
+        {
+            expression_traits::cx_reg(expression.begin(), idx)
+            } -> std::same_as<avx::cx_reg<typename E::real_type>>;
+    };
+
 
 template<typename E1, typename E2>
 concept compatible_expression =
@@ -411,7 +401,8 @@ public:
 
         [[nodiscard]] constexpr bool aligned(std::size_t offset = 0) const noexcept
         {
-            return m_lhs.aligned(offset) && m_rhs.aligned(offset);
+            return expression_traits::aligned(m_lhs, offset) &&
+                   expression_traits::aligned(m_rhs, offset);
         }
 
     private:
@@ -460,10 +451,6 @@ public:
     [[nodiscard]] constexpr auto size() const noexcept -> std::size_t
     {
         return m_lhs.size();
-    }
-    [[nodiscard]] constexpr bool aligned(std::size_t offset = 0) const noexcept
-    {
-        return _aligned(m_lhs, offset) && _aligned(m_rhs, offset);
     }
 
 private:
@@ -595,7 +582,8 @@ public:
 
         [[nodiscard]] constexpr bool aligned(std::size_t offset = 0) const noexcept
         {
-            return m_lhs.aligned(offset) && m_rhs.aligned(offset);
+            return expression_traits::aligned(m_lhs, offset) &&
+                   expression_traits::aligned(m_rhs, offset);
         }
 
     private:
@@ -644,10 +632,6 @@ public:
     [[nodiscard]] constexpr auto size() const noexcept -> std::size_t
     {
         return m_lhs.size();
-    }
-    [[nodiscard]] constexpr bool aligned(std::size_t offset = 0) const noexcept
-    {
-        return _aligned(m_lhs, offset) && _aligned(m_rhs, offset);
     }
 
 private:
@@ -779,7 +763,8 @@ public:
 
         [[nodiscard]] constexpr bool aligned(std::size_t offset = 0) const noexcept
         {
-            return m_lhs.aligned(offset) && m_rhs.aligned(offset);
+            return expression_traits::aligned(m_lhs, offset) &&
+                   expression_traits::aligned(m_rhs, offset);
         }
 
     private:
@@ -828,10 +813,6 @@ public:
     [[nodiscard]] constexpr auto size() const noexcept -> std::size_t
     {
         return m_lhs.size();
-    }
-    [[nodiscard]] constexpr bool aligned(std::size_t offset = 0) const noexcept
-    {
-        return _aligned(m_lhs, offset) && _aligned(m_rhs, offset);
     }
 
 private:
@@ -963,7 +944,8 @@ public:
 
         [[nodiscard]] constexpr bool aligned(std::size_t offset = 0) const noexcept
         {
-            return m_lhs.aligned(offset) && m_rhs.aligned(offset);
+            return expression_traits::aligned(m_lhs, offset) &&
+                   expression_traits::aligned(m_rhs, offset);
         }
 
     private:
@@ -1012,10 +994,6 @@ public:
     [[nodiscard]] constexpr auto size() const noexcept -> std::size_t
     {
         return m_lhs.size();
-    }
-    [[nodiscard]] constexpr bool aligned(std::size_t offset = 0) const noexcept
-    {
-        return _aligned(m_lhs, offset) && _aligned(m_rhs, offset);
     }
 
 private:
@@ -1136,7 +1114,7 @@ public:
         {
             return m_scalar + value_type(*(m_vector + idx));
         }
-        auto cx_reg(std::size_t idx) const -> avx::cx_reg<real_type>
+        [[nodiscard]] auto cx_reg(std::size_t idx) const -> avx::cx_reg<real_type>
         {
             const auto scalar = avx::broadcast(m_scalar);
             const auto vector = expression_traits::cx_reg(m_vector, idx);
@@ -1146,7 +1124,7 @@ public:
 
         [[nodiscard]] constexpr bool aligned(std::size_t offset = 0) const noexcept
         {
-            return m_vector.aligned(offset);
+            return expression_traits::aligned(m_vector, offset);
         }
 
     private:
@@ -1191,10 +1169,6 @@ public:
     [[nodiscard]] constexpr auto size() const noexcept -> std::size_t
     {
         return m_vector.size();
-    }
-    [[nodiscard]] constexpr bool aligned(std::size_t offset = 0) const noexcept
-    {
-        return _aligned(m_vector, offset);
     }
 
 private:
@@ -1313,7 +1287,7 @@ public:
         {
             return m_scalar - value_type(*(m_vector + idx));
         }
-        auto cx_reg(std::size_t idx) const -> avx::cx_reg<real_type>
+        [[nodiscard]] auto cx_reg(std::size_t idx) const -> avx::cx_reg<real_type>
         {
             const auto scalar = avx::broadcast(m_scalar);
             const auto vector = expression_traits::cx_reg(m_vector, idx);
@@ -1323,7 +1297,7 @@ public:
 
         [[nodiscard]] constexpr bool aligned(std::size_t offset = 0) const noexcept
         {
-            return m_vector.aligned(offset);
+            return expression_traits::aligned(m_vector, offset);
         }
 
     private:
@@ -1368,10 +1342,6 @@ public:
     [[nodiscard]] constexpr auto size() const noexcept -> std::size_t
     {
         return m_vector.size();
-    }
-    [[nodiscard]] constexpr bool aligned(std::size_t offset = 0) const noexcept
-    {
-        return _aligned(m_vector, offset);
     }
 
 private:
@@ -1492,7 +1462,7 @@ public:
         {
             return m_scalar * value_type(*(m_vector + idx));
         }
-        auto cx_reg(std::size_t idx) const -> avx::cx_reg<real_type>
+        [[nodiscard]] auto cx_reg(std::size_t idx) const -> avx::cx_reg<real_type>
         {
             const auto scalar = avx::broadcast(m_scalar);
             const auto vector = expression_traits::cx_reg(m_vector, idx);
@@ -1502,7 +1472,7 @@ public:
 
         [[nodiscard]] constexpr bool aligned(std::size_t offset = 0) const noexcept
         {
-            return m_vector.aligned(offset);
+            return expression_traits::aligned(m_vector, offset);
         }
 
     private:
@@ -1547,10 +1517,6 @@ public:
     [[nodiscard]] constexpr auto size() const noexcept -> std::size_t
     {
         return m_vector.size();
-    }
-    [[nodiscard]] constexpr bool aligned(std::size_t offset = 0) const noexcept
-    {
-        return _aligned(m_vector, offset);
     }
 
 private:
@@ -1669,7 +1635,7 @@ public:
         {
             return m_scalar / value_type(*(m_vector + idx));
         }
-        auto cx_reg(std::size_t idx) const -> avx::cx_reg<real_type>
+        [[nodiscard]] auto cx_reg(std::size_t idx) const -> avx::cx_reg<real_type>
         {
             const auto scalar = avx::broadcast(m_scalar);
             const auto vector = expression_traits::cx_reg(m_vector, idx);
@@ -1679,7 +1645,7 @@ public:
 
         [[nodiscard]] constexpr bool aligned(std::size_t offset = 0) const noexcept
         {
-            return m_vector.aligned(offset);
+            return expression_traits::aligned(m_vector, offset);
         }
 
     private:
@@ -1724,10 +1690,6 @@ public:
     [[nodiscard]] constexpr auto size() const noexcept -> std::size_t
     {
         return m_vector.size();
-    }
-    [[nodiscard]] constexpr bool aligned(std::size_t offset = 0) const noexcept
-    {
-        return _aligned(m_vector, offset);
     }
 
 private:
