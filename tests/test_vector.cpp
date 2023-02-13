@@ -102,13 +102,13 @@ int test_subvector(const Vec& vector)
     auto vec_def   = Vec();
     auto vec_size  = Vec(size);
     auto vec_2     = Vec(size, vals[1]);
-    auto sub       = packed_subrange(vec_size.begin(), size);
+    auto sub       = pcx::subrange(vec_size.begin(), size);
     sub.fill(vals[0]);
     if (!check_val(vec_size, vals[0]))
     {
         return 1;
     }
-    auto sub2 = packed_subrange(vec_2.begin(), size);
+    auto sub2 = pcx::subrange(vec_2.begin(), size);
 
     sub.assign(sub2);
     if (!check_val(vec_size, vals[1]))
@@ -124,13 +124,14 @@ constexpr void concept_test()
 {
     // NOLINTNEXTLINE(*using*)
     using namespace std::ranges;
+    using namespace pcx;
     constexpr std::size_t pack_size = 8;
 
-    using vector_t         = packed_cx_vector<T>;
-    using iterator_t       = packed_iterator<T, pack_size>;
-    using cont_iterator_t  = packed_iterator<T, pack_size, true>;
-    using subrange_t       = packed_subrange<T, pack_size>;
-    using const_subrange_t = packed_subrange<T, pack_size, true>;
+    using vector_t         = vector<T>;
+    using iterator_t       = iterator<T, pack_size>;
+    using cont_iterator_t  = iterator<T, pack_size, true>;
+    using subrange_t       = pcx::subrange<T, pack_size>;
+    using const_subrange_t = pcx::subrange<T, pack_size, true>;
 
     static_assert(!view<vector_t>);
     static_assert(range<vector_t>);
@@ -171,7 +172,7 @@ int main()
     int res = 0;
     for (uint i = 0; i < 128; ++i)
     {
-        auto v_def = packed_cx_vector<float>(127);
+        auto v_def = pcx::vector<float>(127);
 
         res += test_vector(v_def);
         res += test_subvector(v_def);

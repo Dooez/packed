@@ -6,7 +6,7 @@
 #include <immintrin.h>
 #include <span>
 #include <variant>
-
+namespace pcx{
 template<std::size_t N>
 concept power_of_two = requires { (N & (N - 1)) == 0; };
 
@@ -16,19 +16,19 @@ concept packed_floating_point = std::floating_point<T> && power_of_two<PackSize>
 
 template<typename T, std::size_t PackSize, typename Allocator>
     requires packed_floating_point<T, PackSize>
-class packed_cx_vector;
+class vector;
 
 template<typename T, std::size_t PackSize, bool Const = false>
-class packed_cx_ref;
+class cx_ref;
 
 template<typename T, std::size_t PackSize, bool Const = false>
-class packed_iterator;
+class iterator;
 
 template<typename T,
          std::size_t PackSize,
          bool        Const  = false,
          std::size_t Extent = std::dynamic_extent>
-class packed_subrange;
+class subrange;
 
 
 /**
@@ -91,19 +91,19 @@ void store_s(double* dest, reg<double>::type reg)
 }    // namespace avx
 
 template<typename T, std::size_t PackSize, bool Const>
-inline void packed_copy(packed_iterator<T, PackSize, Const> first,
-                        packed_iterator<T, PackSize, Const> last,
-                        packed_iterator<T, PackSize>        d_first)
+inline void packed_copy(iterator<T, PackSize, Const> first,
+                        iterator<T, PackSize, Const> last,
+                        iterator<T, PackSize>        d_first)
 {
-    packed_copy(packed_iterator<T, PackSize, true>(first),
-                packed_iterator<T, PackSize, true>(last),
+    packed_copy(iterator<T, PackSize, true>(first),
+                iterator<T, PackSize, true>(last),
                 d_first);
 }
 
 template<typename T, std::size_t PackSize>
-void packed_copy(packed_iterator<T, PackSize, true> first,
-                 packed_iterator<T, PackSize, true> last,
-                 packed_iterator<T, PackSize>       d_first)
+void packed_copy(iterator<T, PackSize, true> first,
+                 iterator<T, PackSize, true> last,
+                 iterator<T, PackSize>       d_first)
 {
     while (first < std::min(first.align_upper(), last))
     {
@@ -129,8 +129,8 @@ void packed_copy(packed_iterator<T, PackSize, true> first,
 
 
 template<typename T, std::size_t PackSize>
-void fill(packed_iterator<T, PackSize> first,
-          packed_iterator<T, PackSize> last,
+void fill(iterator<T, PackSize> first,
+          iterator<T, PackSize> last,
           std::complex<T>              value)
 {
     constexpr std::size_t reg_size = 32 / sizeof(T);
@@ -166,11 +166,12 @@ void fill(packed_iterator<T, PackSize> first,
 
 template<typename T, std::size_t PackSize, typename U>
     requires std::convertible_to<U, std::complex<T>>
-inline void fill(packed_iterator<T, PackSize> first,
-                 packed_iterator<T, PackSize> last,
+inline void fill(iterator<T, PackSize> first,
+                 iterator<T, PackSize> last,
                  U                            value)
 {
     auto value_cx = std::complex<T>(value);
     fill(first, last, value_cx);
 };
+}
 #endif

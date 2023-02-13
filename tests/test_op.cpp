@@ -9,8 +9,8 @@
 // }
 
 
-void asm_test_fun(packed_cx_vector<double>& v1,
-                  packed_cx_vector<double>& v2,
+void asm_test_fun(pcx::vector<double>& v1,
+                  pcx::vector<double>& v2,
                   std::complex<double>      v3)
 {
     v1 = v1 + v2;
@@ -130,9 +130,9 @@ template<typename T>
     requires std::floating_point<T>
 int test_arithm(std::size_t length)
 {
-    auto vec1 = packed_cx_vector<T>(length);
-    auto vec2 = packed_cx_vector<T>(length);
-    auto vecr = packed_cx_vector<T>(length);
+    auto vec1 = pcx::vector<T>(length);
+    auto vec2 = pcx::vector<T>(length);
+    auto vecr = pcx::vector<T>(length);
 
     auto stdvec1 = std::vector<std::complex<T>>(length);
     auto stdvec2 = std::vector<std::complex<T>>(length);
@@ -273,9 +273,9 @@ template<typename T>
     requires std::floating_point<T>
 int test_subrange(std::size_t length)
 {
-    auto vec1 = packed_cx_vector<T>(length);
-    auto vec2 = packed_cx_vector<T>(length);
-    auto vecr = packed_cx_vector<T>(length);
+    auto vec1 = pcx::vector<T>(length);
+    auto vec2 = pcx::vector<T>(length);
+    auto vecr = pcx::vector<T>(length);
 
     auto stdvec1 = std::vector<std::complex<T>>(length);
     auto stdvec2 = std::vector<std::complex<T>>(length);
@@ -283,12 +283,12 @@ int test_subrange(std::size_t length)
 
     for (uint i = 1; i < length; ++i)
     {
-        const auto v11 = packed_subrange(vec1.begin(), i);
-        auto       v12 = packed_subrange(vec1.cbegin() + i, length - i);
-        const auto v21 = packed_subrange(vec2.begin(), i);
-        const auto v22 = packed_subrange(vec2.cbegin() + i, length - i);
-        auto       vr1 = packed_subrange(vecr.begin(), i);
-        auto       vr2 = packed_subrange(vecr.begin() + i, length - i);
+        const auto v11 = pcx::subrange(vec1.begin(), i);
+        auto       v12 = pcx::subrange(vec1.cbegin() + i, length - i);
+        const auto v21 = pcx::subrange(vec2.begin(), i);
+        const auto v22 = pcx::subrange(vec2.cbegin() + i, length - i);
+        auto       vr1 = pcx::subrange(vecr.begin(), i);
+        auto       vr2 = pcx::subrange(vecr.begin() + i, length - i);
 
         vr1.assign(v11 + v21);
         vr2.assign(v12 + v22);
