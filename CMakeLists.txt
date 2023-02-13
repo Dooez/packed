@@ -3,7 +3,7 @@ if( CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR )
 
     project(packed VERSION 0.2.0 LANGUAGES C CXX ASM)
 
-    set(CMAKE_CXX_FLAGS_RELEASE "-O3")
+    set(CMAKE_CXX_FLAGS_RELEASE "-O2")
 
     add_library(packed INTERFACE vector.hpp)
     target_include_directories(packed INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
@@ -16,10 +16,11 @@ if( CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR )
     set_target_properties(test_vector PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED True)
     set_target_properties(test_op PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED True)
     target_compile_options(test_vector PRIVATE -save-temps -march=native)
-    target_compile_options(test_op PRIVATE -save-temps -march=native)
+    target_compile_options(test_op PRIVATE -save-temps -ftemplate-backtrace-limit=0 -march=native)
     ENABLE_TESTING()
 
     add_test(NAME test_vector COMMAND test_vector)
+    add_test(NAME test_op COMMAND test_op)
 else()
 
 endif()
