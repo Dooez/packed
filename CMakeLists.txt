@@ -3,7 +3,7 @@ if( CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR )
 
     project(packed VERSION 0.2.0 LANGUAGES C CXX ASM)
 
-    set(CMAKE_CXX_FLAGS_RELEASE "-O2")
+    set(CMAKE_CXX_FLAGS_RELEASE "-O3")
 
     add_library(packed INTERFACE vector.hpp)
     target_include_directories(packed INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
