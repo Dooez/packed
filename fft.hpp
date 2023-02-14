@@ -91,33 +91,43 @@ public:
         auto* data_ptr    = &vector[0];
         auto* twiddle_ptr = &m_twiddles[0];
 
+        auto sh0 = 0;
+        auto sh1 = packed_idx(1 * size / 8);
+        auto sh2 = packed_idx(2 * size / 8);
+        auto sh3 = packed_idx(3 * size / 8);
+        auto sh4 = packed_idx(4 * size / 8);
+        auto sh5 = packed_idx(5 * size / 8);
+        auto sh6 = packed_idx(6 * size / 8);
+        auto sh7 = packed_idx(7 * size / 8);
+
         for (uint i = 0; i < n_reversals(size / 64); i += 2)
         {
-            auto idx_first  = m_sort[i];
-            auto idx_second = m_sort[i + 1];
+            auto offset_first  = m_sort[i];
+            auto offset_second = m_sort[i + 1];
 
-            auto p1re = _mm256_loadu_ps(data_ptr + 1 * size / 8 + idx_first);
-            auto p1im = _mm256_loadu_ps(data_ptr + 1 * size / 8 + idx_first + PackSize);
-            auto p5re = _mm256_loadu_ps(data_ptr + 5 * size / 8 + idx_first);
-            auto p5im = _mm256_loadu_ps(data_ptr + 5 * size / 8 + idx_first + PackSize);
-            auto p3re = _mm256_loadu_ps(data_ptr + 3 * size / 8 + idx_first);
-            auto p3im = _mm256_loadu_ps(data_ptr + 3 * size / 8 + idx_first + PackSize);
-            auto p7re = _mm256_loadu_ps(data_ptr + 7 * size / 8 + idx_first);
-            auto p7im = _mm256_loadu_ps(data_ptr + 7 * size / 8 + idx_first + PackSize);
+            auto p1re = _mm256_loadu_ps(data_ptr + sh1 + offset_first);
+            auto p1im = _mm256_loadu_ps(data_ptr + sh1 + offset_first + PackSize);
+            auto p5re = _mm256_loadu_ps(data_ptr + sh5 + offset_first);
+            auto p5im = _mm256_loadu_ps(data_ptr + sh5 + offset_first + PackSize);
+            auto p3re = _mm256_loadu_ps(data_ptr + sh3 + offset_first);
+            auto p3im = _mm256_loadu_ps(data_ptr + sh3 + offset_first + PackSize);
+            auto p7re = _mm256_loadu_ps(data_ptr + sh7 + offset_first);
+            auto p7im = _mm256_loadu_ps(data_ptr + sh7 + offset_first + PackSize);
 
-            auto a1re = _mm256_add_ps(p1re, p5re);
             auto a5re = _mm256_sub_ps(p1re, p5re);
-            auto a1im = _mm256_add_ps(p1im, p5im);
-            auto a5im = _mm256_sub_ps(p1im, p5im);
-            auto a3re = _mm256_add_ps(p3re, p7re);
-            auto a7re = _mm256_sub_ps(p3re, p7re);
-            auto a3im = _mm256_add_ps(p3im, p7im);
             auto a7im = _mm256_sub_ps(p3im, p7im);
+            auto a5im = _mm256_sub_ps(p1im, p5im);
+            auto a7re = _mm256_sub_ps(p3re, p7re);
+            auto a1re = _mm256_add_ps(p1re, p5re);
+            auto a3im = _mm256_add_ps(p3im, p7im);
 
-            auto b5re    = _mm256_add_ps(a5re, a7im);
-            auto b7re    = _mm256_sub_ps(a5re, a7im);
-            auto b5im    = _mm256_add_ps(a5im, a7re);
-            auto b7im    = _mm256_sub_ps(a5im, a7re);
+            auto b5re = _mm256_add_ps(a5re, a7im);
+            auto b7re = _mm256_sub_ps(a5re, a7im);
+            auto b5im = _mm256_add_ps(a5im, a7re);
+            auto b7im = _mm256_sub_ps(a5im, a7re);
+            auto a1im = _mm256_add_ps(p1im, p5im);
+            auto a3re = _mm256_add_ps(p3re, p7re);
+
             auto b5re_tw = _mm256_add_ps(b5re, b5im);
             auto b5im_tw = _mm256_sub_ps(b5im, b5re);
             auto b7re_tw = _mm256_add_ps(b7re, b7im);
@@ -127,27 +137,28 @@ public:
             auto b3re = _mm256_sub_ps(a1re, a3re);
             auto b1im = _mm256_add_ps(a1im, a3im);
             auto b3im = _mm256_sub_ps(a1im, a3im);
+
             b5re_tw   = _mm256_mul_ps(b5re_tw, twsq2);
             b5im_tw   = _mm256_mul_ps(b5im_tw, twsq2);
             b7re_tw   = _mm256_mul_ps(b7re_tw, twsq2);
             b7im_tw   = _mm256_mul_ps(b7im_tw, twsq2);
 
-            auto p0re = _mm256_loadu_ps(data_ptr + 0 * size / 8 + idx_first);
-            auto p0im = _mm256_loadu_ps(data_ptr + 0 * size / 8 + idx_first + PackSize);
-            auto p4re = _mm256_loadu_ps(data_ptr + 4 * size / 8 + idx_first);
-            auto p4im = _mm256_loadu_ps(data_ptr + 4 * size / 8 + idx_first + PackSize);
-            auto p2re = _mm256_loadu_ps(data_ptr + 2 * size / 8 + idx_first);
-            auto p2im = _mm256_loadu_ps(data_ptr + 2 * size / 8 + idx_first + PackSize);
-            auto p6re = _mm256_loadu_ps(data_ptr + 6 * size / 8 + idx_first);
-            auto p6im = _mm256_loadu_ps(data_ptr + 6 * size / 8 + idx_first + PackSize);
+            auto p0re = _mm256_loadu_ps(data_ptr + sh0 + offset_first);
+            auto p0im = _mm256_loadu_ps(data_ptr + sh0 + offset_first + PackSize);
+            auto p4re = _mm256_loadu_ps(data_ptr + sh4 + offset_first);
+            auto p4im = _mm256_loadu_ps(data_ptr + sh4 + offset_first + PackSize);
+            auto p2re = _mm256_loadu_ps(data_ptr + sh2 + offset_first);
+            auto p2im = _mm256_loadu_ps(data_ptr + sh2 + offset_first + PackSize);
+            auto p6re = _mm256_loadu_ps(data_ptr + sh6 + offset_first);
+            auto p6im = _mm256_loadu_ps(data_ptr + sh6 + offset_first + PackSize);
 
             auto a0re = _mm256_add_ps(p0re, p4re);
-            auto a4re = _mm256_sub_ps(p0re, p4re);
             auto a0im = _mm256_add_ps(p0im, p4im);
-            auto a4im = _mm256_sub_ps(p0im, p4im);
             auto a2re = _mm256_add_ps(p2re, p6re);
-            auto a6re = _mm256_sub_ps(p2re, p6re);
             auto a2im = _mm256_add_ps(p2im, p6im);
+            auto a4re = _mm256_sub_ps(p0re, p4re);
+            auto a4im = _mm256_sub_ps(p0im, p4im);
+            auto a6re = _mm256_sub_ps(p2re, p6re);
             auto a6im = _mm256_sub_ps(p2im, p6im);
 
             auto b0re = _mm256_add_ps(a0re, a2re);
@@ -179,105 +190,112 @@ public:
 
             auto sha1re = _mm256_castps_pd(_mm256_unpacklo_ps(c1re, c5re));
             auto sha5re = _mm256_castps_pd(_mm256_unpackhi_ps(c1re, c5re));
+            auto sha1im = _mm256_castps_pd(_mm256_unpacklo_ps(c1im, c5im));
+            auto sha5im = _mm256_castps_pd(_mm256_unpackhi_ps(c1im, c5im));
             auto sha3re = _mm256_castps_pd(_mm256_unpacklo_ps(c3re, c7re));
             auto sha7re = _mm256_castps_pd(_mm256_unpackhi_ps(c3re, c7re));
+            auto sha3im = _mm256_castps_pd(_mm256_unpacklo_ps(c3im, c7im));
+            auto sha7im = _mm256_castps_pd(_mm256_unpackhi_ps(c3im, c7im));
+
             auto sha0re = _mm256_castps_pd(_mm256_unpacklo_ps(c0re, c4re));
             auto sha4re = _mm256_castps_pd(_mm256_unpackhi_ps(c0re, c4re));
+            auto sha0im = _mm256_castps_pd(_mm256_unpacklo_ps(c0im, c4im));
+            auto sha4im = _mm256_castps_pd(_mm256_unpackhi_ps(c0im, c4im));
             auto sha2re = _mm256_castps_pd(_mm256_unpacklo_ps(c2re, c6re));
             auto sha6re = _mm256_castps_pd(_mm256_unpackhi_ps(c2re, c6re));
+            auto sha2im = _mm256_castps_pd(_mm256_unpacklo_ps(c2im, c6im));
+            auto sha6im = _mm256_castps_pd(_mm256_unpackhi_ps(c2im, c6im));
 
             auto shb0re = _mm256_castpd_ps(_mm256_unpacklo_pd(sha0re, sha2re));
             auto shb2re = _mm256_castpd_ps(_mm256_unpackhi_pd(sha0re, sha2re));
+            auto shb0im = _mm256_castpd_ps(_mm256_unpacklo_pd(sha0im, sha2im));
+            auto shb2im = _mm256_castpd_ps(_mm256_unpackhi_pd(sha0im, sha2im));
+            auto shb1re = _mm256_castpd_ps(_mm256_unpacklo_pd(sha1re, sha3re));
+            auto shb3re = _mm256_castpd_ps(_mm256_unpackhi_pd(sha1re, sha3re));
+            auto shb1im = _mm256_castpd_ps(_mm256_unpacklo_pd(sha1im, sha3im));
+            auto shb3im = _mm256_castpd_ps(_mm256_unpackhi_pd(sha1im, sha3im));
+
+            auto shc0re = _mm256_permute2f128_ps(shb0re, shb1re, 0b00100000);
+            auto shc1re = _mm256_permute2f128_ps(shb0re, shb1re, 0b00110001);
+            auto shc0im = _mm256_permute2f128_ps(shb0im, shb1im, 0b00100000);
+            auto shc1im = _mm256_permute2f128_ps(shb0im, shb1im, 0b00110001);
+
+            auto q0re = _mm256_loadu_ps(data_ptr + sh0 + offset_second);
+            _mm256_storeu_ps(data_ptr + sh0 + offset_second, shc0re);
+            auto q0im = _mm256_loadu_ps(data_ptr + sh0 + offset_second + PackSize);
+            _mm256_storeu_ps(data_ptr + sh0 + offset_second + PackSize, shc0im);
+            auto q1re = _mm256_loadu_ps(data_ptr + sh1 + offset_second);
+            _mm256_storeu_ps(data_ptr + sh1 + offset_second, shc1re);
+            auto q1im = _mm256_loadu_ps(data_ptr + sh1 + offset_second + PackSize);
+            _mm256_storeu_ps(data_ptr + sh1 + offset_second + PackSize, shc1im);
+
+            auto shc2re = _mm256_permute2f128_ps(shb2re, shb3re, 0b00100000);
+            auto shc3re = _mm256_permute2f128_ps(shb2re, shb3re, 0b00110001);
+            auto shc2im = _mm256_permute2f128_ps(shb2im, shb3im, 0b00100000);
+            auto shc3im = _mm256_permute2f128_ps(shb2im, shb3im, 0b00110001);
+
+            auto q2re = _mm256_loadu_ps(data_ptr + sh2 + offset_second);
+            _mm256_storeu_ps(data_ptr + sh2 + offset_second, shc2re);
+            auto q2im = _mm256_loadu_ps(data_ptr + sh2 + offset_second + PackSize);
+            _mm256_storeu_ps(data_ptr + sh2 + offset_second + PackSize, shc2im);
+            auto q3re = _mm256_loadu_ps(data_ptr + sh3 + offset_second);
+            _mm256_storeu_ps(data_ptr + sh3 + offset_second, shc3re);
+            auto q3im = _mm256_loadu_ps(data_ptr + sh3 + offset_second + PackSize);
+            _mm256_storeu_ps(data_ptr + sh3 + offset_second + PackSize, shc3im);
+
             auto shb4re = _mm256_castpd_ps(_mm256_unpacklo_pd(sha4re, sha6re));
             auto shb6re = _mm256_castpd_ps(_mm256_unpackhi_pd(sha4re, sha6re));
             auto shb5re = _mm256_castpd_ps(_mm256_unpacklo_pd(sha5re, sha7re));
             auto shb7re = _mm256_castpd_ps(_mm256_unpackhi_pd(sha5re, sha7re));
-            auto shb1re = _mm256_castpd_ps(_mm256_unpacklo_pd(sha1re, sha3re));
-            auto shb3re = _mm256_castpd_ps(_mm256_unpackhi_pd(sha1re, sha3re));
 
-            auto shc0re = _mm256_permute2f128_ps(shb0re, shb1re, 0b00100000);
-            auto shc1re = _mm256_permute2f128_ps(shb0re, shb1re, 0b00110001);
-            auto shc2re = _mm256_permute2f128_ps(shb2re, shb3re, 0b00100000);
-            auto shc3re = _mm256_permute2f128_ps(shb2re, shb3re, 0b00110001);
             auto shc4re = _mm256_permute2f128_ps(shb4re, shb5re, 0b00100000);
             auto shc5re = _mm256_permute2f128_ps(shb4re, shb5re, 0b00110001);
             auto shc6re = _mm256_permute2f128_ps(shb6re, shb7re, 0b00100000);
             auto shc7re = _mm256_permute2f128_ps(shb6re, shb7re, 0b00110001);
 
-            auto sha0im = _mm256_castps_pd(_mm256_unpacklo_ps(c0im, c4im));
-            auto sha4im = _mm256_castps_pd(_mm256_unpackhi_ps(c0im, c4im));
-            auto sha2im = _mm256_castps_pd(_mm256_unpacklo_ps(c2im, c6im));
-            auto sha6im = _mm256_castps_pd(_mm256_unpackhi_ps(c2im, c6im));
-            auto sha1im = _mm256_castps_pd(_mm256_unpacklo_ps(c1im, c5im));
-            auto sha5im = _mm256_castps_pd(_mm256_unpackhi_ps(c1im, c5im));
-            auto sha3im = _mm256_castps_pd(_mm256_unpacklo_ps(c3im, c7im));
-            auto sha7im = _mm256_castps_pd(_mm256_unpackhi_ps(c3im, c7im));
-
-            auto shb0im = _mm256_castpd_ps(_mm256_unpacklo_pd(sha0im, sha2im));
-            auto shb2im = _mm256_castpd_ps(_mm256_unpackhi_pd(sha0im, sha2im));
             auto shb4im = _mm256_castpd_ps(_mm256_unpacklo_pd(sha4im, sha6im));
             auto shb6im = _mm256_castpd_ps(_mm256_unpackhi_pd(sha4im, sha6im));
-            auto shb1im = _mm256_castpd_ps(_mm256_unpacklo_pd(sha1im, sha3im));
-            auto shb3im = _mm256_castpd_ps(_mm256_unpackhi_pd(sha1im, sha3im));
             auto shb5im = _mm256_castpd_ps(_mm256_unpacklo_pd(sha5im, sha7im));
             auto shb7im = _mm256_castpd_ps(_mm256_unpackhi_pd(sha5im, sha7im));
 
-            auto shc0im = _mm256_permute2f128_ps(shb0im, shb1im, 0b00100000);
-            auto shc1im = _mm256_permute2f128_ps(shb0im, shb1im, 0b00110001);
-            auto shc2im = _mm256_permute2f128_ps(shb2im, shb3im, 0b00100000);
-            auto shc3im = _mm256_permute2f128_ps(shb2im, shb3im, 0b00110001);
             auto shc4im = _mm256_permute2f128_ps(shb4im, shb5im, 0b00100000);
             auto shc5im = _mm256_permute2f128_ps(shb4im, shb5im, 0b00110001);
             auto shc6im = _mm256_permute2f128_ps(shb6im, shb7im, 0b00100000);
             auto shc7im = _mm256_permute2f128_ps(shb6im, shb7im, 0b00110001);
 
-            auto q0re = _mm256_loadu_ps(data_ptr + 0 * size / 8 + idx_second);
-            _mm256_storeu_ps(data_ptr + 0 * size / 8 + idx_second, shc0re);
-            auto q0im = _mm256_loadu_ps(data_ptr + 0 * size / 8 + idx_second + PackSize);
-            _mm256_storeu_ps(data_ptr + 0 * size / 8 + idx_second + PackSize, shc0im);
-            auto q2re = _mm256_loadu_ps(data_ptr + 2 * size / 8 + idx_second);
-            _mm256_storeu_ps(data_ptr + 2 * size / 8 + idx_second, shc2re);
-            auto q2im = _mm256_loadu_ps(data_ptr + 2 * size / 8 + idx_second + PackSize);
-            _mm256_storeu_ps(data_ptr + 2 * size / 8 + idx_second + PackSize, shc2im);
-            auto q4re = _mm256_loadu_ps(data_ptr + 4 * size / 8 + idx_second);
-            _mm256_storeu_ps(data_ptr + 4 * size / 8 + idx_second, shc4re);
-            auto q4im = _mm256_loadu_ps(data_ptr + 4 * size / 8 + idx_second + PackSize);
-            _mm256_storeu_ps(data_ptr + 4 * size / 8 + idx_second + PackSize, shc4im);
-            auto q6re = _mm256_loadu_ps(data_ptr + 6 * size / 8 + idx_second);
-            _mm256_storeu_ps(data_ptr + 6 * size / 8 + idx_second, shc6re);
-            auto q6im = _mm256_loadu_ps(data_ptr + 6 * size / 8 + idx_second + PackSize);
-            _mm256_storeu_ps(data_ptr + 6 * size / 8 + idx_second + PackSize, shc6im);
 
-            auto q1re = _mm256_loadu_ps(data_ptr + 1 * size / 8 + idx_second);
-            _mm256_storeu_ps(data_ptr + 1 * size / 8 + idx_second, shc1re);
-            auto q1im = _mm256_loadu_ps(data_ptr + 1 * size / 8 + idx_second + PackSize);
-            _mm256_storeu_ps(data_ptr + 1 * size / 8 + idx_second + PackSize, shc1im);
-            auto q5re = _mm256_loadu_ps(data_ptr + 5 * size / 8 + idx_second);
-            _mm256_storeu_ps(data_ptr + 5 * size / 8 + idx_second, shc5re);
-            auto q5im = _mm256_loadu_ps(data_ptr + 5 * size / 8 + idx_second + PackSize);
-            _mm256_storeu_ps(data_ptr + 5 * size / 8 + idx_second + PackSize, shc5im);
-            auto q3re = _mm256_loadu_ps(data_ptr + 3 * size / 8 + idx_second);
-            _mm256_storeu_ps(data_ptr + 3 * size / 8 + idx_second, shc3re);
-            auto q3im = _mm256_loadu_ps(data_ptr + 3 * size / 8 + idx_second + PackSize);
-            _mm256_storeu_ps(data_ptr + 3 * size / 8 + idx_second + PackSize, shc3im);
-            auto q7re = _mm256_loadu_ps(data_ptr + 7 * size / 8 + idx_second);
-            _mm256_storeu_ps(data_ptr + 7 * size / 8 + idx_second, shc7re);
-            auto q7im = _mm256_loadu_ps(data_ptr + 7 * size / 8 + idx_second + PackSize);
-            _mm256_storeu_ps(data_ptr + 7 * size / 8 + idx_second + PackSize, shc7im);
+            auto q4re = _mm256_loadu_ps(data_ptr + sh4 + offset_second);
+            _mm256_storeu_ps(data_ptr + sh4 + offset_second, shc4re);
+            auto q4im = _mm256_loadu_ps(data_ptr + sh4 + offset_second + PackSize);
+            _mm256_storeu_ps(data_ptr + sh4 + offset_second + PackSize, shc4im);
+            auto q6re = _mm256_loadu_ps(data_ptr + sh6 + offset_second);
+            _mm256_storeu_ps(data_ptr + sh6 + offset_second, shc6re);
+            auto q6im = _mm256_loadu_ps(data_ptr + sh6 + offset_second + PackSize);
+            _mm256_storeu_ps(data_ptr + sh6 + offset_second + PackSize, shc6im);
+
+            auto q5re = _mm256_loadu_ps(data_ptr + sh5 + offset_second);
+            _mm256_storeu_ps(data_ptr + sh5 + offset_second, shc5re);
+            auto q5im = _mm256_loadu_ps(data_ptr + sh5 + offset_second + PackSize);
+            _mm256_storeu_ps(data_ptr + sh5 + offset_second + PackSize, shc5im);
+            auto q7re = _mm256_loadu_ps(data_ptr + sh7 + offset_second);
+            _mm256_storeu_ps(data_ptr + sh7 + offset_second, shc7re);
+            auto q7im = _mm256_loadu_ps(data_ptr + sh7 + offset_second + PackSize);
+            _mm256_storeu_ps(data_ptr + sh7 + offset_second + PackSize, shc7im);
 
             auto x1re = _mm256_add_ps(q1re, q5re);
             auto x5re = _mm256_sub_ps(q1re, q5re);
+            auto x3im = _mm256_add_ps(q3im, q7im);
+            auto x7im = _mm256_sub_ps(q3im, q7im);
             auto x1im = _mm256_add_ps(q1im, q5im);
             auto x5im = _mm256_sub_ps(q1im, q5im);
             auto x3re = _mm256_add_ps(q3re, q7re);
             auto x7re = _mm256_sub_ps(q3re, q7re);
-            auto x3im = _mm256_add_ps(q3im, q7im);
-            auto x7im = _mm256_sub_ps(q3im, q7im);
 
             auto y5re    = _mm256_add_ps(x5re, x7im);
             auto y7re    = _mm256_sub_ps(x5re, x7im);
             auto y5im    = _mm256_add_ps(x5im, x7re);
             auto y7im    = _mm256_sub_ps(x5im, x7re);
+
             auto y5re_tw = _mm256_add_ps(y5re, y5im);
             auto y5im_tw = _mm256_sub_ps(y5im, y5re);
             auto y7re_tw = _mm256_add_ps(y7re, y7im);
@@ -337,24 +355,6 @@ public:
             auto shx2re = _mm256_castps_pd(_mm256_unpacklo_ps(z2re, z6re));
             auto shx6re = _mm256_castps_pd(_mm256_unpackhi_ps(z2re, z6re));
 
-            auto shy0re = _mm256_castpd_ps(_mm256_unpacklo_pd(shx0re, shx2re));
-            auto shy2re = _mm256_castpd_ps(_mm256_unpackhi_pd(shx0re, shx2re));
-            auto shy4re = _mm256_castpd_ps(_mm256_unpacklo_pd(shx4re, shx6re));
-            auto shy6re = _mm256_castpd_ps(_mm256_unpackhi_pd(shx4re, shx6re));
-            auto shy5re = _mm256_castpd_ps(_mm256_unpacklo_pd(shx5re, shx7re));
-            auto shy7re = _mm256_castpd_ps(_mm256_unpackhi_pd(shx5re, shx7re));
-            auto shy1re = _mm256_castpd_ps(_mm256_unpacklo_pd(shx1re, shx3re));
-            auto shy3re = _mm256_castpd_ps(_mm256_unpackhi_pd(shx1re, shx3re));
-
-            auto shz0re = _mm256_permute2f128_ps(shy0re, shy1re, 0b00100000);
-            auto shz1re = _mm256_permute2f128_ps(shy0re, shy1re, 0b00110001);
-            auto shz2re = _mm256_permute2f128_ps(shy2re, shy3re, 0b00100000);
-            auto shz3re = _mm256_permute2f128_ps(shy2re, shy3re, 0b00110001);
-            auto shz4re = _mm256_permute2f128_ps(shy4re, shy5re, 0b00100000);
-            auto shz5re = _mm256_permute2f128_ps(shy4re, shy5re, 0b00110001);
-            auto shz6re = _mm256_permute2f128_ps(shy6re, shy7re, 0b00100000);
-            auto shz7re = _mm256_permute2f128_ps(shy6re, shy7re, 0b00110001);
-
             auto shx0im = _mm256_castps_pd(_mm256_unpacklo_ps(z0im, z4im));
             auto shx4im = _mm256_castps_pd(_mm256_unpackhi_ps(z0im, z4im));
             auto shx2im = _mm256_castps_pd(_mm256_unpacklo_ps(z2im, z6im));
@@ -364,63 +364,122 @@ public:
             auto shx3im = _mm256_castps_pd(_mm256_unpacklo_ps(z3im, z7im));
             auto shx7im = _mm256_castps_pd(_mm256_unpackhi_ps(z3im, z7im));
 
+            auto shy0re = _mm256_castpd_ps(_mm256_unpacklo_pd(shx0re, shx2re));
+            auto shy2re = _mm256_castpd_ps(_mm256_unpackhi_pd(shx0re, shx2re));
+            auto shy1re = _mm256_castpd_ps(_mm256_unpacklo_pd(shx1re, shx3re));
+            auto shy3re = _mm256_castpd_ps(_mm256_unpackhi_pd(shx1re, shx3re));
+
             auto shy0im = _mm256_castpd_ps(_mm256_unpacklo_pd(shx0im, shx2im));
             auto shy2im = _mm256_castpd_ps(_mm256_unpackhi_pd(shx0im, shx2im));
-            auto shy4im = _mm256_castpd_ps(_mm256_unpacklo_pd(shx4im, shx6im));
-            auto shy6im = _mm256_castpd_ps(_mm256_unpackhi_pd(shx4im, shx6im));
             auto shy1im = _mm256_castpd_ps(_mm256_unpacklo_pd(shx1im, shx3im));
             auto shy3im = _mm256_castpd_ps(_mm256_unpackhi_pd(shx1im, shx3im));
-            auto shy5im = _mm256_castpd_ps(_mm256_unpacklo_pd(shx5im, shx7im));
-            auto shy7im = _mm256_castpd_ps(_mm256_unpackhi_pd(shx5im, shx7im));
 
+            auto shz0re = _mm256_permute2f128_ps(shy0re, shy1re, 0b00100000);
+            auto shz1re = _mm256_permute2f128_ps(shy0re, shy1re, 0b00110001);
+            auto shz2re = _mm256_permute2f128_ps(shy2re, shy3re, 0b00100000);
+            auto shz3re = _mm256_permute2f128_ps(shy2re, shy3re, 0b00110001);
             auto shz0im = _mm256_permute2f128_ps(shy0im, shy1im, 0b00100000);
             auto shz1im = _mm256_permute2f128_ps(shy0im, shy1im, 0b00110001);
             auto shz2im = _mm256_permute2f128_ps(shy2im, shy3im, 0b00100000);
             auto shz3im = _mm256_permute2f128_ps(shy2im, shy3im, 0b00110001);
+
+            _mm256_storeu_ps(data_ptr + sh0 + offset_first, shz0re);
+            _mm256_storeu_ps(data_ptr + sh0 + offset_first + PackSize, shz0im);
+            _mm256_storeu_ps(data_ptr + sh1 + offset_first, shz1re);
+            _mm256_storeu_ps(data_ptr + sh1 + offset_first + PackSize, shz1im);
+            _mm256_storeu_ps(data_ptr + sh2 + offset_first, shz2re);
+            _mm256_storeu_ps(data_ptr + sh2 + offset_first + PackSize, shz2im);
+            _mm256_storeu_ps(data_ptr + sh3 + offset_first, shz3re);
+            _mm256_storeu_ps(data_ptr + sh3 + offset_first + PackSize, shz3im);
+
+            auto shy4re = _mm256_castpd_ps(_mm256_unpacklo_pd(shx4re, shx6re));
+            auto shy6re = _mm256_castpd_ps(_mm256_unpackhi_pd(shx4re, shx6re));
+            auto shy5re = _mm256_castpd_ps(_mm256_unpacklo_pd(shx5re, shx7re));
+            auto shy7re = _mm256_castpd_ps(_mm256_unpackhi_pd(shx5re, shx7re));
+
+            auto shz4re = _mm256_permute2f128_ps(shy4re, shy5re, 0b00100000);
+            auto shz5re = _mm256_permute2f128_ps(shy4re, shy5re, 0b00110001);
+            auto shz6re = _mm256_permute2f128_ps(shy6re, shy7re, 0b00100000);
+            auto shz7re = _mm256_permute2f128_ps(shy6re, shy7re, 0b00110001);
+
+            auto shy4im = _mm256_castpd_ps(_mm256_unpacklo_pd(shx4im, shx6im));
+            auto shy6im = _mm256_castpd_ps(_mm256_unpackhi_pd(shx4im, shx6im));
+            auto shy5im = _mm256_castpd_ps(_mm256_unpacklo_pd(shx5im, shx7im));
+            auto shy7im = _mm256_castpd_ps(_mm256_unpackhi_pd(shx5im, shx7im));
+
             auto shz4im = _mm256_permute2f128_ps(shy4im, shy5im, 0b00100000);
             auto shz5im = _mm256_permute2f128_ps(shy4im, shy5im, 0b00110001);
             auto shz6im = _mm256_permute2f128_ps(shy6im, shy7im, 0b00100000);
             auto shz7im = _mm256_permute2f128_ps(shy6im, shy7im, 0b00110001);
 
-            _mm256_storeu_ps(data_ptr + 0 * size / 8 + idx_first, shz0re);
-            _mm256_storeu_ps(data_ptr + 0 * size / 8 + idx_first + PackSize, shz0im);
-            _mm256_storeu_ps(data_ptr + 1 * size / 8 + idx_first, shz1re);
-            _mm256_storeu_ps(data_ptr + 1 * size / 8 + idx_first + PackSize, shz1im);
-            _mm256_storeu_ps(data_ptr + 2 * size / 8 + idx_first, shz2re);
-            _mm256_storeu_ps(data_ptr + 2 * size / 8 + idx_first + PackSize, shz2im);
-            _mm256_storeu_ps(data_ptr + 3 * size / 8 + idx_first, shz3re);
-            _mm256_storeu_ps(data_ptr + 3 * size / 8 + idx_first + PackSize, shz3im);
-
-            _mm256_storeu_ps(data_ptr + 4 * size / 8 + idx_first, shz4re);
-            _mm256_storeu_ps(data_ptr + 4 * size / 8 + idx_first + PackSize, shz4im);
-            _mm256_storeu_ps(data_ptr + 5 * size / 8 + idx_first, shz5re);
-            _mm256_storeu_ps(data_ptr + 5 * size / 8 + idx_first + PackSize, shz5im);
-            _mm256_storeu_ps(data_ptr + 6 * size / 8 + idx_first, shz6re);
-            _mm256_storeu_ps(data_ptr + 6 * size / 8 + idx_first + PackSize, shz6im);
-            _mm256_storeu_ps(data_ptr + 7 * size / 8 + idx_first, shz7re);
-            _mm256_storeu_ps(data_ptr + 7 * size / 8 + idx_first + PackSize, shz7im);
+            _mm256_storeu_ps(data_ptr + sh4 + offset_first, shz4re);
+            _mm256_storeu_ps(data_ptr + sh4 + offset_first + PackSize, shz4im);
+            _mm256_storeu_ps(data_ptr + sh5 + offset_first, shz5re);
+            _mm256_storeu_ps(data_ptr + sh5 + offset_first + PackSize, shz5im);
+            _mm256_storeu_ps(data_ptr + sh6 + offset_first, shz6re);
+            _mm256_storeu_ps(data_ptr + sh6 + offset_first + PackSize, shz6im);
+            _mm256_storeu_ps(data_ptr + sh7 + offset_first, shz7re);
+            _mm256_storeu_ps(data_ptr + sh7 + offset_first + PackSize, shz7im);
         };
 
         for (uint i = n_reversals(size / 64); i < size / 64; ++i)
         {
-            auto idx = m_sort[i];
+            auto offset = m_sort[i];
 
-            auto p0re = _mm256_loadu_ps(data_ptr + 0 * size / 8 + idx);
-            auto p0im = _mm256_loadu_ps(data_ptr + 0 * size / 8 + idx + PackSize);
-            auto p4re = _mm256_loadu_ps(data_ptr + 4 * size / 8 + idx);
-            auto p4im = _mm256_loadu_ps(data_ptr + 4 * size / 8 + idx + PackSize);
-            auto p2re = _mm256_loadu_ps(data_ptr + 2 * size / 8 + idx);
-            auto p2im = _mm256_loadu_ps(data_ptr + 2 * size / 8 + idx + PackSize);
-            auto p6re = _mm256_loadu_ps(data_ptr + 6 * size / 8 + idx);
-            auto p6im = _mm256_loadu_ps(data_ptr + 6 * size / 8 + idx + PackSize);
+            auto p1re = _mm256_loadu_ps(data_ptr + sh1 + offset);
+            auto p1im = _mm256_loadu_ps(data_ptr + sh1 + offset + PackSize);
+            auto p5re = _mm256_loadu_ps(data_ptr + sh5 + offset);
+            auto p5im = _mm256_loadu_ps(data_ptr + sh5 + offset + PackSize);
+            auto p3re = _mm256_loadu_ps(data_ptr + sh3 + offset);
+            auto p3im = _mm256_loadu_ps(data_ptr + sh3 + offset + PackSize);
+            auto p7re = _mm256_loadu_ps(data_ptr + sh7 + offset);
+            auto p7im = _mm256_loadu_ps(data_ptr + sh7 + offset + PackSize);
+
+            auto a5re = _mm256_sub_ps(p1re, p5re);
+            auto a7im = _mm256_sub_ps(p3im, p7im);
+            auto a5im = _mm256_sub_ps(p1im, p5im);
+            auto a7re = _mm256_sub_ps(p3re, p7re);
+            auto a1re = _mm256_add_ps(p1re, p5re);
+            auto a3im = _mm256_add_ps(p3im, p7im);
+
+            auto b5re = _mm256_add_ps(a5re, a7im);
+            auto b7re = _mm256_sub_ps(a5re, a7im);
+            auto b5im = _mm256_add_ps(a5im, a7re);
+            auto b7im = _mm256_sub_ps(a5im, a7re);
+            auto a1im = _mm256_add_ps(p1im, p5im);
+            auto a3re = _mm256_add_ps(p3re, p7re);
+
+            auto b5re_tw = _mm256_add_ps(b5re, b5im);
+            auto b5im_tw = _mm256_sub_ps(b5im, b5re);
+            auto b7re_tw = _mm256_add_ps(b7re, b7im);
+            auto b7im_tw = _mm256_sub_ps(b7im, b7re);
+
+            auto b1re = _mm256_add_ps(a1re, a3re);
+            auto b3re = _mm256_sub_ps(a1re, a3re);
+            auto b1im = _mm256_add_ps(a1im, a3im);
+            auto b3im = _mm256_sub_ps(a1im, a3im);
+
+            b5re_tw   = _mm256_mul_ps(b5re_tw, twsq2);
+            b5im_tw   = _mm256_mul_ps(b5im_tw, twsq2);
+            b7re_tw   = _mm256_mul_ps(b7re_tw, twsq2);
+            b7im_tw   = _mm256_mul_ps(b7im_tw, twsq2);
+
+            auto p0re = _mm256_loadu_ps(data_ptr + sh0 + offset);
+            auto p0im = _mm256_loadu_ps(data_ptr + sh0 + offset + PackSize);
+            auto p4re = _mm256_loadu_ps(data_ptr + sh4 + offset);
+            auto p4im = _mm256_loadu_ps(data_ptr + sh4 + offset + PackSize);
+            auto p2re = _mm256_loadu_ps(data_ptr + sh2 + offset);
+            auto p2im = _mm256_loadu_ps(data_ptr + sh2 + offset + PackSize);
+            auto p6re = _mm256_loadu_ps(data_ptr + sh6 + offset);
+            auto p6im = _mm256_loadu_ps(data_ptr + sh6 + offset + PackSize);
 
             auto a0re = _mm256_add_ps(p0re, p4re);
-            auto a4re = _mm256_sub_ps(p0re, p4re);
             auto a0im = _mm256_add_ps(p0im, p4im);
-            auto a4im = _mm256_sub_ps(p0im, p4im);
             auto a2re = _mm256_add_ps(p2re, p6re);
-            auto a6re = _mm256_sub_ps(p2re, p6re);
             auto a2im = _mm256_add_ps(p2im, p6im);
+            auto a4re = _mm256_sub_ps(p0re, p4re);
+            auto a4im = _mm256_sub_ps(p0im, p4im);
+            auto a6re = _mm256_sub_ps(p2re, p6re);
             auto a6im = _mm256_sub_ps(p2im, p6im);
 
             auto b0re = _mm256_add_ps(a0re, a2re);
@@ -431,42 +490,6 @@ public:
             auto b6re = _mm256_sub_ps(a4re, a6im);
             auto b4im = _mm256_add_ps(a4im, a6re);
             auto b6im = _mm256_sub_ps(a4im, a6re);
-
-            auto p1re = _mm256_loadu_ps(data_ptr + 1 * size / 8 + idx);
-            auto p1im = _mm256_loadu_ps(data_ptr + 1 * size / 8 + idx + PackSize);
-            auto p5re = _mm256_loadu_ps(data_ptr + 5 * size / 8 + idx);
-            auto p5im = _mm256_loadu_ps(data_ptr + 5 * size / 8 + idx + PackSize);
-            auto p3re = _mm256_loadu_ps(data_ptr + 3 * size / 8 + idx);
-            auto p3im = _mm256_loadu_ps(data_ptr + 3 * size / 8 + idx + PackSize);
-            auto p7re = _mm256_loadu_ps(data_ptr + 7 * size / 8 + idx);
-            auto p7im = _mm256_loadu_ps(data_ptr + 7 * size / 8 + idx + PackSize);
-
-            auto a1re = _mm256_add_ps(p1re, p5re);
-            auto a5re = _mm256_sub_ps(p1re, p5re);
-            auto a1im = _mm256_add_ps(p1im, p5im);
-            auto a5im = _mm256_sub_ps(p1im, p5im);
-            auto a3re = _mm256_add_ps(p3re, p7re);
-            auto a7re = _mm256_sub_ps(p3re, p7re);
-            auto a3im = _mm256_add_ps(p3im, p7im);
-            auto a7im = _mm256_sub_ps(p3im, p7im);
-
-            auto b5re    = _mm256_add_ps(a5re, a7im);
-            auto b7re    = _mm256_sub_ps(a5re, a7im);
-            auto b5im    = _mm256_add_ps(a5im, a7re);
-            auto b7im    = _mm256_sub_ps(a5im, a7re);
-            auto b5re_tw = _mm256_add_ps(b5re, b5im);
-            auto b5im_tw = _mm256_sub_ps(b5im, b5re);
-            auto b7re_tw = _mm256_add_ps(b7re, b7im);
-            auto b7im_tw = _mm256_sub_ps(b7im, b7re);
-
-            auto b1re = _mm256_add_ps(a1re, a3re);
-            auto b3re = _mm256_sub_ps(a1re, a3re);
-            auto b1im = _mm256_add_ps(a1im, a3im);
-            auto b3im = _mm256_sub_ps(a1im, a3im);
-            b5re_tw   = _mm256_mul_ps(b5re_tw, twsq2);
-            b5im_tw   = _mm256_mul_ps(b5im_tw, twsq2);
-            b7re_tw   = _mm256_mul_ps(b7re_tw, twsq2);
-            b7im_tw   = _mm256_mul_ps(b7im_tw, twsq2);
 
             auto c0re = _mm256_add_ps(b0re, b1re);
             auto c1re = _mm256_sub_ps(b0re, b1re);
@@ -488,75 +511,80 @@ public:
 
             auto sha1re = _mm256_castps_pd(_mm256_unpacklo_ps(c1re, c5re));
             auto sha5re = _mm256_castps_pd(_mm256_unpackhi_ps(c1re, c5re));
+            auto sha1im = _mm256_castps_pd(_mm256_unpacklo_ps(c1im, c5im));
+            auto sha5im = _mm256_castps_pd(_mm256_unpackhi_ps(c1im, c5im));
             auto sha3re = _mm256_castps_pd(_mm256_unpacklo_ps(c3re, c7re));
             auto sha7re = _mm256_castps_pd(_mm256_unpackhi_ps(c3re, c7re));
+            auto sha3im = _mm256_castps_pd(_mm256_unpacklo_ps(c3im, c7im));
+            auto sha7im = _mm256_castps_pd(_mm256_unpackhi_ps(c3im, c7im));
+
             auto sha0re = _mm256_castps_pd(_mm256_unpacklo_ps(c0re, c4re));
             auto sha4re = _mm256_castps_pd(_mm256_unpackhi_ps(c0re, c4re));
+            auto sha0im = _mm256_castps_pd(_mm256_unpacklo_ps(c0im, c4im));
+            auto sha4im = _mm256_castps_pd(_mm256_unpackhi_ps(c0im, c4im));
             auto sha2re = _mm256_castps_pd(_mm256_unpacklo_ps(c2re, c6re));
             auto sha6re = _mm256_castps_pd(_mm256_unpackhi_ps(c2re, c6re));
+            auto sha2im = _mm256_castps_pd(_mm256_unpacklo_ps(c2im, c6im));
+            auto sha6im = _mm256_castps_pd(_mm256_unpackhi_ps(c2im, c6im));
 
             auto shb0re = _mm256_castpd_ps(_mm256_unpacklo_pd(sha0re, sha2re));
             auto shb2re = _mm256_castpd_ps(_mm256_unpackhi_pd(sha0re, sha2re));
+            auto shb0im = _mm256_castpd_ps(_mm256_unpacklo_pd(sha0im, sha2im));
+            auto shb2im = _mm256_castpd_ps(_mm256_unpackhi_pd(sha0im, sha2im));
+            auto shb1re = _mm256_castpd_ps(_mm256_unpacklo_pd(sha1re, sha3re));
+            auto shb3re = _mm256_castpd_ps(_mm256_unpackhi_pd(sha1re, sha3re));
+            auto shb1im = _mm256_castpd_ps(_mm256_unpacklo_pd(sha1im, sha3im));
+            auto shb3im = _mm256_castpd_ps(_mm256_unpackhi_pd(sha1im, sha3im));
+
+            auto shc0re = _mm256_permute2f128_ps(shb0re, shb1re, 0b00100000);
+            auto shc1re = _mm256_permute2f128_ps(shb0re, shb1re, 0b00110001);
+            auto shc0im = _mm256_permute2f128_ps(shb0im, shb1im, 0b00100000);
+            auto shc1im = _mm256_permute2f128_ps(shb0im, shb1im, 0b00110001);
+
+            _mm256_storeu_ps(data_ptr + sh0 + offset, shc0re);
+            _mm256_storeu_ps(data_ptr + sh0 + offset + PackSize, shc0im);
+            _mm256_storeu_ps(data_ptr + sh1 + offset, shc1re);
+            _mm256_storeu_ps(data_ptr + sh1 + offset + PackSize, shc1im);
+
+            auto shc2re = _mm256_permute2f128_ps(shb2re, shb3re, 0b00100000);
+            auto shc3re = _mm256_permute2f128_ps(shb2re, shb3re, 0b00110001);
+            auto shc2im = _mm256_permute2f128_ps(shb2im, shb3im, 0b00100000);
+            auto shc3im = _mm256_permute2f128_ps(shb2im, shb3im, 0b00110001);
+
+            _mm256_storeu_ps(data_ptr + sh2 + offset, shc2re);
+            _mm256_storeu_ps(data_ptr + sh2 + offset + PackSize, shc2im);
+            _mm256_storeu_ps(data_ptr + sh3 + offset, shc3re);
+            _mm256_storeu_ps(data_ptr + sh3 + offset + PackSize, shc3im);
+
             auto shb4re = _mm256_castpd_ps(_mm256_unpacklo_pd(sha4re, sha6re));
             auto shb6re = _mm256_castpd_ps(_mm256_unpackhi_pd(sha4re, sha6re));
             auto shb5re = _mm256_castpd_ps(_mm256_unpacklo_pd(sha5re, sha7re));
             auto shb7re = _mm256_castpd_ps(_mm256_unpackhi_pd(sha5re, sha7re));
-            auto shb1re = _mm256_castpd_ps(_mm256_unpacklo_pd(sha1re, sha3re));
-            auto shb3re = _mm256_castpd_ps(_mm256_unpackhi_pd(sha1re, sha3re));
 
-            auto shc0re = _mm256_permute2f128_ps(shb0re, shb1re, 0b00100000);
-            auto shc1re = _mm256_permute2f128_ps(shb0re, shb1re, 0b00110001);
-            auto shc2re = _mm256_permute2f128_ps(shb2re, shb3re, 0b00100000);
-            auto shc3re = _mm256_permute2f128_ps(shb2re, shb3re, 0b00110001);
             auto shc4re = _mm256_permute2f128_ps(shb4re, shb5re, 0b00100000);
             auto shc5re = _mm256_permute2f128_ps(shb4re, shb5re, 0b00110001);
             auto shc6re = _mm256_permute2f128_ps(shb6re, shb7re, 0b00100000);
             auto shc7re = _mm256_permute2f128_ps(shb6re, shb7re, 0b00110001);
 
-            auto sha0im = _mm256_castps_pd(_mm256_unpacklo_ps(c0im, c4im));
-            auto sha4im = _mm256_castps_pd(_mm256_unpackhi_ps(c0im, c4im));
-            auto sha2im = _mm256_castps_pd(_mm256_unpacklo_ps(c2im, c6im));
-            auto sha6im = _mm256_castps_pd(_mm256_unpackhi_ps(c2im, c6im));
-            auto sha1im = _mm256_castps_pd(_mm256_unpacklo_ps(c1im, c5im));
-            auto sha5im = _mm256_castps_pd(_mm256_unpackhi_ps(c1im, c5im));
-            auto sha3im = _mm256_castps_pd(_mm256_unpacklo_ps(c3im, c7im));
-            auto sha7im = _mm256_castps_pd(_mm256_unpackhi_ps(c3im, c7im));
-
-            auto shb0im = _mm256_castpd_ps(_mm256_unpacklo_pd(sha0im, sha2im));
-            auto shb2im = _mm256_castpd_ps(_mm256_unpackhi_pd(sha0im, sha2im));
             auto shb4im = _mm256_castpd_ps(_mm256_unpacklo_pd(sha4im, sha6im));
             auto shb6im = _mm256_castpd_ps(_mm256_unpackhi_pd(sha4im, sha6im));
-            auto shb1im = _mm256_castpd_ps(_mm256_unpacklo_pd(sha1im, sha3im));
-            auto shb3im = _mm256_castpd_ps(_mm256_unpackhi_pd(sha1im, sha3im));
             auto shb5im = _mm256_castpd_ps(_mm256_unpacklo_pd(sha5im, sha7im));
             auto shb7im = _mm256_castpd_ps(_mm256_unpackhi_pd(sha5im, sha7im));
 
-            auto shc0im = _mm256_permute2f128_ps(shb0im, shb1im, 0b00100000);
-            auto shc1im = _mm256_permute2f128_ps(shb0im, shb1im, 0b00110001);
-            auto shc2im = _mm256_permute2f128_ps(shb2im, shb3im, 0b00100000);
-            auto shc3im = _mm256_permute2f128_ps(shb2im, shb3im, 0b00110001);
             auto shc4im = _mm256_permute2f128_ps(shb4im, shb5im, 0b00100000);
             auto shc5im = _mm256_permute2f128_ps(shb4im, shb5im, 0b00110001);
             auto shc6im = _mm256_permute2f128_ps(shb6im, shb7im, 0b00100000);
             auto shc7im = _mm256_permute2f128_ps(shb6im, shb7im, 0b00110001);
 
-            _mm256_storeu_ps(data_ptr + 0 * size / 8 + idx, shc0re);
-            _mm256_storeu_ps(data_ptr + 0 * size / 8 + idx + PackSize, shc0im);
-            _mm256_storeu_ps(data_ptr + 1 * size / 8 + idx, shc1re);
-            _mm256_storeu_ps(data_ptr + 1 * size / 8 + idx + PackSize, shc1im);
-            _mm256_storeu_ps(data_ptr + 2 * size / 8 + idx, shc2re);
-            _mm256_storeu_ps(data_ptr + 2 * size / 8 + idx + PackSize, shc2im);
-            _mm256_storeu_ps(data_ptr + 3 * size / 8 + idx, shc3re);
-            _mm256_storeu_ps(data_ptr + 3 * size / 8 + idx + PackSize, shc3im);
+            _mm256_storeu_ps(data_ptr + sh4 + offset, shc4re);
+            _mm256_storeu_ps(data_ptr + sh4 + offset + PackSize, shc4im);
+            _mm256_storeu_ps(data_ptr + sh6 + offset, shc6re);
+            _mm256_storeu_ps(data_ptr + sh6 + offset + PackSize, shc6im);
 
-            _mm256_storeu_ps(data_ptr + 4 * size / 8 + idx, shc4re);
-            _mm256_storeu_ps(data_ptr + 4 * size / 8 + idx + PackSize, shc4im);
-            _mm256_storeu_ps(data_ptr + 5 * size / 8 + idx, shc5re);
-            _mm256_storeu_ps(data_ptr + 5 * size / 8 + idx + PackSize, shc5im);
-            _mm256_storeu_ps(data_ptr + 6 * size / 8 + idx, shc6re);
-            _mm256_storeu_ps(data_ptr + 6 * size / 8 + idx + PackSize, shc6im);
-            _mm256_storeu_ps(data_ptr + 7 * size / 8 + idx, shc7re);
-            _mm256_storeu_ps(data_ptr + 7 * size / 8 + idx + PackSize, shc7im);
+            _mm256_storeu_ps(data_ptr + sh5 + offset, shc5re);
+            _mm256_storeu_ps(data_ptr + sh5 + offset + PackSize, shc5im);
+            _mm256_storeu_ps(data_ptr + sh7 + offset, shc7re);
+            _mm256_storeu_ps(data_ptr + sh7 + offset + PackSize, shc7im);
         }
 
         if ((size & 0x5555555555555555) != 0)
@@ -568,27 +596,28 @@ public:
 
             for (uint i = 0; i < size / 16; ++i)
             {
-                auto p0re = _mm256_loadu_ps(data_ptr + 1 * size / 8 + i * 8);
-                auto p0im = _mm256_loadu_ps(data_ptr + 1 * size / 8 + i * 8 + PackSize);
-                auto p1re = _mm256_loadu_ps(data_ptr + 1 * size / 8 + i * 8);
-                auto p1im = _mm256_loadu_ps(data_ptr + 1 * size / 8 + i * 8 + PackSize);
-                auto p2re = _mm256_loadu_ps(data_ptr + 1 * size / 8 + i * 8);
-                auto p2im = _mm256_loadu_ps(data_ptr + 1 * size / 8 + i * 8 + PackSize);
-                auto p3re = _mm256_loadu_ps(data_ptr + 1 * size / 8 + i * 8);
-                auto p3im = _mm256_loadu_ps(data_ptr + 1 * size / 8 + i * 8 + PackSize);
+                auto p0re = _mm256_loadu_ps(data_ptr + sh1 + i * 8);
+                auto p0im = _mm256_loadu_ps(data_ptr + sh1 + i * 8 + PackSize);
+                auto p1re = _mm256_loadu_ps(data_ptr + sh1 + i * 8);
+                auto p1im = _mm256_loadu_ps(data_ptr + sh1 + i * 8 + PackSize);
+                auto p2re = _mm256_loadu_ps(data_ptr + sh1 + i * 8);
+                auto p2im = _mm256_loadu_ps(data_ptr + sh1 + i * 8 + PackSize);
+                auto p3re = _mm256_loadu_ps(data_ptr + sh1 + i * 8);
+                auto p3im = _mm256_loadu_ps(data_ptr + sh1 + i * 8 + PackSize);
 
                 avx::cx_reg<float> p1{p1re, p1im};
 
                 auto p1tw = avx::mul(p1, tw0);
-
-
-
-
             }
         }
     };
 
 private:
+    static constexpr auto packed_idx(std::size_t idx) -> std::size_t
+    {
+        return idx + idx / PackSize * PackSize;
+    }
+
     static constexpr std::size_t register_size = 32 / sizeof(real_type);
 
     static constexpr auto log2i(std::size_t number) -> std::size_t
@@ -615,13 +644,13 @@ private:
 
     /**
      * @brief Returns number of unique bit-reversed pairs from 0 to max-1
-     * 
-     * @param max 
-     * @return std::size_t 
+     *
+     * @param max
+     * @return std::size_t
      */
     static constexpr auto n_reversals(std::size_t max) -> std::size_t
     {
-        return max - 1U << (log2i(max + 1) / 2);
+        return max - (1U << (log2i(max + 1) / 2));
     }
 
     static inline auto wnk(std::size_t n, std::size_t k) -> std::complex<real_type>

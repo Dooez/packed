@@ -8,11 +8,11 @@
 #include <variant>
 namespace pcx{
 template<std::size_t N>
-concept power_of_two = requires { (N & (N - 1)) == 0; };
+concept power_of_two = (N & (N - 1)) == 0;
 
 template<typename T, std::size_t PackSize>
 concept packed_floating_point = std::floating_point<T> && power_of_two<PackSize> &&
-                                requires { PackSize >= 64 / sizeof(T); };
+                                (PackSize >= 32 / sizeof(T));
 
 template<typename T, std::size_t PackSize, typename Allocator>
     requires packed_floating_point<T, PackSize>
