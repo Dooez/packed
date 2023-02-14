@@ -31,7 +31,7 @@ private:
     struct packed_fft_core
     {
         packed_fft_core(std::size_t fft_size, allocator_type allocator)
-            requires (Size == pcx::dynamic_size)
+            requires(Size == pcx::dynamic_size)
         : sort(get_sort(fft_size, static_cast<sort_allocator_type>(allocator)))
         , twiddles(get_twiddles(fft_size, allocator)){};
 
@@ -193,8 +193,12 @@ void fft_internal(pcx::vector<T, PackSize, Allocator>& vector)
 {
     auto size = vector.size();
 
-    constexpr double pi  = 3.14159265358979323846;
-    const auto       sq2 = std::exp(std::complex<float>(0, pi / 4));
+    constexpr const double pi  = 3.14159265358979323846;
+    const auto             sq2 = std::exp(std::complex<float>(0, pi / 4));
+
+    for (uint i = 0; i < size / 64; ++i)
+    {
+    };
 
     auto twsq2 = _mm256_broadcast_ss(&reinterpret_cast<const T(&)[2]>(sq2)[0]);
 
