@@ -87,8 +87,9 @@ public:
         constexpr const double pi  = 3.14159265358979323846;
         const auto             sq2 = std::exp(std::complex<float>(0, pi / 4));
 
-        auto  twsq2    = avx::broadcast(sq2.real());
-        auto* data_ptr = &vector[0];
+        auto  twsq2       = avx::broadcast(sq2.real());
+        auto* data_ptr    = &vector[0];
+        auto* twiddle_ptr = &m_twiddles[0];
 
         for (uint i = 0; i < n_reversals(size / 64); i += 2)
         {
@@ -556,6 +557,34 @@ public:
             _mm256_storeu_ps(data_ptr + 6 * size / 8 + idx + PackSize, shc6im);
             _mm256_storeu_ps(data_ptr + 7 * size / 8 + idx, shc7re);
             _mm256_storeu_ps(data_ptr + 7 * size / 8 + idx + PackSize, shc7im);
+        }
+
+        if ((size & 0x5555555555555555) != 0)
+        {
+            auto tw0re = _mm256_loadu_ps(twiddle_ptr);
+            auto tw0im = _mm256_loadu_ps(twiddle_ptr + PackSize);
+
+            avx::cx_reg<float> tw0 = {tw0re, tw0im};
+
+            for (uint i = 0; i < size / 16; ++i)
+            {
+                auto p0re = _mm256_loadu_ps(data_ptr + 1 * size / 8 + i * 8);
+                auto p0im = _mm256_loadu_ps(data_ptr + 1 * size / 8 + i * 8 + PackSize);
+                auto p1re = _mm256_loadu_ps(data_ptr + 1 * size / 8 + i * 8);
+                auto p1im = _mm256_loadu_ps(data_ptr + 1 * size / 8 + i * 8 + PackSize);
+                auto p2re = _mm256_loadu_ps(data_ptr + 1 * size / 8 + i * 8);
+                auto p2im = _mm256_loadu_ps(data_ptr + 1 * size / 8 + i * 8 + PackSize);
+                auto p3re = _mm256_loadu_ps(data_ptr + 1 * size / 8 + i * 8);
+                auto p3im = _mm256_loadu_ps(data_ptr + 1 * size / 8 + i * 8 + PackSize);
+
+                avx::cx_reg<float> p1{p1re, p1im};
+
+                auto p1tw = avx::mul(p1, tw0);
+
+
+
+
+            }
         }
     };
 
