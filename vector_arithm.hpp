@@ -49,6 +49,50 @@ namespace avx {
         return _mm256_div_pd(lhs, rhs);
     }
 
+    inline auto fmadd(reg<float>::type a, reg<float>::type b, reg<float>::type c)
+        -> reg<float>::type
+    {
+        return _mm256_fmadd_ps(a, b, c);
+    }
+    inline auto fmadd(reg<double>::type a, reg<double>::type b, reg<double>::type c)
+        -> reg<double>::type
+    {
+        return _mm256_fmadd_pd(a, b, c);
+    }
+
+    inline auto fnmadd(reg<float>::type a, reg<float>::type b, reg<float>::type c)
+        -> reg<float>::type
+    {
+        return _mm256_fnmadd_ps(a, b, c);
+    }
+    inline auto fnmadd(reg<double>::type a, reg<double>::type b, reg<double>::type c)
+        -> reg<double>::type
+    {
+        return _mm256_fnmadd_pd(a, b, c);
+    }
+
+    inline auto fmsub(reg<float>::type a, reg<float>::type b, reg<float>::type c)
+        -> reg<float>::type
+    {
+        return _mm256_fmsub_ps(a, b, c);
+    }
+    inline auto fmsub(reg<double>::type a, reg<double>::type b, reg<double>::type c)
+        -> reg<double>::type
+    {
+        return _mm256_fmsub_pd(a, b, c);
+    }
+
+    inline auto fnmsub(reg<float>::type a, reg<float>::type b, reg<float>::type c)
+        -> reg<float>::type
+    {
+        return _mm256_fnmsub_ps(a, b, c);
+    }
+    inline auto fnmsub(reg<double>::type a, reg<double>::type b, reg<double>::type c)
+        -> reg<double>::type
+    {
+        return _mm256_fnmsub_pd(a, b, c);
+    }
+
     template<typename T>
     struct cx_reg
     {
@@ -81,10 +125,8 @@ namespace avx {
     template<typename T>
     inline auto mul(cx_reg<T> lhs, cx_reg<T> rhs) -> cx_reg<T>
     {
-        const auto real =
-            avx::sub(avx::mul(lhs.real, rhs.real), avx::mul(lhs.imag, rhs.imag));
-        const auto imag =
-            avx::add(avx::mul(lhs.real, rhs.imag), avx::mul(lhs.imag, rhs.real));
+        const auto real = fnmadd(lhs.imag, rhs.imag, mul(lhs.real, rhs.real));
+        const auto imag = fmadd(lhs.imag, rhs.real, mul(lhs.real, rhs.imag));
 
         return {real, imag};
     }

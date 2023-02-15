@@ -6,6 +6,24 @@
 #include <memory>
 
 namespace pcx {
+
+namespace avx {
+    template<std::size_t PackSize, typename T>
+        requires packed_floating_point<T, PackSize>
+    auto cxload(const T* ptr) -> cx_reg<T>
+    {
+        return {load(ptr), load(ptr + PackSize)};
+    }
+
+    template<std::size_t PackSize, typename T>
+        requires packed_floating_point<T, PackSize>
+    void cxstore(T* ptr, cx_reg<T> reg)
+    {
+        store(ptr, reg.real);
+        store(ptr + PackSize, reg.imag);
+    }
+}    // namespace avx
+
 constexpr const std::size_t dynamic_size = -1;
 
 template<typename T,
@@ -92,13 +110,13 @@ public:
         auto* twiddle_ptr = &m_twiddles[0];
 
         auto sh0 = 0;
-        auto sh1 = packed_idx(1 * size / 8);
-        auto sh2 = packed_idx(2 * size / 8);
-        auto sh3 = packed_idx(3 * size / 8);
-        auto sh4 = packed_idx(4 * size / 8);
-        auto sh5 = packed_idx(5 * size / 8);
-        auto sh6 = packed_idx(6 * size / 8);
-        auto sh7 = packed_idx(7 * size / 8);
+        auto sh1 = pidx(1 * size / 8);
+        auto sh2 = pidx(2 * size / 8);
+        auto sh3 = pidx(3 * size / 8);
+        auto sh4 = pidx(4 * size / 8);
+        auto sh5 = pidx(5 * size / 8);
+        auto sh6 = pidx(6 * size / 8);
+        auto sh7 = pidx(7 * size / 8);
 
         for (uint i = 0; i < n_reversals(size / 64); i += 2)
         {
@@ -138,10 +156,10 @@ public:
             auto b1im = _mm256_add_ps(a1im, a3im);
             auto b3im = _mm256_sub_ps(a1im, a3im);
 
-            b5re_tw   = _mm256_mul_ps(b5re_tw, twsq2);
-            b5im_tw   = _mm256_mul_ps(b5im_tw, twsq2);
-            b7re_tw   = _mm256_mul_ps(b7re_tw, twsq2);
-            b7im_tw   = _mm256_mul_ps(b7im_tw, twsq2);
+            b5re_tw = _mm256_mul_ps(b5re_tw, twsq2);
+            b5im_tw = _mm256_mul_ps(b5im_tw, twsq2);
+            b7re_tw = _mm256_mul_ps(b7re_tw, twsq2);
+            b7im_tw = _mm256_mul_ps(b7im_tw, twsq2);
 
             auto p0re = _mm256_loadu_ps(data_ptr + sh0 + offset_first);
             auto p0im = _mm256_loadu_ps(data_ptr + sh0 + offset_first + PackSize);
@@ -291,10 +309,10 @@ public:
             auto x3re = _mm256_add_ps(q3re, q7re);
             auto x7re = _mm256_sub_ps(q3re, q7re);
 
-            auto y5re    = _mm256_add_ps(x5re, x7im);
-            auto y7re    = _mm256_sub_ps(x5re, x7im);
-            auto y5im    = _mm256_add_ps(x5im, x7re);
-            auto y7im    = _mm256_sub_ps(x5im, x7re);
+            auto y5re = _mm256_add_ps(x5re, x7im);
+            auto y7re = _mm256_sub_ps(x5re, x7im);
+            auto y5im = _mm256_add_ps(x5im, x7re);
+            auto y7im = _mm256_sub_ps(x5im, x7re);
 
             auto y5re_tw = _mm256_add_ps(y5re, y5im);
             auto y5im_tw = _mm256_sub_ps(y5im, y5re);
@@ -459,10 +477,10 @@ public:
             auto b1im = _mm256_add_ps(a1im, a3im);
             auto b3im = _mm256_sub_ps(a1im, a3im);
 
-            b5re_tw   = _mm256_mul_ps(b5re_tw, twsq2);
-            b5im_tw   = _mm256_mul_ps(b5im_tw, twsq2);
-            b7re_tw   = _mm256_mul_ps(b7re_tw, twsq2);
-            b7im_tw   = _mm256_mul_ps(b7im_tw, twsq2);
+            b5re_tw = _mm256_mul_ps(b5re_tw, twsq2);
+            b5im_tw = _mm256_mul_ps(b5im_tw, twsq2);
+            b7re_tw = _mm256_mul_ps(b7re_tw, twsq2);
+            b7im_tw = _mm256_mul_ps(b7im_tw, twsq2);
 
             auto p0re = _mm256_loadu_ps(data_ptr + sh0 + offset);
             auto p0im = _mm256_loadu_ps(data_ptr + sh0 + offset + PackSize);
@@ -587,33 +605,93 @@ public:
             _mm256_storeu_ps(data_ptr + sh7 + offset + PackSize, shc7im);
         }
 
-        if ((size & 0x5555555555555555) != 0)
+        std::size_t l_size     = 16;
+        std::size_t group_size = size / 16;
+        std::size_t n_groups   = 1;
+        std::size_t tw_offset  = 0;
+
+        while (l_size < size / 2)
         {
-            auto tw0re = _mm256_loadu_ps(twiddle_ptr);
-            auto tw0im = _mm256_loadu_ps(twiddle_ptr + PackSize);
-
-            avx::cx_reg<float> tw0 = {tw0re, tw0im};
-
-            for (uint i = 0; i < size / 16; ++i)
+            for (std::size_t i_group = 0; i_group < n_groups; ++i_group)
             {
-                auto p0re = _mm256_loadu_ps(data_ptr + sh1 + i * 8);
-                auto p0im = _mm256_loadu_ps(data_ptr + sh1 + i * 8 + PackSize);
-                auto p1re = _mm256_loadu_ps(data_ptr + sh1 + i * 8);
-                auto p1im = _mm256_loadu_ps(data_ptr + sh1 + i * 8 + PackSize);
-                auto p2re = _mm256_loadu_ps(data_ptr + sh1 + i * 8);
-                auto p2im = _mm256_loadu_ps(data_ptr + sh1 + i * 8 + PackSize);
-                auto p3re = _mm256_loadu_ps(data_ptr + sh1 + i * 8);
-                auto p3im = _mm256_loadu_ps(data_ptr + sh1 + i * 8 + PackSize);
+                auto*       grp_ptr = data_ptr + pidx(i_group * l_size * 2);
+                std::size_t offset  = 0;
 
-                avx::cx_reg<float> p1{p1re, p1im};
+                auto tw0 = avx::cxload<PackSize>(twiddle_ptr + pidx(tw_offset));
+                auto tw1 = avx::cxload<PackSize>(twiddle_ptr + pidx(tw_offset + 8));
+                auto tw2 = avx::cxload<PackSize>(twiddle_ptr + pidx(tw_offset + 16));
 
-                auto p1tw = avx::mul(p1, tw0);
+                tw_offset += 24;
+
+                for (std::size_t i = 0; i < group_size; ++i)
+                {
+                    auto* ptr0 = grp_ptr + pidx(offset);
+                    auto* ptr1 = grp_ptr + pidx(offset + l_size / 2);
+                    auto* ptr2 = grp_ptr + pidx(offset + l_size);
+                    auto* ptr3 = grp_ptr + pidx(offset + l_size / 2 * 3);
+
+                    auto p1 = avx::cxload<PackSize>(ptr1);
+                    auto p3 = avx::cxload<PackSize>(ptr3);
+                    auto p0 = avx::cxload<PackSize>(ptr0);
+                    auto p2 = avx::cxload<PackSize>(ptr2);
+
+                    auto p1tw_re = avx::mul(p1.real, tw0.real);
+                    auto p3tw_re = avx::mul(p3.real, tw0.real);
+                    auto p1tw_im = avx::mul(p1.real, tw0.imag);
+                    auto p3tw_im = avx::mul(p3.real, tw0.imag);
+
+                    p1tw_re = avx::fnmadd(p1.imag, tw0.imag, p1tw_re);
+                    p3tw_re = avx::fnmadd(p3.imag, tw0.imag, p3tw_re);
+                    p1tw_im = avx::fmadd(p1.imag, tw0.real, p1tw_im);
+                    p3tw_im = avx::fmadd(p3.imag, tw0.real, p3tw_im);
+
+                    avx::cx_reg<float> p1tw = {p1tw_re, p1tw_im};
+                    avx::cx_reg<float> p3tw = {p3tw_re, p3tw_im};
+
+                    auto a2 = avx::add(p2, p3tw);
+                    auto a3 = avx::sub(p2, p3tw);
+                    auto a0 = avx::add(p0, p1tw);
+                    auto a1 = avx::sub(p0, p1tw);
+
+                    auto a2tw_re = avx::mul(a1.real, tw1.real);
+                    auto a3tw_re = avx::mul(a3.real, tw2.real);
+                    auto a2tw_im = avx::mul(a1.real, tw1.imag);
+                    auto a3tw_im = avx::mul(a3.real, tw2.imag);
+
+                    a2tw_re = avx::fnmadd(a2.imag, tw1.imag, a2tw_re);
+                    a3tw_re = avx::fnmadd(a3.imag, tw2.imag, a3tw_re);
+                    a2tw_im = avx::fmadd(a2.imag, tw1.real, a2tw_im);
+                    a3tw_im = avx::fmadd(a3.imag, tw2.real, a3tw_im);
+
+                    avx::cx_reg<float> a2tw = {a2tw_re, a2tw_im};
+                    avx::cx_reg<float> a3tw = {a3tw_re, a3tw_im};
+
+                    auto b0 = avx::add(a0, a2tw);
+                    auto b1 = avx::sub(a0, a2tw);
+                    auto b2 = avx::add(a1, a3tw);
+                    auto b3 = avx::sub(a1, a3tw);
+
+                    cxstore<PackSize>(ptr0, b0);
+                    cxstore<PackSize>(ptr1, b1);
+                    cxstore<PackSize>(ptr2, b2);
+                    cxstore<PackSize>(ptr3, b3);
+
+                    offset += l_size * 2;
+                }
             }
+
+            l_size *= 4;
+            group_size /= 4;
+            n_groups *= 4;
+        }
+
+        if (l_size < size)
+        {
         }
     };
 
 private:
-    static constexpr auto packed_idx(std::size_t idx) -> std::size_t
+    static constexpr auto pidx(std::size_t idx) -> std::size_t
     {
         return idx + idx / PackSize * PackSize;
     }
