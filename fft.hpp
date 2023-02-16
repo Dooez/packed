@@ -91,10 +91,15 @@ public:
     template<std::size_t VPackSize, typename VAllocator>
     void fft_internal(pcx::vector<T, VPackSize, VAllocator>& vector)
     {
-        constexpr const double pi  = 3.14159265358979323846;
-        const auto             sq2 = std::exp(std::complex<float>(0, pi / 4));
+        constexpr const double pi   = 3.14159265358979323846;
+        const auto             sq2  = wnk(8, 3);
+        const auto             sq22 = wnk(8, 3);
+        const auto             sq23 = wnk(8, 7);
 
-        auto  twsq2       = avx::broadcast(sq2.real());
+        auto twsq2 = avx::broadcast(sq2.real());
+        auto tws   = avx::broadcast(sq22);
+        auto tws3  = avx::broadcast(sq23);
+
         auto* data_ptr    = &vector[0];
         auto* twiddle_ptr = &m_twiddles[0];
 
@@ -135,10 +140,10 @@ public:
             auto a1im = _mm256_add_ps(p1im, p5im);
             auto a3re = _mm256_add_ps(p3re, p7re);
 
-            auto b5re_tw = _mm256_add_ps(b5re, b5im);
-            auto b5im_tw = _mm256_sub_ps(b5im, b5re);
-            auto b7re_tw = _mm256_add_ps(b7re, b7im);
-            auto b7im_tw = _mm256_sub_ps(b7im, b7re);
+            auto b5re_tw = _mm256_sub_ps(b5re, b5im);
+            auto b5im_tw = _mm256_add_ps(b5re, b5im);
+            auto b7re_tw = _mm256_sub_ps(b7re, b7im);
+            auto b7im_tw = _mm256_add_ps(b7re, b7im);
 
             auto b1re = _mm256_add_ps(a1re, a3re);
             auto b3re = _mm256_sub_ps(a1re, a3re);
@@ -303,10 +308,10 @@ public:
             auto y5im = _mm256_add_ps(x5im, x7re);
             auto y7im = _mm256_sub_ps(x5im, x7re);
 
-            auto y5re_tw = _mm256_add_ps(y5re, y5im);
-            auto y5im_tw = _mm256_sub_ps(y5im, y5re);
-            auto y7re_tw = _mm256_add_ps(y7re, y7im);
-            auto y7im_tw = _mm256_sub_ps(y7im, y7re);
+            auto y5re_tw = _mm256_sub_ps(y5re, y5im);
+            auto y5im_tw = _mm256_add_ps(y5re, y5im);
+            auto y7re_tw = _mm256_sub_ps(y7re, y7im);
+            auto y7im_tw = _mm256_add_ps(y7re, y7im);
 
             auto y1re = _mm256_add_ps(x1re, x3re);
             auto y3re = _mm256_sub_ps(x1re, x3re);
@@ -456,10 +461,10 @@ public:
             auto a1im = _mm256_add_ps(p1im, p5im);
             auto a3re = _mm256_add_ps(p3re, p7re);
 
-            auto b5re_tw = _mm256_add_ps(b5re, b5im);
-            auto b5im_tw = _mm256_sub_ps(b5im, b5re);
-            auto b7re_tw = _mm256_add_ps(b7re, b7im);
-            auto b7im_tw = _mm256_sub_ps(b7im, b7re);
+            auto b5re_tw = _mm256_sub_ps(b5re, b5im);
+            auto b5im_tw = _mm256_add_ps(b5re, b5im);
+            auto b7re_tw = _mm256_sub_ps(b7re, b7im);
+            auto b7im_tw = _mm256_add_ps(b7re, b7im);
 
             auto b1re = _mm256_add_ps(a1re, a3re);
             auto b3re = _mm256_sub_ps(a1re, a3re);
@@ -599,16 +604,17 @@ public:
         std::size_t n_groups   = 1;
         std::size_t tw_offset  = 0;
 
-        auto ls  = size();
+                return;
+        auto ls = size();
         while (l_size < size())
         {
             for (std::size_t i_group = 0; i_group < n_groups; ++i_group)
             {
-                auto*       grp_ptr = data_ptr + pidx(i_group * reg_size);
-                std::size_t offset  = 0;
+                std::size_t offset  = i_group * reg_size;
 
                 const auto tw0 = avx::cxload<PackSize>(twiddle_ptr + pidx(tw_offset));
-                const auto tw1 = avx::cxload<PackSize>(twiddle_ptr + pidx(tw_offset + reg_size));
+                const auto tw1 =
+                    avx::cxload<PackSize>(twiddle_ptr + pidx(tw_offset + reg_size));
                 const auto tw2 =
                     avx::cxload<PackSize>(twiddle_ptr + pidx(tw_offset + reg_size * 2));
 
@@ -616,10 +622,10 @@ public:
 
                 for (std::size_t i = 0; i < group_size; ++i)
                 {
-                    auto* ptr0 = grp_ptr + pidx(offset);
-                    auto* ptr1 = grp_ptr + pidx(offset + l_size / 2);
-                    auto* ptr2 = grp_ptr + pidx(offset + l_size);
-                    auto* ptr3 = grp_ptr + pidx(offset + l_size / 2 * 3);
+                    auto* ptr0 = data_ptr + pidx(offset);
+                    auto* ptr1 = data_ptr + pidx(offset + l_size / 2);
+                    auto* ptr2 = data_ptr + pidx(offset + l_size);
+                    auto* ptr3 = data_ptr + pidx(offset + l_size / 2 * 3);
 
                     auto p1 = avx::cxload<PackSize>(ptr1);
                     auto p3 = avx::cxload<PackSize>(ptr3);
@@ -671,9 +677,13 @@ public:
                 }
             }
 
+            // if (group_size == 1)
+            // {
+            // }
+
             l_size *= 4;
-            group_size /= 4;
             n_groups *= 4;
+            group_size /= 4;
         }
 
         if (l_size == size())
@@ -762,36 +772,35 @@ private:
     {
         const auto depth = log2i(fft_size);
 
-        const std::size_t n_twiddles = 8 * ((1U << (depth - 3)) - 1U);
+        const std::size_t n_twiddles = 16 * ((1U << (depth - 3)) - 1U);
 
         auto twiddles =
             pcx::vector<real_type, pack_size, allocator_type>(n_twiddles, allocator);
 
-        auto tw_it       = twiddles.begin();
-        uint small_i_max = 1;
+        auto tw_it = twiddles.begin();
 
-        std::size_t l_size     = 16;
-        // std::size_t n_groups   = 1;
+        std::size_t l_size   = reg_size * 2;
+        std::size_t n_groups = 1;
 
         while (l_size < fft_size)
         {
-            for (uint small_i = 0; small_i < small_i_max; ++small_i)
+            for (std::size_t i_group = 0; i_group < n_groups; ++i_group)
             {
                 for (uint k = 0; k < reg_size; ++k)
                 {
-                    *(tw_it++) = wnk(l_size, k + small_i * reg_size);
+                    *(tw_it++) = wnk(l_size, k + i_group * reg_size);
                 }
                 for (uint k = 0; k < reg_size; ++k)
                 {
-                    *(tw_it++) = wnk(l_size * 2UL, k + small_i * reg_size);
+                    *(tw_it++) = wnk(l_size * 2UL, k + i_group * reg_size);
                 }
                 for (uint k = 0; k < reg_size; ++k)
                 {
-                    *(tw_it++) = wnk(l_size * 2UL, k + small_i * reg_size + l_size / 2);
+                    *(tw_it++) = wnk(l_size * 2UL, k + i_group * reg_size + l_size / 2);
                 }
             }
-            small_i_max *= 4;
             l_size *= 4;
+            n_groups *= 4;
         }
         return twiddles;
     }
