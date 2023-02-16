@@ -22,6 +22,7 @@ namespace avx {
         store(ptr, reg.real);
         store(ptr + PackSize, reg.imag);
     }
+
 }    // namespace avx
 
 constexpr const std::size_t dynamic_size = -1;
@@ -46,26 +47,12 @@ private:
     using sort_allocator_type = typename std::allocator_traits<
         allocator_type>::template rebind_alloc<std::size_t>;
 
-    struct packed_fft_core
-    {
-        packed_fft_core(std::size_t fft_size, allocator_type allocator)
-            requires(Size == pcx::dynamic_size)
-        : sort(get_sort(fft_size, static_cast<sort_allocator_type>(allocator)))
-        , twiddles(get_twiddles(fft_size, allocator)){};
-
-        std::pair<std::vector<std::size_t, sort_allocator_type>, std::size_t> sort;
-        pcx::vector<real_type, pack_size, allocator_type>                     twiddles;
-    };
-
-    using core_allocator_type = typename std::allocator_traits<
-        allocator_type>::template rebind_alloc<packed_fft_core>;
-
 public:
     fft_unit(std::size_t fft_size, allocator_type allocator = allocator_type())
-    {
-        auto core_alloc = core_allocator_type(allocator);
-        m_core = std::allocate_shared<packed_fft_core>(core_alloc, fft_size, allocator);
-    };
+        requires(Size == pcx::dynamic_size)
+    : m_size(fft_size)
+    , m_sort(get_sort(fft_size, static_cast<sort_allocator_type>(allocator)))
+    , m_twiddles(get_twiddles(fft_size, allocator)){};
 
     fft_unit(const fft_unit& other)     = default;
     fft_unit(fft_unit&& other) noexcept = default;
@@ -86,22 +73,24 @@ public:
         }
     }
 
+
     template<typename VT, std::size_t VPackSize, typename VAllocator>
         requires std::same_as<VT, real_type> && requires { VPackSize == pack_size; }
-    void fft_unit_test(const pcx::vector<VT, VPackSize, VAllocator>& test_vecor){};
+    void operator()(pcx::vector<VT, VPackSize, VAllocator>& test_vecor)
+    {
+        fft_internal(test_vecor);
+    };
 
 private:
-    [[no_unique_address]] size_t                      m_size;
-    std::shared_ptr<packed_fft_core>                  m_core{};
-    std::vector<std::size_t, sort_allocator_type>     m_sort;
-    pcx::vector<real_type, pack_size, allocator_type> m_twiddles;
+    [[no_unique_address]] size_t m_size;
+    // std::shared_ptr<packed_fft_core>                  m_core{};
+    const std::vector<std::size_t, sort_allocator_type>     m_sort;
+    const pcx::vector<real_type, pack_size, allocator_type> m_twiddles;
 
 public:
     template<std::size_t VPackSize, typename VAllocator>
     void fft_internal(pcx::vector<T, VPackSize, VAllocator>& vector)
     {
-        auto size = vector.size();
-
         constexpr const double pi  = 3.14159265358979323846;
         const auto             sq2 = std::exp(std::complex<float>(0, pi / 4));
 
@@ -110,15 +99,15 @@ public:
         auto* twiddle_ptr = &m_twiddles[0];
 
         auto sh0 = 0;
-        auto sh1 = pidx(1 * size / 8);
-        auto sh2 = pidx(2 * size / 8);
-        auto sh3 = pidx(3 * size / 8);
-        auto sh4 = pidx(4 * size / 8);
-        auto sh5 = pidx(5 * size / 8);
-        auto sh6 = pidx(6 * size / 8);
-        auto sh7 = pidx(7 * size / 8);
+        auto sh1 = pidx(1 * size() / 8);
+        auto sh2 = pidx(2 * size() / 8);
+        auto sh3 = pidx(3 * size() / 8);
+        auto sh4 = pidx(4 * size() / 8);
+        auto sh5 = pidx(5 * size() / 8);
+        auto sh6 = pidx(6 * size() / 8);
+        auto sh7 = pidx(7 * size() / 8);
 
-        for (uint i = 0; i < n_reversals(size / 64); i += 2)
+        for (uint i = 0; i < n_reversals(size() / 64); i += 2)
         {
             auto offset_first  = m_sort[i];
             auto offset_second = m_sort[i + 1];
@@ -440,7 +429,7 @@ public:
             _mm256_storeu_ps(data_ptr + sh7 + offset_first + PackSize, shz7im);
         };
 
-        for (uint i = n_reversals(size / 64); i < size / 64; ++i)
+        for (uint i = n_reversals(size() / 64); i < size() / 64; ++i)
         {
             auto offset = m_sort[i];
 
@@ -606,20 +595,21 @@ public:
         }
 
         std::size_t l_size     = 16;
-        std::size_t group_size = size / 16;
+        std::size_t group_size = size() / reg_size / 4;
         std::size_t n_groups   = 1;
         std::size_t tw_offset  = 0;
 
-        while (l_size < size / 2)
+        while (l_size < size() / 2)
         {
             for (std::size_t i_group = 0; i_group < n_groups; ++i_group)
             {
-                auto*       grp_ptr = data_ptr + pidx(i_group * l_size * 2);
+                auto*       grp_ptr = data_ptr + pidx(i_group * reg_size);
                 std::size_t offset  = 0;
 
-                auto tw0 = avx::cxload<PackSize>(twiddle_ptr + pidx(tw_offset));
-                auto tw1 = avx::cxload<PackSize>(twiddle_ptr + pidx(tw_offset + 8));
-                auto tw2 = avx::cxload<PackSize>(twiddle_ptr + pidx(tw_offset + 16));
+                const auto tw0 = avx::cxload<PackSize>(twiddle_ptr + pidx(tw_offset));
+                const auto tw1 = avx::cxload<PackSize>(twiddle_ptr + pidx(tw_offset + 8));
+                const auto tw2 =
+                    avx::cxload<PackSize>(twiddle_ptr + pidx(tw_offset + 16));
 
                 tw_offset += 24;
 
@@ -685,7 +675,7 @@ public:
             n_groups *= 4;
         }
 
-        if (l_size < size)
+        if (l_size < size())
         {
         }
     };
@@ -696,28 +686,27 @@ private:
         return idx + idx / PackSize * PackSize;
     }
 
-    static constexpr std::size_t register_size = 32 / sizeof(real_type);
+    static constexpr std::size_t reg_size = 32 / sizeof(real_type);
 
-    static constexpr auto log2i(std::size_t number) -> std::size_t
+    static constexpr auto log2i(std::size_t num) -> std::size_t
     {
         std::size_t order = 0;
-        while ((number >>= 1U) != 0)
+        while ((num >>= 1U) != 0)
         {
             order++;
         }
         return order;
     }
 
-    static constexpr auto reverse_bit_order(uint64_t number) -> uint64_t
+    static constexpr auto reverse_bit_order(uint64_t num, uint64_t depth) -> uint64_t
     {
-        number = number >> 32 | number << 32;
-        number = (number & 0xFFFF0000FFFF0000) >> 16 | (number & 0x0000FFFF0000FFFF)
-                                                           << 16;
-        number = (number & 0xFF00FF00FF00FF00) >> 8 | (number & 0x00FF00FF00FF00FF) << 8;
-        number = (number & 0xF0F0F0F0F0F0F0F0) >> 4 | (number & 0x0F0F0F0F0F0F0F0F) << 4;
-        number = (number & 0xCCCCCCCCCCCCCCCC) >> 2 | (number & 0x3333333333333333) << 2;
-        number = (number & 0xAAAAAAAAAAAAAAAA) >> 1 | (number & 0x5555555555555555) << 1;
-        return number;
+        num = num >> 32 | num << 32;
+        num = (num & 0xFFFF0000FFFF0000) >> 16 | (num & 0x0000FFFF0000FFFF) << 16;
+        num = (num & 0xFF00FF00FF00FF00) >> 8 | (num & 0x00FF00FF00FF00FF) << 8;
+        num = (num & 0xF0F0F0F0F0F0F0F0) >> 4 | (num & 0x0F0F0F0F0F0F0F0F) << 4;
+        num = (num & 0xCCCCCCCCCCCCCCCC) >> 2 | (num & 0x3333333333333333) << 2;
+        num = (num & 0xAAAAAAAAAAAAAAAA) >> 1 | (num & 0x5555555555555555) << 1;
+        return num >> (64 - depth);
     }
 
     /**
@@ -740,31 +729,27 @@ private:
     }
 
     static auto get_sort(std::size_t fft_size, sort_allocator_type allocator)
-        -> std::pair<std::vector<std::size_t, sort_allocator_type>, std::size_t>
+        -> std::vector<std::size_t, sort_allocator_type>
     {
-        const auto packed_sort_size = fft_size / register_size / register_size;
-
-        auto sort = std::pair<std::vector<std::size_t, sort_allocator_type>, std::size_t>{
-            allocator,
-            0};
-        auto& indexes = sort.first;
-        indexes.reserve(packed_sort_size);
+        const auto packed_sort_size = fft_size / reg_size / reg_size;
+        const auto order            = log2i(packed_sort_size);
+        auto       sort             = std::vector<std::size_t, sort_allocator_type>();
+        sort.reserve(packed_sort_size);
 
         for (uint i = 0; i < packed_sort_size / 2; ++i)
         {
-            if (i == reverse_bit_order(i))
+            if (i == reverse_bit_order(i, order))
             {
                 continue;
             }
-            indexes.push_back(i);
-            indexes.push_back(reverse_bit_order(i));
+            sort.push_back(pidx(i * reg_size));
+            sort.push_back(pidx(reverse_bit_order(i, order) * reg_size));
         }
-        sort.second = indexes.size();
         for (uint i = 0; i < packed_sort_size; ++i)
         {
-            if (i == reverse_bit_order(i))
+            if (i == reverse_bit_order(i, order))
             {
-                indexes.push_back(i);
+                sort.push_back(pidx(i * reg_size));
             }
         }
         return sort;
@@ -781,39 +766,38 @@ private:
             pcx::vector<real_type, pack_size, allocator_type>(n_twiddles, allocator);
 
         auto tw_it       = twiddles.begin();
-        uint l_fft_size  = 16;
+        uint l_size      = 16;
         uint small_i_max = 1;
+        //
+        //         if (depth % 2 == 0)
+        //         {
+        //             for (uint k = 0; k < 8; ++k)
+        //             {
+        //                 *(tw_it++) = wnk(l_fft_size, k);
+        //             }
+        //             l_fft_size *= 2;
+        //             small_i_max *= 2;
+        //         }
 
-        if (depth % 2 == 0)
-        {
-            for (uint k = 0; k < 8; ++k)
-            {
-                *(tw_it++) = wnk(l_fft_size, k);
-            }
-            l_fft_size *= 2;
-            small_i_max *= 2;
-        }
-
-        while (l_fft_size < fft_size)
+        while (l_size < fft_size)
         {
             for (uint small_i = 0; small_i < small_i_max; ++small_i)
             {
-                for (uint k = 0; k < 8; ++k)
+                for (uint k = 0; k < reg_size; ++k)
                 {
-                    *(tw_it++) = wnk(l_fft_size, k + small_i * 8);
+                    *(tw_it++) = wnk(l_size, k + small_i * reg_size);
                 }
-
-                for (uint k = 0; k < 8; ++k)
+                for (uint k = 0; k < reg_size; ++k)
                 {
-                    *(tw_it++) = wnk(l_fft_size * 2UL, k + small_i * 8);
+                    *(tw_it++) = wnk(l_size * 2UL, k + small_i * reg_size);
                 }
-                for (uint k = 0; k < 8; ++k)
+                for (uint k = 0; k < reg_size; ++k)
                 {
-                    *(tw_it++) = wnk(l_fft_size * 2UL, k + small_i * 8 + l_fft_size / 2);
+                    *(tw_it++) = wnk(l_size * 2UL, k + small_i * reg_size + l_size / 2);
                 }
             }
             small_i_max *= 4;
-            l_fft_size *= 4;
+            l_size *= 4;
         }
         return twiddles;
     }
