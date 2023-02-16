@@ -74,7 +74,7 @@ int main()
         // std::cout << abs(ff[i].value() - vec[i].value()) << "\n";
     }
 
-    std::cout << wnk(8, 3);
+    std::cout << wnk(8, 1);
     std::cout << sizeof(double) << "  " << sizeof(float) << "\n";
     return 0;
 }
