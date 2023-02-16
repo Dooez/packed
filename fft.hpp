@@ -594,12 +594,13 @@ public:
             _mm256_storeu_ps(data_ptr + sh7 + offset + PackSize, shc7im);
         }
 
-        std::size_t l_size     = 16;
+        std::size_t l_size     = reg_size * 2;
         std::size_t group_size = size() / reg_size / 4;
         std::size_t n_groups   = 1;
         std::size_t tw_offset  = 0;
 
-        while (l_size < size() / 2)
+        auto ls  = size();
+        while (l_size < size())
         {
             for (std::size_t i_group = 0; i_group < n_groups; ++i_group)
             {
@@ -607,11 +608,11 @@ public:
                 std::size_t offset  = 0;
 
                 const auto tw0 = avx::cxload<PackSize>(twiddle_ptr + pidx(tw_offset));
-                const auto tw1 = avx::cxload<PackSize>(twiddle_ptr + pidx(tw_offset + 8));
+                const auto tw1 = avx::cxload<PackSize>(twiddle_ptr + pidx(tw_offset + reg_size));
                 const auto tw2 =
-                    avx::cxload<PackSize>(twiddle_ptr + pidx(tw_offset + 16));
+                    avx::cxload<PackSize>(twiddle_ptr + pidx(tw_offset + reg_size * 2));
 
-                tw_offset += 24;
+                tw_offset += reg_size * 3;
 
                 for (std::size_t i = 0; i < group_size; ++i)
                 {
@@ -643,9 +644,9 @@ public:
                     auto a0 = avx::add(p0, p1tw);
                     auto a1 = avx::sub(p0, p1tw);
 
-                    auto a2tw_re = avx::mul(a1.real, tw1.real);
+                    auto a2tw_re = avx::mul(a2.real, tw1.real);
                     auto a3tw_re = avx::mul(a3.real, tw2.real);
-                    auto a2tw_im = avx::mul(a1.real, tw1.imag);
+                    auto a2tw_im = avx::mul(a2.real, tw1.imag);
                     auto a3tw_im = avx::mul(a3.real, tw2.imag);
 
                     a2tw_re = avx::fnmadd(a2.imag, tw1.imag, a2tw_re);
@@ -657,8 +658,8 @@ public:
                     avx::cx_reg<float> a3tw = {a3tw_re, a3tw_im};
 
                     auto b0 = avx::add(a0, a2tw);
-                    auto b1 = avx::sub(a0, a2tw);
-                    auto b2 = avx::add(a1, a3tw);
+                    auto b2 = avx::sub(a0, a2tw);
+                    auto b1 = avx::add(a1, a3tw);
                     auto b3 = avx::sub(a1, a3tw);
 
                     cxstore<PackSize>(ptr0, b0);
@@ -675,8 +676,9 @@ public:
             n_groups *= 4;
         }
 
-        if (l_size < size())
+        if (l_size == size())
         {
+            l_size = 0;
         }
     };
 
@@ -717,7 +719,7 @@ private:
      */
     static constexpr auto n_reversals(std::size_t max) -> std::size_t
     {
-        return max - (1U << (log2i(max + 1) / 2));
+        return max - (1U << ((log2i(max) + 1) / 2));
     }
 
     static inline auto wnk(std::size_t n, std::size_t k) -> std::complex<real_type>
@@ -766,18 +768,10 @@ private:
             pcx::vector<real_type, pack_size, allocator_type>(n_twiddles, allocator);
 
         auto tw_it       = twiddles.begin();
-        uint l_size      = 16;
         uint small_i_max = 1;
-        //
-        //         if (depth % 2 == 0)
-        //         {
-        //             for (uint k = 0; k < 8; ++k)
-        //             {
-        //                 *(tw_it++) = wnk(l_fft_size, k);
-        //             }
-        //             l_fft_size *= 2;
-        //             small_i_max *= 2;
-        //         }
+
+        std::size_t l_size     = 16;
+        // std::size_t n_groups   = 1;
 
         while (l_size < fft_size)
         {
