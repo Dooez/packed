@@ -99,13 +99,13 @@ public:
         auto* twiddle_ptr = &m_twiddles[0];
 
         auto sh0 = 0;
-        auto sh1 = (1 * size() / 8);
-        auto sh2 = (2 * size() / 8);
-        auto sh3 = (3 * size() / 8);
-        auto sh4 = (4 * size() / 8);
-        auto sh5 = (5 * size() / 8);
-        auto sh6 = (6 * size() / 8);
-        auto sh7 = (7 * size() / 8);
+        auto sh1 = pidx(1 * size() / 8);
+        auto sh2 = pidx(2 * size() / 8);
+        auto sh3 = pidx(3 * size() / 8);
+        auto sh4 = pidx(4 * size() / 8);
+        auto sh5 = pidx(5 * size() / 8);
+        auto sh6 = pidx(6 * size() / 8);
+        auto sh7 = pidx(7 * size() / 8);
         for (uint i = 0; i < n_reversals(size() / 64); i += 2)
         {
             using reg_t = avx::cx_reg<float>;
@@ -113,14 +113,14 @@ public:
             auto offset_first  = m_sort[i];
             auto offset_second = m_sort[i + 1];
 
-            auto p0 = avx::cxload<PackSize>(data_ptr + pidx(sh0 + offset_first));
-            auto p1 = avx::cxload<PackSize>(data_ptr + pidx(sh1 + offset_first));
-            auto p2 = avx::cxload<PackSize>(data_ptr + pidx(sh2 + offset_first));
-            auto p3 = avx::cxload<PackSize>(data_ptr + pidx(sh3 + offset_first));
-            auto p4 = avx::cxload<PackSize>(data_ptr + pidx(sh4 + offset_first));
-            auto p5 = avx::cxload<PackSize>(data_ptr + pidx(sh5 + offset_first));
-            auto p6 = avx::cxload<PackSize>(data_ptr + pidx(sh6 + offset_first));
-            auto p7 = avx::cxload<PackSize>(data_ptr + pidx(sh7 + offset_first));
+            auto p0 = avx::cxload<PackSize>(data_ptr + sh0 + offset_first);
+            auto p1 = avx::cxload<PackSize>(data_ptr + sh1 + offset_first);
+            auto p2 = avx::cxload<PackSize>(data_ptr + sh2 + offset_first);
+            auto p3 = avx::cxload<PackSize>(data_ptr + sh3 + offset_first);
+            auto p4 = avx::cxload<PackSize>(data_ptr + sh4 + offset_first);
+            auto p5 = avx::cxload<PackSize>(data_ptr + sh5 + offset_first);
+            auto p6 = avx::cxload<PackSize>(data_ptr + sh6 + offset_first);
+            auto p7 = avx::cxload<PackSize>(data_ptr + sh7 + offset_first);
 
             auto a0 = avx::add(p0, p4);
             auto a4 = avx::sub(p0, p4);
@@ -189,24 +189,24 @@ public:
             auto shc0im = _mm256_permute2f128_ps(shb0im, shb1im, 0b00100000);
             auto shc1im = _mm256_permute2f128_ps(shb0im, shb1im, 0b00110001);
             //
-            auto q0 = avx::cxload<PackSize>(data_ptr + pidx(sh0 + offset_second));
-            _mm256_storeu_ps(data_ptr + pidx(sh0 + offset_second), shc0re);
-            _mm256_storeu_ps(data_ptr + pidx(sh0 + offset_second) + PackSize, shc0im);
-            auto q1 = avx::cxload<PackSize>(data_ptr + pidx(sh1 + offset_second));
-            _mm256_storeu_ps(data_ptr + pidx(sh1 + offset_second), shc1re);
-            _mm256_storeu_ps(data_ptr + pidx(sh1 + offset_second) + PackSize, shc1im);
+            auto q0 = avx::cxload<PackSize>(data_ptr + sh0 + offset_second);
+            _mm256_storeu_ps(data_ptr + sh0 + offset_second, shc0re);
+            _mm256_storeu_ps(data_ptr + sh0 + offset_second + PackSize, shc0im);
+            auto q1 = avx::cxload<PackSize>(data_ptr + sh1 + offset_second);
+            _mm256_storeu_ps(data_ptr + sh1 + offset_second, shc1re);
+            _mm256_storeu_ps(data_ptr + sh1 + offset_second + PackSize, shc1im);
 
             auto shc2re = _mm256_permute2f128_ps(shb2re, shb3re, 0b00100000);
             auto shc3re = _mm256_permute2f128_ps(shb2re, shb3re, 0b00110001);
             auto shc2im = _mm256_permute2f128_ps(shb2im, shb3im, 0b00100000);
             auto shc3im = _mm256_permute2f128_ps(shb2im, shb3im, 0b00110001);
 
-            auto q4 = avx::cxload<PackSize>(data_ptr + pidx(sh4 + offset_second));
-            _mm256_storeu_ps(data_ptr + pidx(sh4 + offset_second), shc2re);
-            _mm256_storeu_ps(data_ptr + pidx(sh4 + offset_second) + PackSize, shc2im);
-            auto q5 = avx::cxload<PackSize>(data_ptr + pidx(sh5 + offset_second));
-            _mm256_storeu_ps(data_ptr + pidx(sh5 + offset_second), shc3re);
-            _mm256_storeu_ps(data_ptr + pidx(sh5 + offset_second) + PackSize, shc3im);
+            auto q4 = avx::cxload<PackSize>(data_ptr + sh4 + offset_second);
+            _mm256_storeu_ps(data_ptr + sh4 + offset_second, shc2re);
+            _mm256_storeu_ps(data_ptr + sh4 + offset_second + PackSize, shc2im);
+            auto q5 = avx::cxload<PackSize>(data_ptr + sh5 + offset_second);
+            _mm256_storeu_ps(data_ptr + sh5 + offset_second, shc3re);
+            _mm256_storeu_ps(data_ptr + sh5 + offset_second + PackSize, shc3im);
 
 
             auto shb4re = _mm256_castpd_ps(_mm256_unpacklo_pd(sha4re, sha6re));
@@ -230,19 +230,19 @@ public:
             auto shc7im = _mm256_permute2f128_ps(shb6im, shb7im, 0b00110001);
 
 
-            auto q2 = avx::cxload<PackSize>(data_ptr + pidx(sh2 + offset_second));
-            _mm256_storeu_ps(data_ptr + pidx(sh2 + offset_second), shc4re);
-            _mm256_storeu_ps(data_ptr + pidx(sh2 + offset_second) + PackSize, shc4im);
-            auto q6 = avx::cxload<PackSize>(data_ptr + pidx(sh6 + offset_second));
-            _mm256_storeu_ps(data_ptr + pidx(sh6 + offset_second), shc6re);
-            _mm256_storeu_ps(data_ptr + pidx(sh6 + offset_second) + PackSize, shc6im);
+            auto q2 = avx::cxload<PackSize>(data_ptr + sh2 + offset_second);
+            _mm256_storeu_ps(data_ptr + sh2 + offset_second, shc4re);
+            _mm256_storeu_ps(data_ptr + sh2 + offset_second + PackSize, shc4im);
+            auto q6 = avx::cxload<PackSize>(data_ptr + sh6 + offset_second);
+            _mm256_storeu_ps(data_ptr + sh6 + offset_second, shc6re);
+            _mm256_storeu_ps(data_ptr + sh6 + offset_second + PackSize, shc6im);
 
-            auto q3 = avx::cxload<PackSize>(data_ptr + pidx(sh3 + offset_second));
-            _mm256_storeu_ps(data_ptr + pidx(sh3 + offset_second), shc5re);
-            _mm256_storeu_ps(data_ptr + pidx(sh3 + offset_second) + PackSize, shc5im);
-            auto q7 = avx::cxload<PackSize>(data_ptr + pidx(sh7 + offset_second));
-            _mm256_storeu_ps(data_ptr + pidx(sh7 + offset_second), shc7re);
-            _mm256_storeu_ps(data_ptr + pidx(sh7 + offset_second) + PackSize, shc7im);
+            auto q3 = avx::cxload<PackSize>(data_ptr + sh3 + offset_second);
+            _mm256_storeu_ps(data_ptr + sh3 + offset_second, shc5re);
+            _mm256_storeu_ps(data_ptr + sh3 + offset_second + PackSize, shc5im);
+            auto q7 = avx::cxload<PackSize>(data_ptr + sh7 + offset_second);
+            _mm256_storeu_ps(data_ptr + sh7 + offset_second, shc7re);
+            _mm256_storeu_ps(data_ptr + sh7 + offset_second + PackSize, shc7im);
 
             auto x0 = avx::add(q0, q4);
             auto x4 = avx::sub(q0, q4);
@@ -316,14 +316,14 @@ public:
             auto shz2im = _mm256_permute2f128_ps(shy2im, shy3im, 0b00100000);
             auto shz3im = _mm256_permute2f128_ps(shy2im, shy3im, 0b00110001);
 
-            _mm256_storeu_ps(data_ptr + pidx(sh0 + offset_first), shz0re);
-            _mm256_storeu_ps(data_ptr + pidx(sh0 + offset_first) + PackSize, shz0im);
-            _mm256_storeu_ps(data_ptr + pidx(sh1 + offset_first), shz1re);
-            _mm256_storeu_ps(data_ptr + pidx(sh1 + offset_first) + PackSize, shz1im);
-            _mm256_storeu_ps(data_ptr + pidx(sh4 + offset_first), shz2re);
-            _mm256_storeu_ps(data_ptr + pidx(sh4 + offset_first) + PackSize, shz2im);
-            _mm256_storeu_ps(data_ptr + pidx(sh5 + offset_first), shz3re);
-            _mm256_storeu_ps(data_ptr + pidx(sh5 + offset_first) + PackSize, shz3im);
+            _mm256_storeu_ps(data_ptr + sh0 + offset_first, shz0re);
+            _mm256_storeu_ps(data_ptr + sh0 + offset_first + PackSize, shz0im);
+            _mm256_storeu_ps(data_ptr + sh1 + offset_first, shz1re);
+            _mm256_storeu_ps(data_ptr + sh1 + offset_first + PackSize, shz1im);
+            _mm256_storeu_ps(data_ptr + sh4 + offset_first, shz2re);
+            _mm256_storeu_ps(data_ptr + sh4 + offset_first + PackSize, shz2im);
+            _mm256_storeu_ps(data_ptr + sh5 + offset_first, shz3re);
+            _mm256_storeu_ps(data_ptr + sh5 + offset_first + PackSize, shz3im);
 
             auto shy4re = _mm256_castpd_ps(_mm256_unpacklo_pd(shx4re, shx6re));
             auto shy6re = _mm256_castpd_ps(_mm256_unpackhi_pd(shx4re, shx6re));
@@ -345,14 +345,14 @@ public:
             auto shz6im = _mm256_permute2f128_ps(shy6im, shy7im, 0b00100000);
             auto shz7im = _mm256_permute2f128_ps(shy6im, shy7im, 0b00110001);
 
-            _mm256_storeu_ps(data_ptr + pidx(sh2 + offset_first), shz4re);
-            _mm256_storeu_ps(data_ptr + pidx(sh2 + offset_first) + PackSize, shz4im);
-            _mm256_storeu_ps(data_ptr + pidx(sh3 + offset_first), shz5re);
-            _mm256_storeu_ps(data_ptr + pidx(sh3 + offset_first) + PackSize, shz5im);
-            _mm256_storeu_ps(data_ptr + pidx(sh6 + offset_first), shz6re);
-            _mm256_storeu_ps(data_ptr + pidx(sh6 + offset_first) + PackSize, shz6im);
-            _mm256_storeu_ps(data_ptr + pidx(sh7 + offset_first), shz7re);
-            _mm256_storeu_ps(data_ptr + pidx(sh7 + offset_first) + PackSize, shz7im);
+            _mm256_storeu_ps(data_ptr + sh2 + offset_first, shz4re);
+            _mm256_storeu_ps(data_ptr + sh2 + offset_first + PackSize, shz4im);
+            _mm256_storeu_ps(data_ptr + sh3 + offset_first, shz5re);
+            _mm256_storeu_ps(data_ptr + sh3 + offset_first + PackSize, shz5im);
+            _mm256_storeu_ps(data_ptr + sh6 + offset_first, shz6re);
+            _mm256_storeu_ps(data_ptr + sh6 + offset_first + PackSize, shz6im);
+            _mm256_storeu_ps(data_ptr + sh7 + offset_first, shz7re);
+            _mm256_storeu_ps(data_ptr + sh7 + offset_first + PackSize, shz7im);
         };
 
         for (uint i = n_reversals(size() / 64); i < size() / 64; ++i)
@@ -360,14 +360,14 @@ public:
             using reg_t = avx::cx_reg<float>;
             auto offset = m_sort[i];
 
-            auto p0 = avx::cxload<PackSize>(data_ptr + pidx(sh0 + offset));
-            auto p1 = avx::cxload<PackSize>(data_ptr + pidx(sh1 + offset));
-            auto p2 = avx::cxload<PackSize>(data_ptr + pidx(sh2 + offset));
-            auto p3 = avx::cxload<PackSize>(data_ptr + pidx(sh3 + offset));
-            auto p4 = avx::cxload<PackSize>(data_ptr + pidx(sh4 + offset));
-            auto p5 = avx::cxload<PackSize>(data_ptr + pidx(sh5 + offset));
-            auto p6 = avx::cxload<PackSize>(data_ptr + pidx(sh6 + offset));
-            auto p7 = avx::cxload<PackSize>(data_ptr + pidx(sh7 + offset));
+            auto p0 = avx::cxload<PackSize>(data_ptr + sh0 + offset);
+            auto p1 = avx::cxload<PackSize>(data_ptr + sh1 + offset);
+            auto p2 = avx::cxload<PackSize>(data_ptr + sh2 + offset);
+            auto p3 = avx::cxload<PackSize>(data_ptr + sh3 + offset);
+            auto p4 = avx::cxload<PackSize>(data_ptr + sh4 + offset);
+            auto p5 = avx::cxload<PackSize>(data_ptr + sh5 + offset);
+            auto p6 = avx::cxload<PackSize>(data_ptr + sh6 + offset);
+            auto p7 = avx::cxload<PackSize>(data_ptr + sh7 + offset);
 
             auto a0 = avx::add(p0, p4);
             auto a4 = avx::sub(p0, p4);
@@ -447,20 +447,20 @@ public:
             auto shc0im = _mm256_permute2f128_ps(shb0im, shb1im, 0b00100000);
             auto shc1im = _mm256_permute2f128_ps(shb0im, shb1im, 0b00110001);
 
-            _mm256_storeu_ps(data_ptr + pidx(sh0 + offset), shc0re);
-            _mm256_storeu_ps(data_ptr + pidx(sh0 + offset) + PackSize, shc0im);
-            _mm256_storeu_ps(data_ptr + pidx(sh1 + offset), shc1re);
-            _mm256_storeu_ps(data_ptr + pidx(sh1 + offset) + PackSize, shc1im);
+            _mm256_storeu_ps(data_ptr + sh0 + offset, shc0re);
+            _mm256_storeu_ps(data_ptr + sh0 + offset + PackSize, shc0im);
+            _mm256_storeu_ps(data_ptr + sh1 + offset, shc1re);
+            _mm256_storeu_ps(data_ptr + sh1 + offset + PackSize, shc1im);
 
             auto shc2re = _mm256_permute2f128_ps(shb2re, shb3re, 0b00100000);
             auto shc3re = _mm256_permute2f128_ps(shb2re, shb3re, 0b00110001);
             auto shc2im = _mm256_permute2f128_ps(shb2im, shb3im, 0b00100000);
             auto shc3im = _mm256_permute2f128_ps(shb2im, shb3im, 0b00110001);
 
-            _mm256_storeu_ps(data_ptr + pidx(sh4 + offset), shc2re);
-            _mm256_storeu_ps(data_ptr + pidx(sh4 + offset) + PackSize, shc2im);
-            _mm256_storeu_ps(data_ptr + pidx(sh5 + offset), shc3re);
-            _mm256_storeu_ps(data_ptr + pidx(sh5 + offset) + PackSize, shc3im);
+            _mm256_storeu_ps(data_ptr + sh4 + offset, shc2re);
+            _mm256_storeu_ps(data_ptr + sh4 + offset + PackSize, shc2im);
+            _mm256_storeu_ps(data_ptr + sh5 + offset, shc3re);
+            _mm256_storeu_ps(data_ptr + sh5 + offset + PackSize, shc3im);
 
             auto shb4re = _mm256_castpd_ps(_mm256_unpacklo_pd(sha4re, sha6re));
             auto shb6re = _mm256_castpd_ps(_mm256_unpackhi_pd(sha4re, sha6re));
@@ -489,15 +489,15 @@ public:
             auto sha0im_e = _mm256_castpd_ps(sha0im);
             auto sha2im_e = _mm256_castpd_ps(sha2im);
 
-            _mm256_storeu_ps(data_ptr + pidx(sh2 + offset), shc4re);
-            _mm256_storeu_ps(data_ptr + pidx(sh2 + offset) + PackSize, shc4im);
-            _mm256_storeu_ps(data_ptr + pidx(sh6 + offset), shc6re);
-            _mm256_storeu_ps(data_ptr + pidx(sh6 + offset) + PackSize, shc6im);
+            _mm256_storeu_ps(data_ptr + sh2 + offset, shc4re);
+            _mm256_storeu_ps(data_ptr + sh2 + offset + PackSize, shc4im);
+            _mm256_storeu_ps(data_ptr + sh6 + offset, shc6re);
+            _mm256_storeu_ps(data_ptr + sh6 + offset + PackSize, shc6im);
 
-            _mm256_storeu_ps(data_ptr + pidx(sh3 + offset), shc5re);
-            _mm256_storeu_ps(data_ptr + pidx(sh3 + offset) + PackSize, shc5im);
-            _mm256_storeu_ps(data_ptr + pidx(sh7 + offset), shc7re);
-            _mm256_storeu_ps(data_ptr + pidx(sh7 + offset) + PackSize, shc7im);
+            _mm256_storeu_ps(data_ptr + sh3 + offset, shc5re);
+            _mm256_storeu_ps(data_ptr + sh3 + offset + PackSize, shc5im);
+            _mm256_storeu_ps(data_ptr + sh7 + offset, shc7re);
+            _mm256_storeu_ps(data_ptr + sh7 + offset + PackSize, shc7im);
         }
 
         std::size_t l_size     = reg_size * 2;
@@ -651,14 +651,14 @@ private:
             {
                 continue;
             }
-            sort.push_back((i * reg_size));
-            sort.push_back((reverse_bit_order(i, order) * reg_size));
+            sort.push_back(pidx(i * reg_size));
+            sort.push_back(pidx(reverse_bit_order(i, order) * reg_size));
         }
         for (uint i = 0; i < packed_sort_size; ++i)
         {
             if (i == reverse_bit_order(i, order))
             {
-                sort.push_back((i * reg_size));
+                sort.push_back(pidx(i * reg_size));
             }
         }
         return sort;
@@ -669,7 +669,7 @@ private:
     {
         const auto depth = log2i(fft_size);
 
-        const std::size_t n_twiddles = 16 * ((1U << (depth - 3)) - 1U);
+        const std::size_t n_twiddles = 8 * ((1U << (depth - 3)) - 1U);
 
         auto twiddles =
             pcx::vector<real_type, pack_size, allocator_type>(n_twiddles, allocator);

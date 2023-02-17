@@ -2,8 +2,8 @@
 
 #include <iostream>
 
-template void pcx::fft_unit<float, 32>::fft_internal<32, std::allocator<float>>(
-    pcx::vector<float, 32, std::allocator<float>>& vector);
+template void pcx::fft_unit<float, 8>::fft_internal<8, std::allocator<float>>(
+    pcx::vector<float, 8, std::allocator<float>>& vector);
 
 inline auto wnk(std::size_t n, std::size_t k) -> std::complex<float>
 {
@@ -66,15 +66,16 @@ int main()
 
     auto ff = fft(vec);
     unit(vec);
+    std::vector<float> diff(fsize, 0);
     for (uint i = 0; i < fsize; ++i)
     {
         // std::cout << abs(ff[i].value()) << "\n";
         // std::cout << abs(vec[i].value()) << "\n";
         // std::cout << ff[i].value() << " " << vec[i].value() << "\n";
-        std::cout << abs(ff[i].value() - vec[i].value()) << "\n";
+        // std::cout << (diff[i] = abs(ff[i].value() - vec[i].value())) << "\n";
+        diff[i] = abs(ff[i].value() - vec[i].value());
+        // std::cout << (abs(diff[i]) > 1 ? 1 : 0 )<< "\n";
     }
-
-    std::cout << wnk(8, 1);
-    std::cout << sizeof(double) << "  " << sizeof(float) << "\n";
+    std::cout << *std::max_element(diff.begin(), diff.end()) << "\n";
     return 0;
 }
