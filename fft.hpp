@@ -126,11 +126,10 @@ public:
             reg_t b5 = {avx::add(a5.real, a7.imag), avx::sub(a5.imag, a7.real)};
             reg_t b7 = {avx::sub(a5.real, a7.imag), avx::add(a5.imag, a7.real)};
 
-            auto b1 = avx::add(a1, a3);
-
             reg_t b5_tw = {avx::add(b5.real, b5.imag), avx::sub(b5.imag, b5.real)};
             reg_t b7_tw = {avx::sub(b7.real, b7.imag), avx::add(b7.real, b7.imag)};
 
+            auto b1 = avx::add(a1, a3);
             auto b3 = avx::sub(a1, a3);
 
             b5_tw = avx::mul(b5_tw, twsq2);
@@ -284,32 +283,30 @@ public:
             reg_t z6 = avx::sub(y6, y7_tw);
             reg_t z7 = avx::add(y6, y7_tw);
 
-            auto shx1re = _mm256_castps_pd(_mm256_unpacklo_ps(z1.real, z5.real));
-            auto shx5re = _mm256_castps_pd(_mm256_unpackhi_ps(z1.real, z5.real));
-            auto shx1im = _mm256_castps_pd(_mm256_unpacklo_ps(z1.imag, z5.imag));
-            auto shx5im = _mm256_castps_pd(_mm256_unpackhi_ps(z1.imag, z5.imag));
-            auto shx3re = _mm256_castps_pd(_mm256_unpacklo_ps(z3.real, z7.real));
-            auto shx7re = _mm256_castps_pd(_mm256_unpackhi_ps(z3.real, z7.real));
-            auto shx3im = _mm256_castps_pd(_mm256_unpacklo_ps(z3.imag, z7.imag));
-            auto shx7im = _mm256_castps_pd(_mm256_unpackhi_ps(z3.imag, z7.imag));
-
             auto shx0re = _mm256_castps_pd(_mm256_unpacklo_ps(z0.real, z4.real));
             auto shx4re = _mm256_castps_pd(_mm256_unpackhi_ps(z0.real, z4.real));
             auto shx0im = _mm256_castps_pd(_mm256_unpacklo_ps(z0.imag, z4.imag));
             auto shx4im = _mm256_castps_pd(_mm256_unpackhi_ps(z0.imag, z4.imag));
+            auto shx1re = _mm256_castps_pd(_mm256_unpacklo_ps(z1.real, z5.real));
+            auto shx5re = _mm256_castps_pd(_mm256_unpackhi_ps(z1.real, z5.real));
+            auto shx1im = _mm256_castps_pd(_mm256_unpacklo_ps(z1.imag, z5.imag));
+            auto shx5im = _mm256_castps_pd(_mm256_unpackhi_ps(z1.imag, z5.imag));
 
             auto shx2re = _mm256_castps_pd(_mm256_unpacklo_ps(z2.real, z6.real));
             auto shx6re = _mm256_castps_pd(_mm256_unpackhi_ps(z2.real, z6.real));
             auto shx2im = _mm256_castps_pd(_mm256_unpacklo_ps(z2.imag, z6.imag));
             auto shx6im = _mm256_castps_pd(_mm256_unpackhi_ps(z2.imag, z6.imag));
+            auto shx3re = _mm256_castps_pd(_mm256_unpacklo_ps(z3.real, z7.real));
+            auto shx7re = _mm256_castps_pd(_mm256_unpackhi_ps(z3.real, z7.real));
+            auto shx3im = _mm256_castps_pd(_mm256_unpacklo_ps(z3.imag, z7.imag));
+            auto shx7im = _mm256_castps_pd(_mm256_unpackhi_ps(z3.imag, z7.imag));
 
             auto shy0re = _mm256_castpd_ps(_mm256_unpacklo_pd(shx0re, shx2re));
             auto shy2re = _mm256_castpd_ps(_mm256_unpackhi_pd(shx0re, shx2re));
-            auto shy1re = _mm256_castpd_ps(_mm256_unpacklo_pd(shx1re, shx3re));
-            auto shy3re = _mm256_castpd_ps(_mm256_unpackhi_pd(shx1re, shx3re));
-
             auto shy0im = _mm256_castpd_ps(_mm256_unpacklo_pd(shx0im, shx2im));
             auto shy2im = _mm256_castpd_ps(_mm256_unpackhi_pd(shx0im, shx2im));
+            auto shy1re = _mm256_castpd_ps(_mm256_unpacklo_pd(shx1re, shx3re));
+            auto shy3re = _mm256_castpd_ps(_mm256_unpackhi_pd(shx1re, shx3re));
             auto shy1im = _mm256_castpd_ps(_mm256_unpacklo_pd(shx1im, shx3im));
             auto shy3im = _mm256_castpd_ps(_mm256_unpackhi_pd(shx1im, shx3im));
 
@@ -317,17 +314,15 @@ public:
             auto shz1re = _mm256_permute2f128_ps(shy0re, shy1re, 0b00110001);
             auto shz0im = _mm256_permute2f128_ps(shy0im, shy1im, 0b00100000);
             auto shz1im = _mm256_permute2f128_ps(shy0im, shy1im, 0b00110001);
-
-            _mm256_storeu_ps(data_ptr + sh0 + offset_first, shz0re);
-            _mm256_storeu_ps(data_ptr + sh0 + offset_first + PackSize, shz0im);
-            _mm256_storeu_ps(data_ptr + sh1 + offset_first, shz1re);
-            _mm256_storeu_ps(data_ptr + sh1 + offset_first + PackSize, shz1im);
-
             auto shz2re = _mm256_permute2f128_ps(shy2re, shy3re, 0b00100000);
             auto shz3re = _mm256_permute2f128_ps(shy2re, shy3re, 0b00110001);
             auto shz2im = _mm256_permute2f128_ps(shy2im, shy3im, 0b00100000);
             auto shz3im = _mm256_permute2f128_ps(shy2im, shy3im, 0b00110001);
 
+            _mm256_storeu_ps(data_ptr + sh0 + offset_first, shz0re);
+            _mm256_storeu_ps(data_ptr + sh0 + offset_first + PackSize, shz0im);
+            _mm256_storeu_ps(data_ptr + sh1 + offset_first, shz1re);
+            _mm256_storeu_ps(data_ptr + sh1 + offset_first + PackSize, shz1im);
             _mm256_storeu_ps(data_ptr + sh4 + offset_first, shz2re);
             _mm256_storeu_ps(data_ptr + sh4 + offset_first + PackSize, shz2im);
             _mm256_storeu_ps(data_ptr + sh5 + offset_first, shz3re);
@@ -335,21 +330,19 @@ public:
 
             auto shy4re = _mm256_castpd_ps(_mm256_unpacklo_pd(shx4re, shx6re));
             auto shy6re = _mm256_castpd_ps(_mm256_unpackhi_pd(shx4re, shx6re));
-            auto shy5re = _mm256_castpd_ps(_mm256_unpacklo_pd(shx5re, shx7re));
-            auto shy7re = _mm256_castpd_ps(_mm256_unpackhi_pd(shx5re, shx7re));
-
-            auto shz4re = _mm256_permute2f128_ps(shy4re, shy5re, 0b00100000);
-            auto shz5re = _mm256_permute2f128_ps(shy4re, shy5re, 0b00110001);
-            auto shz6re = _mm256_permute2f128_ps(shy6re, shy7re, 0b00100000);
-            auto shz7re = _mm256_permute2f128_ps(shy6re, shy7re, 0b00110001);
-
             auto shy4im = _mm256_castpd_ps(_mm256_unpacklo_pd(shx4im, shx6im));
             auto shy6im = _mm256_castpd_ps(_mm256_unpackhi_pd(shx4im, shx6im));
+            auto shy5re = _mm256_castpd_ps(_mm256_unpacklo_pd(shx5re, shx7re));
+            auto shy7re = _mm256_castpd_ps(_mm256_unpackhi_pd(shx5re, shx7re));
             auto shy5im = _mm256_castpd_ps(_mm256_unpacklo_pd(shx5im, shx7im));
             auto shy7im = _mm256_castpd_ps(_mm256_unpackhi_pd(shx5im, shx7im));
 
+            auto shz4re = _mm256_permute2f128_ps(shy4re, shy5re, 0b00100000);
+            auto shz5re = _mm256_permute2f128_ps(shy4re, shy5re, 0b00110001);
             auto shz4im = _mm256_permute2f128_ps(shy4im, shy5im, 0b00100000);
             auto shz5im = _mm256_permute2f128_ps(shy4im, shy5im, 0b00110001);
+            auto shz6re = _mm256_permute2f128_ps(shy6re, shy7re, 0b00100000);
+            auto shz7re = _mm256_permute2f128_ps(shy6re, shy7re, 0b00110001);
             auto shz6im = _mm256_permute2f128_ps(shy6im, shy7im, 0b00100000);
             auto shz7im = _mm256_permute2f128_ps(shy6im, shy7im, 0b00110001);
 
