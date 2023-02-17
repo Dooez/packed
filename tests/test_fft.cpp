@@ -60,7 +60,7 @@ int main()
 
     for (uint i = 0; i < fsize; ++i)
     {
-        vec[i] = std::exp(std::complex(0.F, 2 * pi * i / 128 * 1));
+        vec[i] = std::exp(std::complex(0.F, 2 * pi * i / 2));
         // vec[i] = 1;
     }
 
@@ -69,9 +69,9 @@ int main()
     for (uint i = 0; i < fsize; ++i)
     {
         // std::cout << abs(ff[i].value()) << "\n";
-        std::cout << abs(vec[i].value()) << "\n";
+        // std::cout << abs(vec[i].value()) << "\n";
         // std::cout << ff[i].value() << " " << vec[i].value() << "\n";
-        // std::cout << abs(ff[i].value() - vec[i].value()) << "\n";
+        std::cout << abs(ff[i].value() - vec[i].value()) << "\n";
     }
 
     std::cout << wnk(8, 1);
