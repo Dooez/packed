@@ -50,7 +50,7 @@ auto fft(const pcx::vector<float>& vector)
 
 int main()
 {
-    const uint fsize = 128;
+    const uint fsize = 2048*4;
     auto       unit  = pcx::fft_unit<float, 32>(fsize);
     auto       vec   = pcx::vector<float>(fsize);
     // pcx::fft_internal(vec);
@@ -70,11 +70,11 @@ int main()
     for (uint i = 0; i < fsize; ++i)
     {
         // std::cout << abs(ff[i].value()) << "\n";
-        // std::cout << abs(vec[i].value()) << "\n";
+        // std::cout << (vec[i].value().real()) << " ";
         // std::cout << ff[i].value() << " " << vec[i].value() << "\n";
-        // std::cout << (diff[i] = abs(ff[i].value() - vec[i].value())) << "\n";
-        diff[i] = abs(ff[i].value() - vec[i].value());
+        // std::cout << abs(ff[i].value() - vec[i].value()) << " ";
         // std::cout << (abs(diff[i]) > 1 ? 1 : 0 )<< "\n";
+        diff[i] = abs(ff[i].value() - vec[i].value());
     }
     std::cout << *std::max_element(diff.begin(), diff.end()) << "\n";
     return 0;

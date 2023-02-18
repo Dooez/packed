@@ -570,7 +570,6 @@ public:
                 }
             }
 
-
             l_size *= 4;
             n_groups *= 4;
             group_size /= 4;
@@ -638,9 +637,9 @@ private:
         auto       sort             = std::vector<std::size_t, sort_allocator_type>();
         sort.reserve(packed_sort_size);
 
-        for (uint i = 0; i < packed_sort_size / 2; ++i)
+        for (uint i = 0; i < packed_sort_size; ++i)
         {
-            if (i == reverse_bit_order(i, order))
+            if (i >= reverse_bit_order(i, order))
             {
                 continue;
             }
