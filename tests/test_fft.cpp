@@ -1,30 +1,32 @@
 #include "fft.hpp"
+#include "test_pcx.hpp"
 
 #include <iostream>
 
-template void pcx::fft_unit<float, 8>::fft_internal<8, std::allocator<float>>(
+
+template void pcx::fft_unit<float, 8>::fft_internal<std::allocator<float>>(
     pcx::vector<float, 8, std::allocator<float>>& vector);
 
-inline auto wnk(std::size_t n, std::size_t k) -> std::complex<float>
+template<typename T>
+inline auto wnk(std::size_t n, std::size_t k) -> std::complex<T>
 {
     constexpr double pi = 3.14159265358979323846;
     return exp(
-        std::complex<float>(0,
-                            -2 * pi * static_cast<double>(k) / static_cast<double>(n)));
+        std::complex<T>(0, -2 * pi * static_cast<double>(k) / static_cast<double>(n)));
 }
-
-auto fft(const pcx::vector<float>& vector)
+template<typename T>
+auto fft(const pcx::vector<T>& vector)
 {
     auto fft_size = vector.size();
-    auto res      = pcx::vector<float>(fft_size);
+    auto res      = pcx::vector<T>(fft_size);
     if (fft_size == 1)
     {
         res = vector;
         return res;
     }
 
-    auto even = pcx::vector<float>(fft_size / 2);
-    auto odd  = pcx::vector<float>(fft_size / 2);
+    auto even = pcx::vector<T>(fft_size / 2);
+    auto odd  = pcx::vector<T>(fft_size / 2);
 
     for (uint i = 0; i < fft_size / 2; ++i)
     {
@@ -38,7 +40,7 @@ auto fft(const pcx::vector<float>& vector)
     for (uint i = 0; i < fft_size / 2; ++i)
     {
         auto even_v = even[i].value();
-        auto odd_v  = odd[i].value() * wnk(fft_size, i);
+        auto odd_v  = odd[i].value() * wnk<T>(fft_size, i);
 
         res[i]                = even_v + odd_v;
         res[i + fft_size / 2] = even_v - odd_v;
@@ -47,35 +49,49 @@ auto fft(const pcx::vector<float>& vector)
     return res;
 }
 
+int test_fft_float(std::size_t size)
+{
+    constexpr float  pi  = 3.14159265358979323846;
+    constexpr double dpi = 3.14159265358979323846;
+
+    auto vec  = pcx::vector<float>(size);
+    auto vecd = pcx::vector<double>(size);
+    for (uint i = 0; i < size; ++i)
+    {
+        vec[i]  = std::exp(std::complex(0.F, 2 * pi * i / size * 13.37F));
+        vecd[i] = std::exp(std::complex(0., 2 * dpi * i / size * 13.37));
+    }
+
+    auto ff   = fft(vec);
+    auto unit = pcx::fft_unit<float, 32>(size);
+    unit(vec);
+
+    for (uint i = 0; i < size; ++i)
+    {
+        auto val = std::complex<float>(ff[i].value());
+        if (!equal_eps<1U << 15>(val, vec[i].value()))
+        {
+            std::cout << abs(val - vec[i].value()) << "\n";
+            return 1;
+        }
+    }
+    return 0;
+}
+
 
 int main()
 {
-    const uint fsize = 2048*4;
-    auto       unit  = pcx::fft_unit<float, 32>(fsize);
-    auto       vec   = pcx::vector<float>(fsize);
-    // pcx::fft_internal(vec);
-    vec[0] = 1;
-
-    constexpr float pi = 3.14159265358979323846;
-
-    for (uint i = 0; i < fsize; ++i)
+    int ret = 0;
+    for (uint i = 6; i < 14; ++i)
     {
-        vec[i] = std::exp(std::complex(0.F, 2 * pi * i / 2));
-        // vec[i] = 1;
+        std::cout << (1U << i) << "\n";
+
+        ret += test_fft_float(1U << i);
+        if (ret > 0)
+        {
+            return ret;
+        }
     }
 
-    auto ff = fft(vec);
-    unit(vec);
-    std::vector<float> diff(fsize, 0);
-    for (uint i = 0; i < fsize; ++i)
-    {
-        // std::cout << abs(ff[i].value()) << "\n";
-        // std::cout << (vec[i].value().real()) << " ";
-        // std::cout << ff[i].value() << " " << vec[i].value() << "\n";
-        // std::cout << abs(ff[i].value() - vec[i].value()) << " ";
-        // std::cout << (abs(diff[i]) > 1 ? 1 : 0 )<< "\n";
-        diff[i] = abs(ff[i].value() - vec[i].value());
-    }
-    std::cout << *std::max_element(diff.begin(), diff.end()) << "\n";
     return 0;
 }

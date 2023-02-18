@@ -87,8 +87,9 @@ private:
     const pcx::vector<real_type, pack_size, allocator_type> m_twiddles;
 
 public:
-    template<std::size_t VPackSize, typename VAllocator>
-    void fft_internal(pcx::vector<T, VPackSize, VAllocator>& vector)
+    template<typename VAllocator>
+    void fft_internal(pcx::vector<T, PackSize, VAllocator>& vector)
+        requires std::same_as<T, float>
     {
         const auto sq2 = wnk(8, 1);
 
@@ -97,14 +98,14 @@ public:
         auto* data_ptr    = &vector[0];
         auto* twiddle_ptr = &m_twiddles[0];
 
-        auto sh0 = 0;
-        auto sh1 = pidx(1 * size() / 8);
-        auto sh2 = pidx(2 * size() / 8);
-        auto sh3 = pidx(3 * size() / 8);
-        auto sh4 = pidx(4 * size() / 8);
-        auto sh5 = pidx(5 * size() / 8);
-        auto sh6 = pidx(6 * size() / 8);
-        auto sh7 = pidx(7 * size() / 8);
+        const auto sh0 = 0;
+        const auto sh1 = pidx(1 * size() / 8);
+        const auto sh2 = pidx(2 * size() / 8);
+        const auto sh3 = pidx(3 * size() / 8);
+        const auto sh4 = pidx(4 * size() / 8);
+        const auto sh5 = pidx(5 * size() / 8);
+        const auto sh6 = pidx(6 * size() / 8);
+        const auto sh7 = pidx(7 * size() / 8);
 
         for (uint i = 0; i < n_reversals(size() / 64); i += 2)
         {
@@ -150,8 +151,8 @@ public:
             reg_t b4 = {avx::add(a4.real, a6.imag), avx::sub(a4.imag, a6.real)};
             reg_t b6 = {avx::sub(a4.real, a6.imag), avx::add(a4.imag, a6.real)};
 
-            auto c0 = avx::add(b0, b1);
-            auto c1 = avx::sub(b0, b1);
+            auto  c0 = avx::add(b0, b1);
+            auto  c1 = avx::sub(b0, b1);
             reg_t c2 = {avx::add(b2.real, b3.imag), avx::sub(b2.imag, b3.real)};
             reg_t c3 = {avx::sub(b2.real, b3.imag), avx::add(b2.imag, b3.real)};
 
@@ -355,7 +356,7 @@ public:
             _mm256_storeu_ps(data_ptr + sh7 + offset_first + PackSize, shz7im);
         };
 
-       for (uint i = n_reversals(size() / 64); i < size() / 64; ++i)
+        for (uint i = n_reversals(size() / 64); i < size() / 64; ++i)
         {
             using reg_t = avx::cx_reg<float>;
             auto offset = m_sort[i];
@@ -379,8 +380,8 @@ public:
             auto b1 = avx::add(a1, a3);
             auto b3 = avx::sub(a1, a3);
 
-            b5_tw       = avx::mul(b5_tw, twsq2);
-            b7_tw       = avx::mul(b7_tw, twsq2);
+            b5_tw = avx::mul(b5_tw, twsq2);
+            b7_tw = avx::mul(b7_tw, twsq2);
 
             auto p0 = avx::cxload<PackSize>(data_ptr + sh0 + offset);
             auto p2 = avx::cxload<PackSize>(data_ptr + sh2 + offset);
@@ -392,13 +393,13 @@ public:
             auto a2 = avx::add(p2, p6);
             auto a6 = avx::sub(p2, p6);
 
-            auto b0 = avx::add(a0, a2);
-            auto b2 = avx::sub(a0, a2);
+            auto  b0 = avx::add(a0, a2);
+            auto  b2 = avx::sub(a0, a2);
             reg_t b4 = {avx::add(a4.real, a6.imag), avx::sub(a4.imag, a6.real)};
             reg_t b6 = {avx::sub(a4.real, a6.imag), avx::add(a4.imag, a6.real)};
 
-            auto c0 = avx::add(b0, b1);
-            auto c1 = avx::sub(b0, b1);
+            auto  c0 = avx::add(b0, b1);
+            auto  c1 = avx::sub(b0, b1);
             reg_t c2 = {avx::add(b2.real, b3.imag), avx::sub(b2.imag, b3.real)};
             reg_t c3 = {avx::sub(b2.real, b3.imag), avx::add(b2.imag, b3.real)};
 
@@ -641,7 +642,7 @@ private:
     {
         const auto packed_sort_size = fft_size / reg_size / reg_size;
         const auto order            = log2i(packed_sort_size);
-        auto       sort             = std::vector<std::size_t, sort_allocator_type>();
+        auto       sort = std::vector<std::size_t, sort_allocator_type>(allocator);
         sort.reserve(packed_sort_size);
 
         for (uint i = 0; i < packed_sort_size; ++i)
