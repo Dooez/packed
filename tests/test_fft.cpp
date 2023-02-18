@@ -4,8 +4,8 @@
 #include <iostream>
 
 
-template void pcx::fft_unit<float, 8>::fft_internal<std::allocator<float>>(
-    pcx::vector<float, 8, std::allocator<float>>& vector);
+template void
+pcx::fft_unit<float>::fft_internal<std::allocator<float>>(pcx::vector<float>& vector);
 
 template<typename T>
 inline auto wnk(std::size_t n, std::size_t k) -> std::complex<T>
@@ -63,7 +63,7 @@ int test_fft_float(std::size_t size)
     }
 
     auto ff   = fft(vec);
-    auto unit = pcx::fft_unit<float, 32>(size);
+    auto unit = pcx::fft_unit<float>(size);
     unit(vec);
 
     for (uint i = 0; i < size; ++i)

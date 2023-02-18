@@ -17,8 +17,8 @@ namespace pcx {
  * @tparam Allocator
  */
 template<typename T,
-         std::size_t PackSize = 128 / sizeof(T),
-         typename Allocator   = std::allocator<T>>
+         typename Allocator   = std::allocator<T>,
+         std::size_t PackSize = 32 / sizeof(T)>
     requires packed_floating_point<T, PackSize>
 class vector
 {
@@ -34,11 +34,11 @@ public:
     using allocator_type  = Allocator;
     using size_type       = std::size_t;
     using difference_type = ptrdiff_t;
-    using reference       = cx_ref<T, PackSize, false>;
-    using const_reference = const cx_ref<T, PackSize, true>;
+    using reference       = cx_ref<T, false, PackSize>;
+    using const_reference = const cx_ref<T, true, PackSize>;
 
-    using iterator       = pcx::iterator<T, PackSize, false>;
-    using const_iterator = pcx::iterator<T, PackSize, true>;
+    using iterator       = pcx::iterator<T, false, PackSize>;
+    using const_iterator = pcx::iterator<T, true, PackSize>;
 
     static constexpr size_type pack_size = PackSize;
 
@@ -395,21 +395,22 @@ private:
     }
 };
 
-template<typename T, std::size_t PackSize, bool Const>
+template<typename T, bool Const, std::size_t PackSize = 32 / sizeof(T)>
 class iterator
 {
-    template<typename TVec, std::size_t PackSizeVec, typename>
-        requires packed_floating_point<TVec, PackSizeVec>
+    template<typename VT, typename, std::size_t VPackSize>
+        requires packed_floating_point<VT, VPackSize>
     friend class vector;
-    friend class iterator<T, PackSize, true>;
+
+    friend class iterator<T, true, PackSize>;
 
 public:
     using real_type       = T;
     using real_pointer    = T*;
     using difference_type = ptrdiff_t;
     using reference       = typename std::
-        conditional_t<Const, const cx_ref<T, PackSize, true>, cx_ref<T, PackSize>>;
-    using value_type       = cx_ref<T, PackSize, Const>;
+        conditional_t<Const, const cx_ref<T, true, PackSize>, cx_ref<T, false, PackSize>>;
+    using value_type       = cx_ref<T, Const, PackSize>;
     using iterator_concept = std::random_access_iterator_tag;
 
     static constexpr auto pack_size = PackSize;
@@ -423,7 +424,7 @@ public:
     iterator() noexcept = default;
 
     // NOLINTNEXTLINE(*explicit*)
-    iterator(const iterator<T, PackSize>& other) noexcept
+    iterator(const iterator<T, false, PackSize>& other) noexcept
         requires Const
     : m_ptr(other.m_ptr)
     , m_idx(other.m_idx){};
@@ -515,7 +516,7 @@ public:
 
     template<bool OConst>
     [[nodiscard]] friend auto operator-(const iterator&                      lhs,
-                                        const iterator<T, PackSize, OConst>& rhs) noexcept
+                                        const iterator<T, OConst, PackSize>& rhs) noexcept
         -> difference_type
     {
         return lhs.m_idx - rhs.m_idx;
@@ -549,11 +550,14 @@ private:
     difference_type m_idx = 0;
 };
 
-template<typename T, std::size_t PackSize, bool Const, std::size_t Extent>
+template<typename T,
+         bool        Const,
+         std::size_t Extent = pcx::dynamic_size,
+         std::size_t PackSize = 32 / sizeof(T)>
 class subrange : public std::ranges::view_base
 {
-    template<typename TVec, std::size_t PackSizeVec, typename>
-        requires packed_floating_point<TVec, PackSizeVec>
+    template<typename VT, typename, std::size_t VPackSize>
+        requires packed_floating_point<VT, VPackSize>
     friend class vector;
 
     friend class internal::expression_traits;
@@ -563,8 +567,8 @@ public:
     using size_type       = std::size_t;
     using difference_type = std::ptrdiff_t;
 
-    using iterator       = pcx::iterator<T, PackSize, Const>;
-    using const_iterator = pcx::iterator<T, PackSize, true>;
+    using iterator       = pcx::iterator<T, Const, PackSize>;
+    using const_iterator = pcx::iterator<T, true, PackSize>;
 
     using reference = typename iterator::reference;
 
@@ -713,20 +717,20 @@ private:
     iterator                     m_begin{};
 };
 
-template<typename T, std::size_t PackSize, bool Const>
+template<typename T, bool Const, std::size_t PackSize = 32 / sizeof(T)>
 class cx_ref
 {
-    template<typename TVec, std::size_t PackSizeVec, typename>
-        requires packed_floating_point<TVec, PackSizeVec>
+    template<typename VT, typename, std::size_t VPackSize>
+        requires packed_floating_point<VT, VPackSize>
     friend class vector;
 
-    friend class iterator<T, PackSize, Const>;
-    friend class iterator<T, PackSize, false>;
+    friend class iterator<T, Const, PackSize>;
+    friend class iterator<T, false, PackSize>;
 
-    friend class subrange<T, PackSize, Const>;
-    friend class subrange<T, PackSize, false>;
+    template<typename ST, bool SConst, std::size_t Size, std::size_t SPackSize>
+    friend class subrange;
 
-    friend class cx_ref<T, PackSize, true>;
+    friend class cx_ref<T, true, PackSize>;
 
 public:
     using real_type  = T;
@@ -741,7 +745,7 @@ public:
     cx_ref() = delete;
 
     // NOLINTNEXTLINE (*explicit*)
-    cx_ref(const cx_ref<T, PackSize, false>& other) noexcept
+    cx_ref(const cx_ref<T, false, PackSize>& other) noexcept
         requires Const
     : m_ptr(other.m_ptr){};
 

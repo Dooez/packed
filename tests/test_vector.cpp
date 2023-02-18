@@ -129,10 +129,10 @@ constexpr void concept_test()
     constexpr std::size_t pack_size = 8;
 
     using vector_t         = vector<T>;
-    using iterator_t       = iterator<T, pack_size>;
-    using cont_iterator_t  = iterator<T, pack_size, true>;
-    using subrange_t       = pcx::subrange<T, pack_size>;
-    using const_subrange_t = pcx::subrange<T, pack_size, true>;
+    using iterator_t       = iterator<T, false, pack_size>;
+    using cont_iterator_t  = iterator<T, true, pack_size>;
+    using subrange_t       = pcx::subrange<T, false, pcx::dynamic_size, pack_size>;
+    using const_subrange_t = pcx::subrange<T, true, pcx::dynamic_size, pack_size>;
 
     static_assert(!view<vector_t>);
     static_assert(range<vector_t>);
@@ -163,7 +163,6 @@ constexpr void concept_test()
     static_assert(viewable_range<const_subrange_t>);
     // static_assert(constant_range<const_subrange_t>); c++23
 };
-
 
 int main()
 {

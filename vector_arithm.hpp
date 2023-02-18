@@ -220,9 +220,9 @@ namespace internal {
      * @param idx data offset
      * @return avx::cx_reg<T> loaded complex register
      */
-        template<typename T, std::size_t PackSize, bool Const>
+        template<typename T, bool Const, std::size_t PackSize>
         [[nodiscard]] static constexpr auto
-        cx_reg(const iterator<T, PackSize, Const>& iterator, std::size_t idx)
+        cx_reg(const iterator<T, Const, PackSize>& iterator, std::size_t idx)
             -> avx::cx_reg<T>
         {
             auto real = avx::load(&(*iterator) + idx);
@@ -1826,66 +1826,82 @@ inline auto operator/(S scalar, const E& vector)
     return internal::scalar_div(scalar, vector);
 }
 
-template<typename E, typename T, std::size_t PackSize, typename Allocator>
+template<typename E, typename T, typename Allocator, std::size_t PackSize>
     requires packed_floating_point<T, PackSize> &&
-             (!std::same_as<E, vector<T, PackSize, Allocator>>) &&
-             requires(subrange<T, PackSize> subrange, E e) { e + subrange; }
-inline auto operator+(const E& expression, const vector<T, PackSize, Allocator>& vector)
+             (!std::same_as<E, vector<T, Allocator, PackSize>>) &&
+             requires(subrange<T, false, pcx::dynamic_size, PackSize> subrange, E e) {
+                 e + subrange;
+             }
+inline auto operator+(const E& expression, const vector<T, Allocator, PackSize>& vector)
 {
     return expression + subrange(vector.begin(), vector.size());
 };
-template<typename T, std::size_t PackSize, typename Allocator, typename E>
+template<typename T, typename Allocator, std::size_t PackSize, typename E>
     requires packed_floating_point<T, PackSize> &&
-             requires(subrange<T, PackSize> subrange, E e) { subrange + e; }
-inline auto operator+(const vector<T, PackSize, Allocator>& vector, const E& expression)
+             requires(subrange<T, false, pcx::dynamic_size, PackSize> subrange, E e) {
+                 subrange + e;
+             }
+inline auto operator+(const vector<T, Allocator, PackSize>& vector, const E& expression)
 {
     return subrange(vector.begin(), vector.size()) + expression;
 };
 
-template<typename E, typename T, std::size_t PackSize, typename Allocator>
+template<typename E, typename T, typename Allocator, std::size_t PackSize>
     requires packed_floating_point<T, PackSize> &&
-             (!std::same_as<E, vector<T, PackSize, Allocator>>) &&
-             requires(subrange<T, PackSize> subrange, E e) { e - subrange; }
-inline auto operator-(const E& expression, const vector<T, PackSize, Allocator>& vector)
+             (!std::same_as<E, vector<T, Allocator, PackSize>>) &&
+             requires(subrange<T, false, pcx::dynamic_size, PackSize> subrange, E e) {
+                 e - subrange;
+             }
+inline auto operator-(const E& expression, const vector<T, Allocator, PackSize>& vector)
 {
     return expression - subrange(vector.begin(), vector.size());
 };
-template<typename T, std::size_t PackSize, typename Allocator, typename E>
+template<typename T, typename Allocator, std::size_t PackSize, typename E>
     requires packed_floating_point<T, PackSize> &&
-             requires(subrange<T, PackSize> subrange, E e) { subrange - e; }
-inline auto operator-(const vector<T, PackSize, Allocator>& vector, const E& expression)
+             requires(subrange<T, false, pcx::dynamic_size, PackSize> subrange, E e) {
+                 subrange - e;
+             }
+inline auto operator-(const vector<T, Allocator, PackSize>& vector, const E& expression)
 {
     return subrange(vector.begin(), vector.size()) - expression;
 };
 
-template<typename E, typename T, std::size_t PackSize, typename Allocator>
+template<typename E, typename T, typename Allocator, std::size_t PackSize>
     requires packed_floating_point<T, PackSize> &&
-             (!std::same_as<E, vector<T, PackSize, Allocator>>) &&
-             requires(subrange<T, PackSize> subrange, E e) { e* subrange; }
-inline auto operator*(const E& expression, const vector<T, PackSize, Allocator>& vector)
+             (!std::same_as<E, vector<T, Allocator, PackSize>>) &&
+             requires(subrange<T, false, pcx::dynamic_size, PackSize> subrange, E e) {
+                 e* subrange;
+             }
+inline auto operator*(const E& expression, const vector<T, Allocator, PackSize>& vector)
 {
     return expression * subrange(vector.begin(), vector.size());
 };
-template<typename T, std::size_t PackSize, typename Allocator, typename E>
+template<typename T, typename Allocator, std::size_t PackSize, typename E>
     requires packed_floating_point<T, PackSize> &&
-             requires(subrange<T, PackSize> subrange, E e) { subrange* e; }
-inline auto operator*(const vector<T, PackSize, Allocator>& vector, const E& expression)
+             requires(subrange<T, false, pcx::dynamic_size, PackSize> subrange, E e) {
+                 subrange* e;
+             }
+inline auto operator*(const vector<T, Allocator, PackSize>& vector, const E& expression)
 {
     return subrange(vector.begin(), vector.size()) * expression;
 };
 
-template<typename E, typename T, std::size_t PackSize, typename Allocator>
+template<typename E, typename T, typename Allocator, std::size_t PackSize>
     requires packed_floating_point<T, PackSize> &&
-             (!std::same_as<E, vector<T, PackSize, Allocator>>) &&
-             requires(subrange<T, PackSize> subrange, E e) { e / subrange; }
-inline auto operator/(const E& expression, const vector<T, PackSize, Allocator>& vector)
+             (!std::same_as<E, vector<T, Allocator, PackSize>>) &&
+             requires(subrange<T, false, pcx::dynamic_size, PackSize> subrange, E e) {
+                 e / subrange;
+             }
+inline auto operator/(const E& expression, const vector<T, Allocator, PackSize>& vector)
 {
     return expression / subrange(vector.begin(), vector.size());
 };
-template<typename T, std::size_t PackSize, typename Allocator, typename E>
+template<typename T, typename Allocator, std::size_t PackSize, typename E>
     requires packed_floating_point<T, PackSize> &&
-             requires(subrange<T, PackSize> subrange, E e) { subrange / e; }
-inline auto operator/(const vector<T, PackSize, Allocator>& vector, const E& expression)
+             requires(subrange<T, false, pcx::dynamic_size, PackSize> subrange, E e) {
+                 subrange / e;
+             }
+inline auto operator/(const vector<T, Allocator, PackSize>& vector, const E& expression)
 {
     return subrange(vector.begin(), vector.size()) / expression;
 };

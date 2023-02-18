@@ -25,12 +25,10 @@ namespace avx {
 
 }    // namespace avx
 
-constexpr const std::size_t dynamic_size = -1;
-
 template<typename T,
-         std::size_t PackSize,
-         typename Allocator = std::allocator<T>,
-         std::size_t Size   = pcx::dynamic_size>
+         typename Allocator   = std::allocator<T>,
+         std::size_t PackSize = 32 / sizeof(T),
+         std::size_t Size     = pcx::dynamic_size>
     requires pcx::packed_floating_point<T, PackSize>
 class fft_unit
 {
@@ -74,9 +72,8 @@ public:
     }
 
 
-    template<typename VT, std::size_t VPackSize, typename VAllocator>
-        requires std::same_as<VT, real_type> && requires { VPackSize == pack_size; }
-    void operator()(pcx::vector<VT, VPackSize, VAllocator>& test_vecor)
+    template<typename VAllocator>
+    void operator()(pcx::vector<T, VAllocator, PackSize>& test_vecor)
     {
         fft_internal(test_vecor);
     };
@@ -84,11 +81,11 @@ public:
 private:
     [[no_unique_address]] size_t                            m_size;
     const std::vector<std::size_t, sort_allocator_type>     m_sort;
-    const pcx::vector<real_type, pack_size, allocator_type> m_twiddles;
+    const pcx::vector<real_type, allocator_type, pack_size> m_twiddles;
 
 public:
     template<typename VAllocator>
-    void fft_internal(pcx::vector<T, PackSize, VAllocator>& vector)
+    void fft_internal(pcx::vector<T, VAllocator, PackSize>& vector)
         requires std::same_as<T, float>
     {
         const auto sq2 = wnk(8, 1);
@@ -665,14 +662,14 @@ private:
     }
 
     static auto get_twiddles(std::size_t fft_size, allocator_type allocator)
-        -> pcx::vector<real_type, pack_size, allocator_type>
+        -> pcx::vector<real_type, allocator_type, pack_size>
     {
         const auto depth = log2i(fft_size);
 
         const std::size_t n_twiddles = 8 * ((1U << (depth - 3)) - 1U);
 
         auto twiddles =
-            pcx::vector<real_type, pack_size, allocator_type>(n_twiddles, allocator);
+            pcx::vector<real_type, allocator_type, pack_size>(n_twiddles, allocator);
 
         auto tw_it = twiddles.begin();
 
