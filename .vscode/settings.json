@@ -87,7 +87,9 @@
         "__memory": "cpp",
         "cassert": "cpp",
         "cerrno": "cpp",
-        "climits": "cpp"
+        "climits": "cpp",
+        "__tree": "cpp",
+        "map": "cpp"
     },
     "C_Cpp.default.cppStandard": "c++20",
     "C_Cpp.default.intelliSenseMode": "clang-x64",

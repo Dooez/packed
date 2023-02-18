@@ -1,7 +1,8 @@
+#include "vector.hpp"
+
 #include <cassert>
 #include <iostream>
 #include <type_traits>
-#include <vector.hpp>
 
 inline std::size_t n_caught = 0;
 #define test_except(test, expression) \
