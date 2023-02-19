@@ -57,11 +57,11 @@ int test_fft_float(std::size_t size)
     auto vec2 = pcx::vector<float>(size);
     for (uint i = 0; i < size; ++i)
     {
-        vec[i]  = std::exp(std::complex(0.F, 2 * pi * i / size * 13.37F));
+        vec[i] = std::exp(std::complex(0.F, 2 * pi * i / size * 13.37F));
     }
 
     auto ff   = fft(vec);
-    auto unit = pcx::fft_unit<float>(size);
+    auto unit = pcx::fft_unit<float, pcx::dynamic_size, 512>(size);
     unit(vec2, vec);
 
     for (uint i = 0; i < size; ++i)
