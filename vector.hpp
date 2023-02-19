@@ -18,7 +18,7 @@ namespace pcx {
  */
 template<typename T,
          typename Allocator   = std::allocator<T>,
-         std::size_t PackSize = 32 / sizeof(T)>
+         std::size_t PackSize = pcx::default_pack_size<T>>
     requires packed_floating_point<T, PackSize>
 class vector
 {
@@ -314,6 +314,15 @@ public:
         return {m_ptr + p_idx};
     }
 
+    [[nodiscard]] auto data() -> real_pointer
+    {
+        return m_ptr;
+    }
+    [[nodiscard]] auto data() const -> const real_pointer
+    {
+        return m_ptr;
+    }
+
     [[nodiscard]] constexpr auto size() const noexcept -> size_type
     {
         return m_size;
@@ -395,7 +404,7 @@ private:
     }
 };
 
-template<typename T, bool Const, std::size_t PackSize = 32 / sizeof(T)>
+template<typename T, bool Const = false, std::size_t PackSize = pcx::default_pack_size<T>>
 class iterator
 {
     template<typename VT, typename, std::size_t VPackSize>
@@ -551,9 +560,9 @@ private:
 };
 
 template<typename T,
-         bool        Const,
-         std::size_t Extent = pcx::dynamic_size,
-         std::size_t PackSize = 32 / sizeof(T)>
+         bool        Const    = false,
+         std::size_t Size     = pcx::dynamic_size,
+         std::size_t PackSize = pcx::default_pack_size<T>>
 class subrange : public std::ranges::view_base
 {
     template<typename VT, typename, std::size_t VPackSize>
@@ -576,18 +585,18 @@ public:
 
 private:
     using size_t =
-        std::conditional_t<Extent == std::dynamic_extent, size_type, std::monostate>;
+        std::conditional_t<Size == pcx::dynamic_size, size_type, decltype([]() {})>;
 
 public:
     subrange() noexcept = default;
 
     subrange(const iterator& begin, size_type size) noexcept
-        requires(Extent == std::dynamic_extent)
+        requires(Size == pcx::dynamic_size)
     : m_begin(begin)
     , m_size(size){};
 
     explicit subrange(const iterator& begin) noexcept
-        requires(Extent != std::dynamic_extent)
+        requires(Size != pcx::dynamic_size)
     : m_begin(begin){};
 
     subrange(const subrange&) noexcept = default;
@@ -633,12 +642,12 @@ public:
 
     [[nodiscard]] constexpr auto size() const -> size_type
     {
-        if constexpr (Extent == std::dynamic_extent)
+        if constexpr (Size == pcx::dynamic_size)
         {
             return m_size;
         } else
         {
-            return Extent;
+            return Size;
         }
     };
     [[nodiscard]] constexpr bool empty() const
@@ -717,7 +726,7 @@ private:
     iterator                     m_begin{};
 };
 
-template<typename T, bool Const, std::size_t PackSize = 32 / sizeof(T)>
+template<typename T, bool Const = false, std::size_t PackSize = pcx::default_pack_size<T>>
 class cx_ref
 {
     template<typename VT, typename, std::size_t VPackSize>

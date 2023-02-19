@@ -3,9 +3,8 @@
 
 #include <iostream>
 
-
-template void
-pcx::fft_unit<float>::fft_internal<std::allocator<float>>(pcx::vector<float>& vector);
+template void pcx::fft_unit<float>::fft_internal<float>(float*       vector,
+                                                        const float* vector2);
 
 template<typename T>
 inline auto wnk(std::size_t n, std::size_t k) -> std::complex<T>
@@ -55,23 +54,32 @@ int test_fft_float(std::size_t size)
     constexpr double dpi = 3.14159265358979323846;
 
     auto vec  = pcx::vector<float>(size);
-    auto vecd = pcx::vector<double>(size);
+    auto vec2 = pcx::vector<float>(size);
     for (uint i = 0; i < size; ++i)
     {
         vec[i]  = std::exp(std::complex(0.F, 2 * pi * i / size * 13.37F));
-        vecd[i] = std::exp(std::complex(0., 2 * dpi * i / size * 13.37));
     }
 
     auto ff   = fft(vec);
     auto unit = pcx::fft_unit<float>(size);
-    unit(vec);
+    unit(vec2, vec);
 
     for (uint i = 0; i < size; ++i)
     {
         auto val = std::complex<float>(ff[i].value());
-        if (!equal_eps<1U << 15>(val, vec[i].value()))
+        if (!equal_eps<1U << 12>(val, vec2[i].value()))
         {
-            std::cout << abs(val - vec[i].value()) << "\n";
+            std::cout << abs(val - vec2[i].value()) << "  " << abs(val) << "\n";
+            return 1;
+        }
+    }
+    unit(vec);
+    for (uint i = 0; i < size; ++i)
+    {
+        auto val = std::complex<float>(ff[i].value());
+        if (!equal_eps<1U << 12>(val, vec[i].value()))
+        {
+            std::cout << abs(val - vec[i].value()) << "  " << abs(val) << "\n";
             return 1;
         }
     }

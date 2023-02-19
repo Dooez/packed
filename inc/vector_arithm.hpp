@@ -2,12 +2,11 @@
 #define VECTOR_ARITHM_HPP
 #include "vector_util.hpp"
 
-#include <assert.h>
+#include <cassert>
 #include <complex>
 #include <concepts>
 #include <immintrin.h>
 #include <ranges>
-#include <type_traits>
 
 namespace pcx {
 
@@ -94,25 +93,6 @@ namespace avx {
     }
 
     template<typename T>
-    struct cx_reg
-    {
-        typename reg<T>::type real;
-        typename reg<T>::type imag;
-    };
-
-    template<typename T>
-    inline auto broadcast(const std::complex<T>& source) -> cx_reg<T>
-    {
-        const auto& value = reinterpret_cast<const T(&)[2]>(source);
-        return {avx::broadcast(&(value[0])), avx::broadcast(&(value[1]))};
-    }
-    template<typename T>
-    inline auto broadcast(const T& source) -> typename reg<T>::type
-    {
-        return avx::broadcast(&source);
-    }
-
-    template<typename T>
     inline auto add(cx_reg<T> lhs, cx_reg<T> rhs) -> cx_reg<T>
     {
         return {add(lhs.real, rhs.real), add(lhs.imag, rhs.imag)};
@@ -125,22 +105,20 @@ namespace avx {
     template<typename T>
     inline auto mul(cx_reg<T> lhs, cx_reg<T> rhs) -> cx_reg<T>
     {
-        const auto real = fnmadd(lhs.imag, rhs.imag, mul(lhs.real, rhs.real));
-        const auto imag = fmadd(lhs.imag, rhs.real, mul(lhs.real, rhs.imag));
-
-        return {real, imag};
+        auto real = mul(lhs.real, rhs.real);
+        auto imag = mul(lhs.real, rhs.imag);
+        return {fnmadd(lhs.imag, rhs.imag, real), fmadd(lhs.imag, rhs.real, imag)};
     }
     template<typename T>
     inline auto div(cx_reg<T> lhs, cx_reg<T> rhs) -> cx_reg<T>
     {
-        const auto rhs_abs =
-            avx::add(avx::mul(rhs.real, rhs.real), avx::mul(rhs.imag, rhs.imag));
+        auto rhs_abs = avx::mul(rhs.real, rhs.real);
+        auto real_   = avx::mul(lhs.real, rhs.real);
+        auto imag_   = avx::mul(lhs.real, rhs.imag);
 
-        const auto real_ =
-            avx::add(avx::mul(lhs.real, rhs.real), avx::mul(lhs.imag, rhs.imag));
-
-        const auto imag_ =
-            avx::sub(avx::mul(lhs.imag, rhs.real), avx::mul(lhs.real, rhs.imag));
+        rhs_abs = avx::fmadd(rhs.imag, rhs.imag, rhs_abs);
+        real_   = avx::fmadd(lhs.imag, rhs.imag, real_);
+        imag_   = avx::fmsub(lhs.imag, rhs.real, imag_);
 
         return {avx::div(real_, rhs_abs), avx::div(imag_, rhs_abs)};
     }
@@ -163,11 +141,11 @@ namespace avx {
     template<typename T>
     inline auto div(typename reg<T>::type lhs, cx_reg<T> rhs) -> cx_reg<T>
     {
-        const auto rhs_abs =
-            avx::add(avx::mul(rhs.real, rhs.real), avx::mul(rhs.imag, rhs.imag));
+        auto rhs_abs = avx::mul(rhs.real, rhs.real);
+        auto real_   = avx::mul(lhs, rhs.real);
+        auto imag_   = avx::mul(lhs, rhs.imag);
 
-        const auto real_ = avx::mul(lhs, rhs.real);
-        const auto imag_ = avx::mul(lhs, rhs.imag);
+        rhs_abs = avx::fmadd(rhs.imag, rhs.imag, rhs_abs);
 
         return {avx::div(real_, rhs_abs), avx::div(imag_, rhs_abs)};
     }
