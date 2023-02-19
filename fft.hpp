@@ -1198,6 +1198,7 @@ public:
             sub_offset += SubSize;
         }
 
+        group_size = size() / SubSize / 2;
         while (l_size <= size())
         {
             for (std::size_t i_group = 0; i_group < n_groups; ++i_group)
@@ -1210,15 +1211,16 @@ public:
 
                 for (std::size_t i = 0; i < group_size; ++i)
                 {
-                    auto* ptr0 =  source + pidx(offset);
-                    auto* ptr1 =  source + pidx(offset + l_size / 2);
+                    auto* ptr0 = source + pidx(offset);
+                    auto* ptr1 = source + pidx(offset + l_size / 2);
 
                     auto p1 = avx::cxload<PackSize>(ptr1);
                     auto p0 = avx::cxload<PackSize>(ptr0);
 
                     auto p1tw = avx::mul(p1, tw0);
-                    auto a0   = avx::add(p0, p1tw);
-                    auto a1   = avx::sub(p0, p1tw);
+
+                    auto a0 = avx::add(p0, p1tw);
+                    auto a1 = avx::sub(p0, p1tw);
 
                     cxstore<PackSize>(ptr0, a0);
                     cxstore<PackSize>(ptr1, a1);
@@ -1356,8 +1358,8 @@ private:
                     *(tw_it++) = wnk(l_size, k + i_group * reg_size);
                 }
             }
-            l_size *= 4;
-            n_groups *= 4;
+            l_size *= 2;
+            n_groups *= 2;
         };
         return twiddles;
     }
