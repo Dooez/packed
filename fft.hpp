@@ -12,7 +12,10 @@ template<typename T,
          std::size_t SubSize  = pcx::dynamic_size,
          typename Allocator   = std::allocator<T>,
          std::size_t PackSize = pcx::default_pack_size<T>>
-    requires pcx::packed_floating_point<T, PackSize>
+    requires(std::same_as<T, float> || std::same_as<T, double>) &&
+            (pcx::power_of_two<Size> || (Size == pcx::dynamic_size)) &&
+            (pcx::power_of_two<SubSize> || (SubSize == pcx::dynamic_size)) &&
+            pcx::power_of_two<PackSize>
 class fft_unit
 {
 public:
