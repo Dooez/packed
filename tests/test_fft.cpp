@@ -76,7 +76,7 @@ int test_fft_float(std::size_t size)
             return 1;
         }
     }
-    unit.separated(vec);
+    unit.binary(vec);
     for (uint i = 0; i < size; ++i)
     {
         auto val = std::complex<float>(ff[i].value());
