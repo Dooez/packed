@@ -3,7 +3,7 @@
 
 #include <iostream>
 
-void test(pcx::fft_unit<float, 4096>& unit, float* v1, float* v2)
+void test(pcx::fft_unit<float>& unit, float* v1, float* v2)
 {
     unit.fft_internal(v1, v2);
 }
@@ -63,7 +63,7 @@ int test_fft_float(std::size_t size)
     }
 
     auto ff   = fft(vec);
-    auto unit = pcx::fft_unit<float, pcx::dynamic_size, 4096>(size);
+    auto unit = pcx::fft_unit<float, pcx::dynamic_size, 2048>(size);
     unit(vec2, vec);
 
     for (uint i = 0; i < size; ++i)
@@ -76,7 +76,7 @@ int test_fft_float(std::size_t size)
             return 1;
         }
     }
-    unit(vec);
+    unit.separated(vec);
     for (uint i = 0; i < size; ++i)
     {
         auto val = std::complex<float>(ff[i].value());
@@ -94,16 +94,35 @@ int test_fft_float(std::size_t size)
 int main()
 {
     int ret = 0;
-    for (uint i = 6; i < 14; ++i)
-    {
-        std::cout << (1U << i) << "\n";
-
-        ret += test_fft_float(1U << i);
-        if (ret > 0)
+        for (uint i = 6; i < 14; ++i)
         {
-            return ret;
+            std::cout << (1U << i) << "\n";
+
+            ret += test_fft_float(1U << i);
+            if (ret > 0)
+            {
+                return ret;
+            }
         }
-    }
+
+//     constexpr std::size_t size = 128;
+//     constexpr float       pi   = 3.14159265358979323846;
+//
+//     auto vec  = pcx::vector<float>(size);
+//     auto vec2 = pcx::vector<float>(size);
+//     for (uint i = 0; i < size; ++i)
+//     {
+//         vec[i] = 1;
+//     }
+//
+//     auto unit = pcx::fft_unit<float>(size);
+//
+//     unit(vec2, vec);
+//
+//     for (uint i = 0; i < size; ++i)
+//     {
+//         std::cout << abs(vec2[i].value()) << "\n";
+//     }
 
     return 0;
 }
