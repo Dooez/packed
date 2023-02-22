@@ -120,7 +120,7 @@ int test_fft_float(std::size_t size)
 int main()
 {
     int ret = 0;
-    for (uint i = 6; i < 21; ++i)
+    for (uint i = 20; i > 5; --i)
     {
         std::cout << (1U << i) << "\n";
 
