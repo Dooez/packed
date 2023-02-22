@@ -10,12 +10,13 @@ namespace pcx {
 
 template<typename T,
          std::size_t Size     = pcx::dynamic_size,
-         std::size_t SubSize  = 1,
+         std::size_t SubSize  = pcx::default_pack_size<T>,
          typename Allocator   = std::allocator<T>,
          std::size_t PackSize = pcx::default_pack_size<T>>
     requires(std::same_as<T, float> || std::same_as<T, double>) &&
             (pcx::power_of_two<Size> || (Size == pcx::dynamic_size)) &&
-            (pcx::power_of_two<SubSize> || (SubSize == pcx::dynamic_size)) &&
+            (pcx::power_of_two<SubSize> && SubSize >= pcx::default_pack_size<T> ||
+             (SubSize == pcx::dynamic_size)) &&
             pcx::power_of_two<PackSize> && (PackSize >= pcx::default_pack_size<T>)
 class fft_unit
 {
@@ -41,13 +42,13 @@ public:
 
     fft_unit(std::size_t sub_size = 1, allocator_type allocator = allocator_type())
         requires(Size != pcx::dynamic_size) && (SubSize == pcx::dynamic_size)
-    : m_sub_size(check_power_of_two(sub_size))
+    : m_sub_size(check_sub_size(sub_size))
     , m_sort(get_sort(size(), static_cast<sort_allocator_type>(allocator)))
     , m_twiddles(get_twiddles(size(), sub_size, allocator)){};
 
     fft_unit(std::size_t fft_size, allocator_type allocator = allocator_type())
         requires(Size == pcx::dynamic_size) && (SubSize != pcx::dynamic_size)
-    : m_size(check_power_of_two(fft_size))
+    : m_size(check_size(fft_size))
     , m_sort(get_sort(size(), static_cast<sort_allocator_type>(allocator)))
     , m_twiddles(get_twiddles(size(), sub_size(), allocator)){};
 
@@ -55,11 +56,10 @@ public:
              std::size_t    sub_size  = 1,
              allocator_type allocator = allocator_type())
         requires(Size == pcx::dynamic_size) && (SubSize == pcx::dynamic_size)
-    : m_size(check_power_of_two(fft_size))
-    , m_sub_size(check_power_of_two(sub_size))
+    : m_size(check_size(fft_size))
+    , m_sub_size(check_sub_size(sub_size))
     , m_sort(get_sort(size(), static_cast<sort_allocator_type>(allocator)))
     , m_twiddles(get_twiddles(size(), sub_size, allocator)){};
-
 
     fft_unit(const fft_unit& other)     = default;
     fft_unit(fft_unit&& other) noexcept = default;
@@ -80,7 +80,6 @@ public:
         }
     }
 
-
     template<typename VAllocator>
     void operator()(pcx::vector<T, VAllocator, PackSize>& vector)
     {
@@ -100,7 +99,6 @@ public:
         fft_internal_binary(vector.data());
     };
 
-
     template<typename VAllocator>
     void operator()(pcx::vector<T, VAllocator, PackSize>&       dest,
                     const pcx::vector<T, VAllocator, PackSize>& source)
@@ -114,7 +112,6 @@ public:
             fft_internal(dest.data(), source.data());
         }
     };
-
 
 private:
     [[no_unique_address]] size_t                            m_size;
@@ -144,8 +141,9 @@ public:
     void fft_internal(float* source)
     {
         dept3_and_sort(source);
-        linear_subtransform(dest);
+        linear_subtransform(source);
     };
+
     void fft_internal(float* dest, const float* source)
     {
         dept3_and_sort(dest, source);
@@ -820,7 +818,7 @@ public:
         }
     };
 
-    inline auto linear_subtransform(float* data)
+    inline void linear_subtransform(float* data)
     {
         const auto* twiddle_ptr = m_twiddles.data();
 
@@ -1294,23 +1292,35 @@ public:
     };
 
 private:
-    static constexpr auto check_power_of_two(std::size_t size) -> std::size_t
+    static constexpr auto check_size(std::size_t size) -> std::size_t
     {
         if (size > 1 && (size & (size - 1)) == 0)
         {
             return size;
         }
-        throw(std::invalid_argument("Argument (which is  " + std::to_string(size) +
+        throw(std::invalid_argument("fft_size (which is  " + std::to_string(size) +
                                     ") is not an integer power of two"));
     }
-    static constexpr auto check_sub_size(std::size_t size) -> std::size_t
+
+    static constexpr auto check_sub_size(std::size_t sub_size) -> std::size_t
     {
-        if (size > 1 && (size & (size - 1)) == 0)
+        if (sub_size >= pcx::default_pack_size<T> && (sub_size & (sub_size - 1)) == 0)
         {
-            return size;
+            return sub_size;
         }
-        throw(std::invalid_argument("fft_sub_size (which is  " + std::to_string(size) +
-                                    ") is not an integer power of two"));
+        if (sub_size < pcx::default_pack_size<T>)
+        {
+            throw(std::invalid_argument("fft_sub_size (which is  " +
+                                        std::to_string(sub_size) +
+                                        ") is smaller than minimum (which is " +
+                                        std::to_string(pcx::default_pack_size<T>) + ")"));
+        }
+        if ((sub_size & (sub_size - 1)) != 0)
+        {
+            throw(std::invalid_argument("fft_sub_size (which is  " +
+                                        std::to_string(sub_size) +
+                                        ") is not an integer power of two"));
+        }
     }
 
     static constexpr auto pidx(std::size_t idx) -> std::size_t
