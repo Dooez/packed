@@ -63,7 +63,7 @@ int test_fft_float(std::size_t size)
     }
 
     auto ff   = fft(vec);
-    auto unit = pcx::fft_unit<float, pcx::dynamic_size, 2048>(size);
+    auto unit = pcx::fft_unit<float, pcx::dynamic_size,8>(size);
     unit(vec2, vec);
 
     for (uint i = 0; i < size; ++i)
