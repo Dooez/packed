@@ -31,7 +31,13 @@ if( CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR )
     add_test(NAME test_vector COMMAND test_vector)
     add_test(NAME test_fft COMMAND test_fft)
     add_test(NAME test_op COMMAND test_op)
-else()
+else() 
+
+    add_library(packed_complex INTERFACE vector.hpp)
+    target_include_directories(packed_complex INTERFACE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/inc)
+    set_target_properties(packed_complex PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED True)
 
 endif()
 # set(CPACK_PROJECT_NAME ${PROJECT_NAME})

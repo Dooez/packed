@@ -37,6 +37,10 @@ public:
     : m_size(fft_size)
     , m_sort(get_sort(fft_size, static_cast<sort_allocator_type>(allocator)))
     , m_twiddles(get_twiddles(fft_size, allocator)){};
+    fft_unit(allocator_type allocator = allocator_type())
+        requires(Size != pcx::dynamic_size)
+    : m_sort(get_sort(Size, static_cast<sort_allocator_type>(allocator)))
+    , m_twiddles(get_twiddles(Size, allocator)){};
 
     fft_unit(const fft_unit& other)     = default;
     fft_unit(fft_unit&& other) noexcept = default;
