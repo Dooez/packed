@@ -24,7 +24,7 @@ public:
     using real_type      = T;
     using allocator_type = Allocator;
 
-    static constexpr auto pack_size = PackSize;
+    static constexpr auto pack_size = default_pack_size<T>;
 
 private:
     using size_t =
@@ -658,22 +658,49 @@ public:
         }
     }
 
-    void fixed_size_unsorted(float* data, std::size_t size, float* twiddle_ptr)
+    inline auto fixed_size_unsorted(float* data, std::size_t size, float* twiddle_ptr)
+        -> std::size_t
     {
+        using reg_t = avx::cx_reg<float>;
+
         std::size_t l_size     = size;
         std::size_t group_size = size / reg_size / 4;
         std::size_t n_groups   = 1;
         std::size_t tw_offset  = 0;
 
-        while (l_size > reg_size * 4)
+        while (l_size < reg_size * 8)
         {
             for (std::size_t i_group = 0; i_group < n_groups; ++i_group)
             {
-                const auto tw0 = avx::cxload<PackSize>(twiddle_ptr + pidx(tw_offset));
-                const auto tw1 =
-                    avx::cxload<PackSize>(twiddle_ptr + pidx(tw_offset + reg_size));
-                const auto tw2 =
-                    avx::cxload<PackSize>(twiddle_ptr + pidx(tw_offset + reg_size * 2));
+                reg_t tw0 = {avx::broadcast(twiddle_ptr++),
+                             avx::broadcast(twiddle_ptr++)};
+
+                reg_t tw1 = {avx::broadcast(twiddle_ptr++),
+                             avx::broadcast(twiddle_ptr++)};
+                reg_t tw2 = {avx::broadcast(twiddle_ptr++),
+                             avx::broadcast(twiddle_ptr++)};
+
+                reg_t tw3_1 = {avx::broadcast(twiddle_ptr++),
+                               avx::broadcast(twiddle_ptr++)};
+                reg_t tw3_2 = {avx::broadcast(twiddle_ptr++),
+                               avx::broadcast(twiddle_ptr++)};
+                tw3         = {avx::unpacklo_128(tw3_1.real, tw3_2.real),
+                               avx::unpacklo_128(tw3_1.imag, tw3_2.imag)};
+                reg_t tw4_1 = {avx::broadcast(twiddle_ptr++),
+                               avx::broadcast(twiddle_ptr++)};
+                reg_t tw4_2 = {avx::broadcast(twiddle_ptr++),
+                               avx::broadcast(twiddle_ptr++)};
+                tw4         = {avx::unpacklo_128(tw4_1.real, tw4_2.real),
+                               avx::unpacklo_128(tw4_1.imag, tw4_2.imag)};
+
+                auto tw56 = avx::cxload<PackSize>(twiddle_ptr);
+                twiddle_ptr += reg_size * 2;
+                auto [tw5, tw6] = avx::unpack_ps(tw56, tw56);
+
+                auto tw6 = avx::cxload<PackSize>(twiddle_ptr);
+                twiddle_ptr += reg_size * 2;
+                auto tw6 = avx::cxload<PackSize>(twiddle_ptr);
+                twiddle_ptr += reg_size * 2;
 
                 for (std::size_t i = 0; i < group_size; ++i)
                 {
@@ -725,6 +752,37 @@ public:
                     auto b1 = avx::add(a1, a3tw);
                     auto b3 = avx::sub(a1, a3tw);
 
+                    auto [shb0, shb1] = avx::unpack_128(b0, b1);
+                    auto [shb2, shb3] = avx::unpack_128(b2, b3);
+
+                    auto shb1tw = avx::mul(shb1, tw3);
+                    auto shb3tw = avx::mul(shb3, tw4);
+
+                    auto c0 = avx::add(shb0, shb1tw);
+                    auto c1 = avx::sub(shb1, shb1tw);
+                    auto c2 = avx::add(shb2, shb2tw);
+                    auto c3 = avx::sub(shb3, shb2tw);
+
+                    auto [shc0s, shc1s] = avx::unpack_ps(c0, c1);
+                    auto [shc2s, shc3s] = avx::unpack_ps(c2, c3);
+                    auto [shc0, shc1]   = avx::unpack_pd(shc0s, shc1s);
+                    auto [shc2, shc3]   = avx::unpack_pd(shc2s, shc3s);
+
+
+                    auto shc1tw = avx::mul(shc1, tw5);
+                    auto shc3tw = avx::mul(shc3, tw6);
+
+                    auto d0 = avx::add(shc0, shc1tw);
+                    auto d1 = avx::sub(shc1, shc1tw);
+                    auto d2 = avx::add(shc2, shc2tw);
+                    auto d3 = avx::sub(shc3, shc2tw);
+
+                    auto [shd0s, shd1s] = avx::unpack_pd(d0, d1);
+                    auto [shd2s, shd3s] = avx::unpack_pd(d2, d3);
+                    auto [shd0, shd1] = avx::unpack_ps(d0, d1);
+                    auto [shd2, shd3] = avx::unpack_ps(d2, d3);
+
+
                     cxstore<PackSize>(ptr0, b0);
                     cxstore<PackSize>(ptr1, b1);
                     cxstore<PackSize>(ptr2, b2);
@@ -733,8 +791,49 @@ public:
                     offset += l_size * 2;
                 }
             }
+
+
+            l_size *= 4;
+            n_groups *= 4;
+            group_size /= 4;
         }
+
+        if (l_size == reg_size * 8)
+        {
+            for (std::size_t i_group = 0; i_group < n_groups; ++i_group)
+            {
+                std::size_t offset = i_group * reg_size;
+
+                const auto tw0 = avx::cxload<PackSize>(twiddle_ptr + pidx(tw_offset));
+
+                tw_offset += reg_size;
+
+                auto* ptr0 = data + pidx(offset);
+                auto* ptr1 = data + pidx(offset + l_size / 2);
+
+                auto p1 = avx::cxload<PackSize>(ptr1);
+                auto p0 = avx::cxload<PackSize>(ptr0);
+
+                auto p1tw = avx::mul(p1, tw0);
+
+                auto a0 = avx::add(p0, p1tw);
+                auto a1 = avx::sub(p0, p1tw);
+
+                cxstore<PackSize>(ptr0, a0);
+                cxstore<PackSize>(ptr1, a1);
+            }
+            l_size *= 2;
+            n_groups *= 2;
+            group_size /= 2;
+        }
+
+        if (l_size == reg_size * 4)
+        {
+        }
+
+        return tw_offset;
     }
+
     inline auto fixed_size_subtransform(float* data, std::size_t size)
         -> std::array<std::size_t, 2>
     {
