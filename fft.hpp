@@ -663,14 +663,84 @@ public:
     {
         using reg_t = avx::cx_reg<float>;
 
-        std::size_t l_size     = 2;
+        std::size_t l_size     = size / 2;
         std::size_t group_size = size / reg_size / 4;
         std::size_t n_groups   = 1;
         std::size_t tw_offset  = 0;
 
-        while (l_size < reg_size * 8)
+        while (l_size > reg_size * 8)
         {
-            l_size *= 4;
+            for (uint i_group = 0; i_group < n_groups; ++i_group)
+            {
+                reg_t tw0 = {avx::broadcast(twiddle_ptr++),
+                             avx::broadcast(twiddle_ptr++)};
+
+                reg_t tw1 = {avx::broadcast(twiddle_ptr++),
+                             avx::broadcast(twiddle_ptr++)};
+                reg_t tw2 = {avx::broadcast(twiddle_ptr++),
+                             avx::broadcast(twiddle_ptr++)};
+
+                auto* group_ptr = data + pidx(i_group * l_size * 2);
+
+                for (std::size_t i = 0; i < group_size; ++i)
+                {
+                    std::size_t offset = i * reg_size;
+
+                    auto* ptr0 = group_ptr + pidx(offset);
+                    auto* ptr1 = group_ptr + pidx(offset + l_size / 2);
+                    auto* ptr2 = group_ptr + pidx(offset + l_size);
+                    auto* ptr3 = group_ptr + pidx(offset + l_size / 2 * 3);
+
+                    auto p1 = avx::cxload<PackSize>(ptr1);
+                    auto p3 = avx::cxload<PackSize>(ptr3);
+                    auto p0 = avx::cxload<PackSize>(ptr0);
+                    auto p2 = avx::cxload<PackSize>(ptr2);
+
+                    auto p1tw_re = avx::mul(p1.real, tw0.real);
+                    auto p3tw_re = avx::mul(p3.real, tw0.real);
+                    auto p1tw_im = avx::mul(p1.real, tw0.imag);
+                    auto p3tw_im = avx::mul(p3.real, tw0.imag);
+
+                    p1tw_re = avx::fnmadd(p1.imag, tw0.imag, p1tw_re);
+                    p3tw_re = avx::fnmadd(p3.imag, tw0.imag, p3tw_re);
+                    p1tw_im = avx::fmadd(p1.imag, tw0.real, p1tw_im);
+                    p3tw_im = avx::fmadd(p3.imag, tw0.real, p3tw_im);
+
+                    avx::cx_reg<float> p1tw = {p1tw_re, p1tw_im};
+                    avx::cx_reg<float> p3tw = {p3tw_re, p3tw_im};
+
+                    auto a2 = avx::add(p2, p3tw);
+                    auto a3 = avx::sub(p2, p3tw);
+                    auto a0 = avx::add(p0, p1tw);
+                    auto a1 = avx::sub(p0, p1tw);
+
+                    auto a2tw_re = avx::mul(a2.real, tw1.real);
+                    auto a2tw_im = avx::mul(a2.real, tw1.imag);
+                    auto a3tw_re = avx::mul(a3.real, tw2.real);
+                    auto a3tw_im = avx::mul(a3.real, tw2.imag);
+
+                    a2tw_re = avx::fnmadd(a2.imag, tw1.imag, a2tw_re);
+                    a2tw_im = avx::fmadd(a2.imag, tw1.real, a2tw_im);
+                    a3tw_re = avx::fnmadd(a3.imag, tw2.imag, a3tw_re);
+                    a3tw_im = avx::fmadd(a3.imag, tw2.real, a3tw_im);
+
+                    avx::cx_reg<float> a2tw = {a2tw_re, a2tw_im};
+                    avx::cx_reg<float> a3tw = {a3tw_re, a3tw_im};
+
+                    auto b0 = avx::add(a0, a2tw);
+                    auto b2 = avx::sub(a0, a2tw);
+                    auto b1 = avx::add(a1, a3tw);
+                    auto b3 = avx::sub(a1, a3tw);
+
+                    cxstore<PackSize>(ptr0, b0);
+                    cxstore<PackSize>(ptr1, b1);
+                    cxstore<PackSize>(ptr2, b2);
+                    cxstore<PackSize>(ptr3, b3);
+
+                    offset += l_size * 2;
+                }
+            }
+            l_size /= 4;
             n_groups *= 4;
             group_size /= 4;
         }
@@ -699,7 +769,7 @@ public:
                 cxstore<PackSize>(ptr0, a0);
                 cxstore<PackSize>(ptr1, a1);
             }
-            l_size *= 2;
+            l_size /= 2;
             n_groups *= 2;
             group_size /= 2;
         }
