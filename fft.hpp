@@ -668,14 +668,13 @@ public:
 
     inline auto fixed_size_unsorted(float*       data,
                                     std::size_t  size,
-                                    const float* twiddle_ptr) -> std::size_t
+                                    const float* twiddle_ptr) -> const float*
     {
         using reg_t = avx::cx_reg<float>;
 
         std::size_t l_size     = size;
         std::size_t group_size = size / reg_size / 2;
         std::size_t n_groups   = 1;
-        std::size_t tw_offset  = 0;
 
         while (l_size > reg_size * 8)
         {
@@ -940,12 +939,47 @@ public:
                 cxstore<PackSize>(ptr1, she1);
                 cxstore<PackSize>(ptr2, she2);
                 cxstore<PackSize>(ptr3, she3);
-
             }
         }
 
-        return tw_offset;
+        return twiddle_ptr;
     }
+
+    inline auto recursive_unsorted(float*       data,
+                                   std::size_t  size,
+                                   const float* twiddle_ptr,
+                                   std::size_t  fixed_size) -> const float*
+    {
+        if (size <= fixed_size)
+        {
+            return fixed_size_unsorted(data, size, m_twiddles.data());
+        } else
+        {
+            for (std::size_t offset = 0; offset < size / 2; offset += reg_size)
+            {
+                using reg_t = avx::cx_reg<float>;
+
+                reg_t tw0 = {avx::broadcast(twiddle_ptr++),
+                             avx::broadcast(twiddle_ptr++)};
+
+                auto* ptr0 = data + pidx(offset);
+                auto* ptr1 = data + pidx(offset + size / 2);
+
+                auto p1 = avx::cxload<PackSize>(ptr1);
+                auto p0 = avx::cxload<PackSize>(ptr0);
+
+                auto p1tw = avx::mul(p1, tw0);
+
+                auto a0 = avx::add(p0, p1tw);
+                auto a1 = avx::sub(p0, p1tw);
+
+                cxstore<PackSize>(ptr0, a0);
+                cxstore<PackSize>(ptr1, a1);
+            }
+            twiddle_ptr = recursive_unsorted(data, size / 2, twiddle_ptr, fixed_size);
+            return recursive_unsorted(data + size / 2, size / 2, twiddle_ptr, fixed_size);
+        }
+    };
 
     inline auto fixed_size_subtransform(float* data, std::size_t size)
         -> std::array<std::size_t, 2>
@@ -1752,28 +1786,192 @@ private:
 
 
         std::size_t l_size = 2;
+        insert_twiddles_unsorted(fft_size, l_size, sub_size, 0, twiddles);
 
-        while (l_size < sub_size_)
+        return twiddles;
+//
+//                 while (l_size < sub_size_)
+//                 {
+//                     for (uint i = 0; i < l_size / 2; ++i)
+//                     {
+//                         auto tw0 = wnk(l_size, reverse_bit_order(i, log2i(l_size / 2)));
+//                         twiddles.push_back(tw0.real());
+//                         twiddles.push_back(tw0.imag());
+//                     }
+//                     l_size *= 2;
+//                 }
+//
+//                 std::size_t single_load_size = fft_size / (reg_size * 2);
+//
+//                 for (uint i_group = 0; i_group < sub_size_; ++i_group)
+//                 {
+//                     std::size_t group_size = 1;
+//
+//                     while (l_size < single_load_size / 2)
+//                     {
+//                         std::size_t start = group_size * i_group;
+//
+//                         for (uint i = 0; i < group_size; ++i)
+//                         {
+//                             auto tw0 = wnk(l_size,    //
+//                                            reverse_bit_order(start + i, log2i(l_size / 2)));
+//                             auto tw1 = wnk(l_size * 2,    //
+//                                            reverse_bit_order((start + i) * 2, log2i(l_size)));
+//                             auto tw2 = wnk(l_size * 2,    //
+//                                            reverse_bit_order((start + i) * 2 + 1, log2i(l_size)));
+//
+//                             twiddles.push_back(tw0.real());
+//                             twiddles.push_back(tw0.imag());
+//                             twiddles.push_back(tw1.real());
+//                             twiddles.push_back(tw1.imag());
+//                             twiddles.push_back(tw2.real());
+//                             twiddles.push_back(tw2.imag());
+//                         }
+//                         l_size *= 4;
+//                         group_size *= 4;
+//                     }
+//
+//                     if (l_size == single_load_size / 2)
+//                     {
+//                         std::size_t start = group_size * i_group;
+//
+//                         for (uint i = 0; i < group_size; ++i)
+//                         {
+//                             auto tw0 = wnk(l_size,    //
+//                                            reverse_bit_order(start + i, log2i(l_size / 2)));
+//
+//                             twiddles.push_back(tw0.real());
+//                             twiddles.push_back(tw0.imag());
+//                         }
+//                         l_size *= 2;
+//                         group_size *= 2;
+//                     }
+//
+//                     if (l_size == single_load_size)
+//                     {
+//                         for (uint i = 0; i < group_size; ++i)
+//                         {
+//                             std::size_t start = group_size * i_group + i;
+//
+//                             auto tw0 = wnk(l_size,    //
+//                                            reverse_bit_order(start, log2i(l_size / 2)));
+//
+//                             twiddles.push_back(tw0.real());
+//                             twiddles.push_back(tw0.imag());
+//
+//                             auto tw1 = wnk(l_size * 2,    //
+//                                            reverse_bit_order(start * 2, log2i(l_size)));
+//                             auto tw2 = wnk(l_size * 2,    //
+//                                            reverse_bit_order(start * 2 + 1, log2i(l_size)));
+//
+//                             twiddles.push_back(tw1.real());
+//                             twiddles.push_back(tw1.imag());
+//                             twiddles.push_back(tw2.real());
+//                             twiddles.push_back(tw2.imag());
+//
+//                             auto tw3_1 = wnk(l_size * 4,    //
+//                                              reverse_bit_order(start * 4, log2i(l_size * 2)));
+//                             auto tw3_2 = wnk(l_size * 4,    //
+//                                              reverse_bit_order(start * 4 + 1, log2i(l_size * 2)));
+//                             auto tw4_1 = wnk(l_size * 4,    //
+//                                              reverse_bit_order(start * 4 + 2, log2i(l_size * 2)));
+//                             auto tw4_2 = wnk(l_size * 4,    //
+//                                              reverse_bit_order(start * 4 + 3, log2i(l_size * 2)));
+//
+//                             twiddles.push_back(tw3_1.real());
+//                             twiddles.push_back(tw3_1.imag());
+//                             twiddles.push_back(tw3_2.real());
+//                             twiddles.push_back(tw3_2.imag());
+//                             twiddles.push_back(tw4_1.real());
+//                             twiddles.push_back(tw4_1.imag());
+//                             twiddles.push_back(tw4_2.real());
+//                             twiddles.push_back(tw4_2.imag());
+//
+//
+//                             auto tw7  = wnk(l_size * 8,    //
+//                                            reverse_bit_order(start * 8, log2i(l_size * 4)));
+//                             auto tw8  = wnk(l_size * 8,    //
+//                                            reverse_bit_order(start * 8 + 1, log2i(l_size * 4)));
+//                             auto tw9  = wnk(l_size * 8,    //
+//                                            reverse_bit_order(start * 8 + 2, log2i(l_size * 4)));
+//                             auto tw10 = wnk(l_size * 8,    //
+//                                             reverse_bit_order(start * 8 + 3, log2i(l_size * 4)));
+//                             auto tw11 = wnk(l_size * 8,    //
+//                                             reverse_bit_order(start * 8 + 4, log2i(l_size * 4)));
+//                             auto tw12 = wnk(l_size * 8,    //
+//                                             reverse_bit_order(start * 8 + 5, log2i(l_size * 4)));
+//                             auto tw13 = wnk(l_size * 8,    //
+//                                             reverse_bit_order(start * 8 + 6, log2i(l_size * 4)));
+//                             auto tw14 = wnk(l_size * 8,    //
+//                                             reverse_bit_order(start * 8 + 7, log2i(l_size * 4)));
+//
+//                             twiddles.push_back(tw7.real());
+//                             twiddles.push_back(tw8.real());
+//                             twiddles.push_back(tw11.real());
+//                             twiddles.push_back(tw12.real());
+//                             twiddles.push_back(tw9.real());
+//                             twiddles.push_back(tw10.real());
+//                             twiddles.push_back(tw13.real());
+//                             twiddles.push_back(tw14.real());
+//
+//                             twiddles.push_back(tw7.imag());
+//                             twiddles.push_back(tw8.imag());
+//                             twiddles.push_back(tw11.imag());
+//                             twiddles.push_back(tw12.imag());
+//                             twiddles.push_back(tw9.imag());
+//                             twiddles.push_back(tw10.imag());
+//                             twiddles.push_back(tw13.imag());
+//                             twiddles.push_back(tw14.imag());
+//
+//                             for (uint k = 0; k < 8; ++k)
+//                             {
+//                                 auto tw =
+//                                     wnk(l_size * 16,    //
+//                                         reverse_bit_order(start * 16 + k, log2i(l_size * 8)));
+//                                 twiddles.push_back(tw.real());
+//                             }
+//                             for (uint k = 0; k < 8; ++k)
+//                             {
+//                                 auto tw =
+//                                     wnk(l_size * 16,    //
+//                                         reverse_bit_order(start * 16 + k, log2i(l_size * 8)));
+//                                 twiddles.push_back(tw.imag());
+//                             }
+//
+//                             for (uint k = 8; k < 16; ++k)
+//                             {
+//                                 auto tw =
+//                                     wnk(l_size * 16,    //
+//                                         reverse_bit_order(start * 16 + k, log2i(l_size * 8)));
+//                                 twiddles.push_back(tw.real());
+//                             }
+//                             for (uint k = 8; k < 16; ++k)
+//                             {
+//                                 auto tw =
+//                                     wnk(l_size * 16,    //
+//                                         reverse_bit_order(start * 16 + k, log2i(l_size * 8)));
+//                                 twiddles.push_back(tw.imag());
+//                             }
+//                         }
+//                     }
+//                 }
+//         return twiddles;
+    }
+
+    static void insert_twiddles_unsorted(std::size_t             fft_size,
+                                         std::size_t             l_size,
+                                         std::size_t             sub_size,
+                                         std::size_t             i_group,
+                                         std::vector<real_type>& twiddles)
+    {
+        if ((fft_size / l_size) <= sub_size)
         {
-            for (uint i = 0; i < l_size / 2; ++i)
-            {
-                auto tw0 = wnk(l_size, reverse_bit_order(i, log2i(l_size / 2)));
-                twiddles.push_back(tw0.real());
-                twiddles.push_back(tw0.imag());
-            }
-            l_size *= 2;
-        }
-
-        std::size_t single_load_size = fft_size / (reg_size * 2);
-
-        for (uint i_group = 0; i_group < sub_size_; ++i_group)
-        {
-            std::size_t group_size = 1;
+            std::size_t single_load_size = fft_size / (reg_size * 2);
+            std::size_t group_size       = 1;
 
             while (l_size < single_load_size / 2)
             {
                 std::size_t start = group_size * i_group;
-
                 for (uint i = 0; i < group_size; ++i)
                 {
                     auto tw0 = wnk(l_size,    //
@@ -1917,8 +2115,24 @@ private:
                     }
                 }
             }
+        } else
+        {
+            auto tw0 = wnk(l_size, reverse_bit_order(i_group, log2i(l_size / 2)));
+            twiddles.push_back(tw0.real());
+            twiddles.push_back(tw0.imag());
+
+            insert_twiddles_unsorted(fft_size,
+                                     l_size * 2,
+                                     sub_size,
+                                     i_group * 2,
+                                     twiddles);
+
+            insert_twiddles_unsorted(fft_size,
+                                     l_size * 2,
+                                     sub_size,
+                                     i_group * 2 + 1,
+                                     twiddles);
         }
-        return twiddles;
     }
 };
 
