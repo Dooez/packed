@@ -81,13 +81,14 @@ auto fftu(const pcx::vector<T>& vector)
     std::size_t group_size = size / 2;
     std::size_t l_size     = 2;
 
-    // while (l_size <= size)
+    // while (l_size <= 4)
     while (l_size <= size)
     {
         for (uint i_group = 0; i_group < n_groups; ++i_group)
         {
             auto group_offset = i_group * group_size * 2;
             auto w = wnk<T>(l_size, reverse_bit_order(i_group, log2i(l_size / 2)));
+            // std::cout << "tw: " << w << "\n";
 
             for (uint i = 0; i < group_size; ++i)
             {
@@ -180,7 +181,7 @@ int main()
     //         }
     //     }
 
-    constexpr std::size_t size = 128;
+    constexpr std::size_t size = 512;
     constexpr float       pi   = 3.14159265358979323846;
 
     auto vec  = pcx::vector<float>(size);
@@ -190,7 +191,7 @@ int main()
         vec[i] = std::exp(std::complex(0.F, 2 * pi * i / size * 1.F));
     }
 
-    auto unit = pcx::fft_unit<float, pcx::dynamic_size, size>(size);
+    auto unit = pcx::fft_unit<float, pcx::dynamic_size, 64>(size);
 
     auto vec3 = fftu(vec);
     unit.unsorted(vec);
