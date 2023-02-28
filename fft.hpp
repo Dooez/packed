@@ -50,7 +50,8 @@ public:
         requires(Size == pcx::dynamic_size) && (SubSize != pcx::dynamic_size)
     : m_size(check_size(fft_size))
     , m_sort(get_sort(size(), static_cast<sort_allocator_type>(allocator)))
-    , m_twiddles(get_twiddles(size(), sub_size(), allocator)){};
+    , m_twiddles(get_twiddles(size(), sub_size(), allocator))
+    , m_twiddles_unsorted(get_twiddles_unsorted(size(), sub_size(), allocator)){};
 
     fft_unit(std::size_t    fft_size,
              std::size_t    sub_size  = 1,
@@ -98,6 +99,12 @@ public:
         assert(size() == vector.size());
         fft_internal_binary(vector.data());
     };
+    template<typename VAllocator>
+    void unsorted(pcx::vector<T, VAllocator, PackSize>& vector)
+    {
+        assert(size() == vector.size());
+        fixed_size_unsorted(vector.data(), size(), m_twiddles_unsorted.data());
+    };
 
     template<typename VAllocator>
     void operator()(pcx::vector<T, VAllocator, PackSize>&       dest,
@@ -118,6 +125,7 @@ private:
     [[no_unique_address]] subsize_t                         m_sub_size;
     const std::vector<std::size_t, sort_allocator_type>     m_sort;
     const pcx::vector<real_type, allocator_type, pack_size> m_twiddles;
+    const std::vector<real_type, allocator_type>            m_twiddles_unsorted;
 
     [[nodiscard]] constexpr auto sub_size() const -> std::size_t
     {
@@ -658,13 +666,14 @@ public:
         }
     }
 
-    inline auto fixed_size_unsorted(float* data, std::size_t size, float* twiddle_ptr)
-        -> std::size_t
+    inline auto fixed_size_unsorted(float*       data,
+                                    std::size_t  size,
+                                    const float* twiddle_ptr) -> std::size_t
     {
         using reg_t = avx::cx_reg<float>;
 
-        std::size_t l_size     = size / 2;
-        std::size_t group_size = size / reg_size / 4;
+        std::size_t l_size     = size;
+        std::size_t group_size = size / reg_size / 2;
         std::size_t n_groups   = 1;
         std::size_t tw_offset  = 0;
 
@@ -680,16 +689,16 @@ public:
                 reg_t tw2 = {avx::broadcast(twiddle_ptr++),
                              avx::broadcast(twiddle_ptr++)};
 
-                auto* group_ptr = data + pidx(i_group * l_size * 2);
+                auto* group_ptr = data + pidx(i_group * l_size);
 
-                for (std::size_t i = 0; i < group_size; ++i)
+                for (std::size_t i = 0; i < group_size / 2; ++i)
                 {
                     std::size_t offset = i * reg_size;
 
                     auto* ptr0 = group_ptr + pidx(offset);
                     auto* ptr1 = group_ptr + pidx(offset + l_size / 2);
-                    auto* ptr2 = group_ptr + pidx(offset + l_size);
-                    auto* ptr3 = group_ptr + pidx(offset + l_size / 2 * 3);
+                    auto* ptr2 = group_ptr + pidx(offset + l_size / 4);
+                    auto* ptr3 = group_ptr + pidx(offset + l_size / 4 * 3);
 
                     auto p1 = avx::cxload<PackSize>(ptr1);
                     auto p3 = avx::cxload<PackSize>(ptr3);
@@ -736,9 +745,8 @@ public:
                     cxstore<PackSize>(ptr1, b1);
                     cxstore<PackSize>(ptr2, b2);
                     cxstore<PackSize>(ptr3, b3);
-
-                    offset += l_size * 2;
                 }
+
             }
             l_size /= 4;
             n_groups *= 4;
@@ -749,30 +757,35 @@ public:
         {
             for (std::size_t i_group = 0; i_group < n_groups; ++i_group)
             {
-                std::size_t offset = i_group * reg_size;
+                reg_t tw0 = {avx::broadcast(twiddle_ptr++),
+                             avx::broadcast(twiddle_ptr++)};
 
-                const auto tw0 = avx::cxload<PackSize>(twiddle_ptr + pidx(tw_offset));
+                auto* group_ptr = data + pidx(i_group * l_size);
 
-                tw_offset += reg_size;
+                for (std::size_t i = 0; i < group_size; ++i)
+                {
+                    std::size_t offset = i * reg_size;
+                    auto* ptr0 = group_ptr + pidx(offset);
+                    auto* ptr1 = group_ptr + pidx(offset + l_size / 2);
 
-                auto* ptr0 = data + pidx(offset);
-                auto* ptr1 = data + pidx(offset + l_size / 2);
+                    auto p1 = avx::cxload<PackSize>(ptr1);
+                    auto p0 = avx::cxload<PackSize>(ptr0);
 
-                auto p1 = avx::cxload<PackSize>(ptr1);
-                auto p0 = avx::cxload<PackSize>(ptr0);
+                    auto p1tw = avx::mul(p1, tw0);
 
-                auto p1tw = avx::mul(p1, tw0);
+                    auto a0 = avx::add(p0, p1tw);
+                    auto a1 = avx::sub(p0, p1tw);
 
-                auto a0 = avx::add(p0, p1tw);
-                auto a1 = avx::sub(p0, p1tw);
-
-                cxstore<PackSize>(ptr0, a0);
-                cxstore<PackSize>(ptr1, a1);
+                    cxstore<PackSize>(ptr0, a0);
+                    cxstore<PackSize>(ptr1, a1);
+                }
             }
             l_size /= 2;
             n_groups *= 2;
             group_size /= 2;
         }
+
+        return tw_offset;
 
         if (l_size == reg_size * 4)
         {
@@ -808,7 +821,7 @@ public:
                 auto tw8 = avx::cxload<PackSize>(twiddle_ptr);
                 twiddle_ptr += reg_size * 2;
 
-                std::size_t offset = i_group * reg_size;
+                std::size_t offset = i_group * reg_size * 4;
 
                 auto* ptr0 = data + pidx(offset);
                 auto* ptr1 = data + pidx(offset + l_size / 2);
@@ -1708,7 +1721,7 @@ private:
                                       allocator_type allocator)
         -> std::vector<T, allocator_type>
     {
-        auto twiddles  = std::vector<T, allocator_type>();
+        auto twiddles  = std::vector<T, allocator_type>(allocator);
         auto sub_size_ = fft_size / sub_size;
 
 
@@ -1719,17 +1732,17 @@ private:
             for (uint i = 0; i < l_size / 2; ++i)
             {
                 auto tw0 = wnk(l_size, reverse_bit_order(i, log2i(l_size / 2)));
-                twiddles.push_back(tw0.real);
-                twiddles.push_back(tw0.imag);
+                twiddles.push_back(tw0.real());
+                twiddles.push_back(tw0.imag());
             }
             l_size *= 2;
         }
 
-        std::size_t single_load_size = fft_size / (reg_size * 4);
+        std::size_t single_load_size = fft_size / (reg_size * 2);
 
         for (uint i_group = 0; i_group < sub_size_; ++i_group)
         {
-            std::size_t group_size = 2;
+            std::size_t group_size = 1;
 
             while (l_size < single_load_size / 2)
             {
@@ -1744,12 +1757,12 @@ private:
                     auto tw2 = wnk(l_size * 2,    //
                                    reverse_bit_order((start + i) * 2 + 1, log2i(l_size)));
 
-                    twiddles.push_back(tw0.real);
-                    twiddles.push_back(tw0.imag);
-                    twiddles.push_back(tw1.real);
-                    twiddles.push_back(tw1.imag);
-                    twiddles.push_back(tw2.real);
-                    twiddles.push_back(tw2.imag);
+                    twiddles.push_back(tw0.real());
+                    twiddles.push_back(tw0.imag());
+                    twiddles.push_back(tw1.real());
+                    twiddles.push_back(tw1.imag());
+                    twiddles.push_back(tw2.real());
+                    twiddles.push_back(tw2.imag());
                 }
                 l_size *= 4;
                 group_size *= 4;
@@ -1760,7 +1773,7 @@ private:
 
                 for (uint i = 0; i < group_size; ++i)
                 {
-                    auto tw0 = wnk(l_size * 2,    //
+                    auto tw0 = wnk(l_size,    //
                                    reverse_bit_order(start + i, log2i(l_size / 2)));
 
                     twiddles.push_back(tw0.real());
@@ -1870,6 +1883,7 @@ private:
                 }
             }
         }
+        return twiddles;
     }
 };
 
