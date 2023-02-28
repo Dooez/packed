@@ -82,7 +82,7 @@ auto fftu(const pcx::vector<T>& vector)
     std::size_t l_size     = 2;
 
     // while (l_size <= size)
-    while (l_size <= size / 32)
+    while (l_size <= size)
     {
         for (uint i_group = 0; i_group < n_groups; ++i_group)
         {
@@ -180,7 +180,7 @@ int main()
     //         }
     //     }
 
-    constexpr std::size_t size = 64;
+    constexpr std::size_t size = 128;
     constexpr float       pi   = 3.14159265358979323846;
 
     auto vec  = pcx::vector<float>(size);
@@ -197,8 +197,8 @@ int main()
 
     for (uint i = 0; i < size; ++i)
     {
-        std::cout << "#" << i << " " << (vec3[i].value()) << "  "
-                  << (vec[i].value()) << "\n";
+        std::cout << "#" << i << " " << (vec3[i].value()) << "  " << (vec[i].value())
+                  << "  " << abs(vec[i].value() - vec3[i].value()) << "\n";
     }
 
     return 0;
