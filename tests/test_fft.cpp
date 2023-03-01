@@ -8,6 +8,23 @@ void test(pcx::fft_unit<float>& unit, float* v1, float* v2)
     unit.fft_internal(v1, v2);
 }
 
+template<typename T>
+auto fmul(std::complex<T> lhs, std::complex<T> rhs) -> std::complex<T>
+{
+    auto lhsv = pcx::avx::broadcast(lhs);
+    auto rhsv = pcx::avx::broadcast(rhs);
+
+    auto resv = pcx::avx::mul(lhsv, rhsv);
+
+    T re;
+    T im;
+
+    _mm_store_ss(&re, _mm256_castps256_ps128(resv.real));
+    _mm_store_ss(&im, _mm256_castps256_ps128(resv.imag));
+
+    return {re, im};
+}
+
 constexpr auto log2i(std::size_t num) -> std::size_t
 {
     std::size_t order = 0;
@@ -62,7 +79,7 @@ auto fft(const pcx::vector<T>& vector)
     for (uint i = 0; i < fft_size / 2; ++i)
     {
         auto even_v = even[i].value();
-        auto odd_v  = odd[i].value() * wnk<T>(fft_size, i);
+        auto odd_v  = fmul(odd[i].value(), wnk<T>(fft_size, i));
 
         res[i]                = even_v + odd_v;
         res[i + fft_size / 2] = even_v - odd_v;
@@ -95,7 +112,7 @@ auto fftu(const pcx::vector<T>& vector)
                 auto p0 = u[i + group_offset].value();
                 auto p1 = u[i + group_offset + group_size].value();
 
-                auto p1tw = p1 * w;
+                auto p1tw = fmul(p1, w);
 
                 u[i + group_offset]              = p0 + p1tw;
                 u[i + group_offset + group_size] = p0 - p1tw;
@@ -166,41 +183,73 @@ int test_fft_float(std::size_t size)
     return 0;
 }
 
+int test_fftu_float(std::size_t size)
+{
+    constexpr float pi = 3.14159265358979323846;
+
+    auto depth = log2i(size);
+
+    auto vec     = pcx::vector<float>(size);
+    auto vec_out = pcx::vector<float>(size);
+    for (uint i = 0; i < size; ++i)
+    {
+        vec[i] = std::exp(std::complex(0.F, 2 * pi * i / size * 13.37F));
+        // vec[i] = 0;
+    }
+    vec_out   = vec;
+    auto unit = pcx::fft_unit<float, pcx::dynamic_size, 2048>(size);
+
+    auto ffu = fftu(vec);
+    unit.unsorted(vec_out);
+
+    for (uint i = 0; i < size; ++i)
+    {
+        auto val = std::complex<float>(ffu[i].value());
+        if (!equal_eps(val, vec_out[i].value(), 1U))
+        {
+            std::cout << size << " #" << i << ": " << abs(val - vec_out[i].value())
+                      << "  " << val << vec_out[i].value() << "\n";
+            return 1;
+        }
+    }
+    return 0;
+}
 
 int main()
 {
-    //     int ret = 0;
-    //     for (uint i = 20; i > 5; --i)
-    //     {
-    //         std::cout << (1U << i) << "\n";
+    int ret = 0;
+    for (uint i = 20; i > 5; --i)
+    {
+        std::cout << (1U << i) << "\n";
+
+        ret += test_fft_float(1U << i);
+        ret += test_fftu_float(1U << i);
+        if (ret > 0)
+        {
+            return ret;
+        }
+    }
     //
-    //         ret += test_fft_float(1U << i);
-    //         if (ret > 0)
+    //         constexpr std::size_t size = 512;
+    //         constexpr float       pi   = 3.14159265358979323846;
+    //
+    //         auto vec  = pcx::vector<float>(size);
+    //         auto vec2 = pcx::vector<float>(size);
+    //         for (uint i = 0; i < size; ++i)
     //         {
-    //             return ret;
+    //             vec[i] = std::exp(std::complex(0.F, 2 * pi * i / size * 1.F));
     //         }
-    //     }
 
-    constexpr std::size_t size = 512;
-    constexpr float       pi   = 3.14159265358979323846;
-
-    auto vec  = pcx::vector<float>(size);
-    auto vec2 = pcx::vector<float>(size);
-    for (uint i = 0; i < size; ++i)
-    {
-        vec[i] = std::exp(std::complex(0.F, 2 * pi * i / size * 1.F));
-    }
-
-    auto unit = pcx::fft_unit<float, pcx::dynamic_size, 64>(size);
-
-    auto vec3 = fftu(vec);
-    unit.unsorted(vec);
-
-    for (uint i = 0; i < size; ++i)
-    {
-        std::cout << "#" << i << " " << (vec3[i].value()) << "  " << (vec[i].value())
-                  << "  " << abs(vec[i].value() - vec3[i].value()) << "\n";
-    }
+    //         auto unit = pcx::fft_unit<float, pcx::dynamic_size, 64>(size);
+    //
+    //         auto vec3 = fftu(vec);
+    //         unit.unsorted(vec);
+    //
+    //         for (uint i = 0; i < size; ++i)
+    //         {
+    //             std::cout << "#" << i << " " << (vec3[i].value()) << "  " << (vec[i].value())
+    //                       << "  " << abs(vec[i].value() - vec3[i].value()) << "\n";
+    //         }
 
     return 0;
 }
