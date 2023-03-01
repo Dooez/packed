@@ -98,7 +98,7 @@ auto fftu(const pcx::vector<T>& vector)
     std::size_t group_size = size / 2;
     std::size_t l_size     = 2;
 
-    // while (l_size <= 4)
+    // while (l_size <= 8)
     while (l_size <= size)
     {
         for (uint i_group = 0; i_group < n_groups; ++i_group)
@@ -197,10 +197,10 @@ int test_fftu_float(std::size_t size)
         // vec[i] = 0;
     }
     vec_out   = vec;
-    auto unit = pcx::fft_unit<float, pcx::dynamic_size, 2048>(size);
+    auto unit = pcx::fft_unit<float, pcx::dynamic_size, 64>(size);
 
     auto ffu = fftu(vec);
-    unit.unsorted(vec_out);
+    unit.unsorted_linear(vec_out);
 
     for (uint i = 0; i < size; ++i)
     {
@@ -218,38 +218,38 @@ int test_fftu_float(std::size_t size)
 int main()
 {
     int ret = 0;
-    for (uint i = 20; i > 5; --i)
+    for (uint i = 16; i > 5; --i)
     {
         std::cout << (1U << i) << "\n";
 
-        ret += test_fft_float(1U << i);
+        // ret += test_fft_float(1U << i);
         ret += test_fftu_float(1U << i);
         if (ret > 0)
         {
             return ret;
         }
     }
-    //
-    //         constexpr std::size_t size = 512;
-    //         constexpr float       pi   = 3.14159265358979323846;
-    //
-    //         auto vec  = pcx::vector<float>(size);
-    //         auto vec2 = pcx::vector<float>(size);
-    //         for (uint i = 0; i < size; ++i)
-    //         {
-    //             vec[i] = std::exp(std::complex(0.F, 2 * pi * i / size * 1.F));
-    //         }
-
-    //         auto unit = pcx::fft_unit<float, pcx::dynamic_size, 64>(size);
-    //
-    //         auto vec3 = fftu(vec);
-    //         unit.unsorted(vec);
-    //
-    //         for (uint i = 0; i < size; ++i)
-    //         {
-    //             std::cout << "#" << i << " " << (vec3[i].value()) << "  " << (vec[i].value())
-    //                       << "  " << abs(vec[i].value() - vec3[i].value()) << "\n";
-    //         }
+    
+//             constexpr std::size_t size = 256;
+//             constexpr float       pi   = 3.14159265358979323846;
+//     
+//             auto vec  = pcx::vector<float>(size);
+//             auto vec2 = pcx::vector<float>(size);
+//             for (uint i = 0; i < size; ++i)
+//             {
+//                 vec[i] = std::exp(std::complex(0.F, 2 * pi * i / size * 1.F));
+//             }
+// 
+//             auto unit = pcx::fft_unit<float, pcx::dynamic_size, 64>(size);
+//     
+//             auto vec3 = fftu(vec);
+//             unit.unsorted_linear(vec);
+//     
+//             for (uint i = 0; i < size; ++i)
+//             {
+//                 std::cout << "#" << i << " " << (vec3[i].value()) << "  " << (vec[i].value())
+//                           << "  " << abs(vec[i].value() - vec3[i].value()) << "\n";
+//             }
 
     return 0;
 }

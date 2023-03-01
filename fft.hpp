@@ -41,21 +41,27 @@ public:
         requires(Size != pcx::dynamic_size) && (SubSize != pcx::dynamic_size)
     : m_sort(get_sort(size(), static_cast<sort_allocator_type>(allocator)))
     , m_twiddles(get_twiddles(size(), sub_size(), allocator))
-    , m_twiddles_unsorted(get_twiddles_unsorted(size(), sub_size(), allocator)){};
+    , m_twiddles_unsorted(get_twiddles_unsorted(size(), sub_size(), allocator))
+    , m_twiddles_unsorted_linear(
+          get_twiddles_unsorted_linear(size(), sub_size(), allocator)){};
 
     fft_unit(std::size_t sub_size = 1, allocator_type allocator = allocator_type())
         requires(Size != pcx::dynamic_size) && (SubSize == pcx::dynamic_size)
     : m_sub_size(check_sub_size(sub_size))
     , m_sort(get_sort(size(), static_cast<sort_allocator_type>(allocator)))
     , m_twiddles(get_twiddles(size(), sub_size, allocator))
-    , m_twiddles_unsorted(get_twiddles_unsorted(size(), sub_size, allocator)){};
+    , m_twiddles_unsorted(get_twiddles_unsorted(size(), sub_size, allocator))
+    , m_twiddles_unsorted_linear(
+          get_twiddles_unsorted_linear(size(), sub_size, allocator)){};
 
     fft_unit(std::size_t fft_size, allocator_type allocator = allocator_type())
         requires(Size == pcx::dynamic_size) && (SubSize != pcx::dynamic_size)
     : m_size(check_size(fft_size))
     , m_sort(get_sort(size(), static_cast<sort_allocator_type>(allocator)))
     , m_twiddles(get_twiddles(size(), sub_size(), allocator))
-    , m_twiddles_unsorted(get_twiddles_unsorted(size(), sub_size(), allocator)){};
+    , m_twiddles_unsorted(get_twiddles_unsorted(size(), sub_size(), allocator))
+    , m_twiddles_unsorted_linear(
+          get_twiddles_unsorted_linear(size(), sub_size(), allocator)){};
 
     fft_unit(std::size_t    fft_size,
              std::size_t    sub_size  = 1,
@@ -65,7 +71,9 @@ public:
     , m_sub_size(check_sub_size(sub_size))
     , m_sort(get_sort(size(), static_cast<sort_allocator_type>(allocator)))
     , m_twiddles(get_twiddles(size(), sub_size, allocator))
-    , m_twiddles_unsorted(get_twiddles_unsorted(size(), sub_size, allocator)){};
+    , m_twiddles_unsorted(get_twiddles_unsorted(size(), sub_size, allocator))
+    , m_twiddles_unsorted_linear(
+          get_twiddles_unsorted_linear(size(), sub_size, allocator)){};
 
     fft_unit(const fft_unit& other)     = default;
     fft_unit(fft_unit&& other) noexcept = default;
@@ -113,6 +121,14 @@ public:
     };
 
     template<typename VAllocator>
+    void unsorted_linear(pcx::vector<T, VAllocator, PackSize>& vector)
+    {
+        assert(size() == vector.size());
+        linear_unsorted(vector.data(), size());
+        // fixed_size_unsorted(vector.data(), size(), m_twiddles_unsorted.data());
+    };
+
+    template<typename VAllocator>
     void operator()(pcx::vector<T, VAllocator, PackSize>&       dest,
                     const pcx::vector<T, VAllocator, PackSize>& source)
     {
@@ -132,6 +148,7 @@ private:
     const std::vector<std::size_t, sort_allocator_type>    m_sort;
     const pcx::vector<real_type, allocator_type, reg_size> m_twiddles;
     const std::vector<real_type, allocator_type>           m_twiddles_unsorted;
+    const std::vector<real_type, allocator_type>           m_twiddles_unsorted_linear;
 
     [[nodiscard]] constexpr auto sub_size() const -> std::size_t
     {
@@ -940,6 +957,11 @@ public:
                 auto [she0, she1]   = avx::unpack_128(she0s, she1s);
                 auto [she2, she3]   = avx::unpack_128(she2s, she3s);
 
+//                 auto [sht0, sht1] = avx::unpack_ps(tw0, tw0);
+//                 auto [t0, t1]     = avx::unpack_128(sht0, sht1);
+// 
+//                 auto [sht2, sht3] = avx::unpack_ps(tw0, tw0);
+//                 auto [t2, t3]     = avx::unpack_128(sht2, sht3);
                 cxstore<PackSize>(ptr0, she0);
                 cxstore<PackSize>(ptr1, she1);
                 cxstore<PackSize>(ptr2, she2);
@@ -985,6 +1007,50 @@ public:
 
             twiddle_ptr = recursive_unsorted(data, size / 2, twiddle_ptr);
             return recursive_unsorted(data + (size / 2) * 2, size / 2, twiddle_ptr);
+        }
+    };
+
+    inline auto linear_unsorted(float* data, std::size_t size)
+    {
+        auto        twiddle_ptr = m_twiddles_unsorted_linear.data();
+        std::size_t n_groups    = 1;
+
+        while (size > sub_size())
+        {
+            for (uint i_group = 0; i_group < n_groups; ++i_group)
+            {
+                auto* group_ptr = data + pidx(i_group * size);
+
+                using reg_t = avx::cx_reg<float>;
+                reg_t tw0   = {
+                    avx::broadcast(twiddle_ptr++),
+                    avx::broadcast(twiddle_ptr++),
+                };
+                for (uint offset = 0; offset < size / 2; offset += reg_size)
+                {
+                    auto* ptr0 = group_ptr + pidx(offset);
+                    auto* ptr1 = group_ptr + pidx(offset + size / 2);
+
+                    auto p1 = avx::cxload<PackSize>(ptr1);
+                    auto p0 = avx::cxload<PackSize>(ptr0);
+
+                    auto p1tw = avx::mul(p1, tw0);
+
+                    auto a0 = avx::add(p0, p1tw);
+                    auto a1 = avx::sub(p0, p1tw);
+
+                    cxstore<PackSize>(ptr0, a0);
+                    cxstore<PackSize>(ptr1, a1);
+                }
+            }
+
+            n_groups *= 2;
+            size /= 2;
+        }
+
+        for (uint i = 0; i < n_groups; ++i)
+        {
+            twiddle_ptr = fixed_size_unsorted(data + pidx(i * size), size, twiddle_ptr);
         }
     };
 
@@ -2132,6 +2198,189 @@ private:
                                      i_group * 2 + 1,
                                      twiddles);
         }
+    }
+
+    static auto get_twiddles_unsorted_linear(std::size_t    fft_size,
+                                             std::size_t    sub_size,
+                                             allocator_type allocator)
+        -> std::vector<T, allocator_type>
+    {
+        auto twiddles = std::vector<T, allocator_type>(allocator);
+
+
+        std::size_t l_size = 2;
+        //
+
+        auto sub_size_ = fft_size / std::min(fft_size, sub_size);
+        while (l_size <= sub_size_)
+        {
+            for (uint i = 0; i < l_size / 2; ++i)
+            {
+                auto tw0 = wnk(l_size, reverse_bit_order(i, log2i(l_size / 2)));
+                twiddles.push_back(tw0.real());
+                twiddles.push_back(tw0.imag());
+            }
+            l_size *= 2;
+        }
+
+        std::size_t single_load_size = fft_size / (reg_size * 2);
+
+        auto l_size_keep = l_size;
+        for (uint i_group = 0; i_group < sub_size_; ++i_group)
+        {
+            std::size_t group_size = 1;
+            l_size                 = l_size_keep;
+
+            while (l_size < single_load_size / 2)
+            {
+                std::size_t start = group_size * i_group;
+
+                for (uint i = 0; i < group_size; ++i)
+                {
+                    auto tw0 = wnk(l_size,    //
+                                   reverse_bit_order(start + i, log2i(l_size / 2)));
+                    auto tw1 = wnk(l_size * 2,    //
+                                   reverse_bit_order((start + i) * 2, log2i(l_size)));
+                    auto tw2 = wnk(l_size * 2,    //
+                                   reverse_bit_order((start + i) * 2 + 1, log2i(l_size)));
+
+                    twiddles.push_back(tw0.real());
+                    twiddles.push_back(tw0.imag());
+                    twiddles.push_back(tw1.real());
+                    twiddles.push_back(tw1.imag());
+                    twiddles.push_back(tw2.real());
+                    twiddles.push_back(tw2.imag());
+                }
+                l_size *= 4;
+                group_size *= 4;
+            }
+
+            if (l_size == single_load_size / 2)
+            {
+                std::size_t start = group_size * i_group;
+
+                for (uint i = 0; i < group_size; ++i)
+                {
+                    auto tw0 = wnk(l_size,    //
+                                   reverse_bit_order(start + i, log2i(l_size / 2)));
+
+                    twiddles.push_back(tw0.real());
+                    twiddles.push_back(tw0.imag());
+                }
+                l_size *= 2;
+                group_size *= 2;
+            }
+
+            if (l_size == single_load_size)
+            {
+                for (uint i = 0; i < group_size; ++i)
+                {
+                    std::size_t start = group_size * i_group + i;
+
+                    auto tw0 = wnk(l_size,    //
+                                   reverse_bit_order(start, log2i(l_size / 2)));
+
+                    twiddles.push_back(tw0.real());
+                    twiddles.push_back(tw0.imag());
+
+                    auto tw1 = wnk(l_size * 2,    //
+                                   reverse_bit_order(start * 2, log2i(l_size)));
+                    auto tw2 = wnk(l_size * 2,    //
+                                   reverse_bit_order(start * 2 + 1, log2i(l_size)));
+
+                    twiddles.push_back(tw1.real());
+                    twiddles.push_back(tw1.imag());
+                    twiddles.push_back(tw2.real());
+                    twiddles.push_back(tw2.imag());
+
+                    auto tw3_1 = wnk(l_size * 4,    //
+                                     reverse_bit_order(start * 4, log2i(l_size * 2)));
+                    auto tw3_2 = wnk(l_size * 4,    //
+                                     reverse_bit_order(start * 4 + 1, log2i(l_size * 2)));
+                    auto tw4_1 = wnk(l_size * 4,    //
+                                     reverse_bit_order(start * 4 + 2, log2i(l_size * 2)));
+                    auto tw4_2 = wnk(l_size * 4,    //
+                                     reverse_bit_order(start * 4 + 3, log2i(l_size * 2)));
+
+                    twiddles.push_back(tw3_1.real());
+                    twiddles.push_back(tw3_1.imag());
+                    twiddles.push_back(tw3_2.real());
+                    twiddles.push_back(tw3_2.imag());
+                    twiddles.push_back(tw4_1.real());
+                    twiddles.push_back(tw4_1.imag());
+                    twiddles.push_back(tw4_2.real());
+                    twiddles.push_back(tw4_2.imag());
+
+
+                    auto tw7  = wnk(l_size * 8,    //
+                                   reverse_bit_order(start * 8, log2i(l_size * 4)));
+                    auto tw8  = wnk(l_size * 8,    //
+                                   reverse_bit_order(start * 8 + 1, log2i(l_size * 4)));
+                    auto tw9  = wnk(l_size * 8,    //
+                                   reverse_bit_order(start * 8 + 2, log2i(l_size * 4)));
+                    auto tw10 = wnk(l_size * 8,    //
+                                    reverse_bit_order(start * 8 + 3, log2i(l_size * 4)));
+                    auto tw11 = wnk(l_size * 8,    //
+                                    reverse_bit_order(start * 8 + 4, log2i(l_size * 4)));
+                    auto tw12 = wnk(l_size * 8,    //
+                                    reverse_bit_order(start * 8 + 5, log2i(l_size * 4)));
+                    auto tw13 = wnk(l_size * 8,    //
+                                    reverse_bit_order(start * 8 + 6, log2i(l_size * 4)));
+                    auto tw14 = wnk(l_size * 8,    //
+                                    reverse_bit_order(start * 8 + 7, log2i(l_size * 4)));
+
+                    twiddles.push_back(tw7.real());
+                    twiddles.push_back(tw8.real());
+                    twiddles.push_back(tw11.real());
+                    twiddles.push_back(tw12.real());
+                    twiddles.push_back(tw9.real());
+                    twiddles.push_back(tw10.real());
+                    twiddles.push_back(tw13.real());
+                    twiddles.push_back(tw14.real());
+
+                    twiddles.push_back(tw7.imag());
+                    twiddles.push_back(tw8.imag());
+                    twiddles.push_back(tw11.imag());
+                    twiddles.push_back(tw12.imag());
+                    twiddles.push_back(tw9.imag());
+                    twiddles.push_back(tw10.imag());
+                    twiddles.push_back(tw13.imag());
+                    twiddles.push_back(tw14.imag());
+
+                    for (uint k = 0; k < 8; ++k)
+                    {
+                        auto tw =
+                            wnk(l_size * 16,    //
+                                reverse_bit_order(start * 16 + k, log2i(l_size * 8)));
+                        twiddles.push_back(tw.real());
+                    }
+                    for (uint k = 0; k < 8; ++k)
+                    {
+                        auto tw =
+                            wnk(l_size * 16,    //
+                                reverse_bit_order(start * 16 + k, log2i(l_size * 8)));
+                        twiddles.push_back(tw.imag());
+                    }
+
+                    for (uint k = 8; k < 16; ++k)
+                    {
+                        auto tw =
+                            wnk(l_size * 16,    //
+                                reverse_bit_order(start * 16 + k, log2i(l_size * 8)));
+                        twiddles.push_back(tw.real());
+                    }
+                    for (uint k = 8; k < 16; ++k)
+                    {
+                        auto tw =
+                            wnk(l_size * 16,    //
+                                reverse_bit_order(start * 16 + k, log2i(l_size * 8)));
+                        twiddles.push_back(tw.imag());
+                    }
+                }
+            }
+        }
+
+        return twiddles;
     }
 };
 
