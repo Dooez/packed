@@ -25,7 +25,8 @@ public:
     using real_type      = T;
     using allocator_type = Allocator;
 
-    static constexpr auto pack_size = default_pack_size<T>;
+    // static constexpr auto pack_size = default_pack_size<T>;
+    static constexpr std::size_t reg_size = 32 / sizeof(real_type);
 
 private:
     using size_t =
@@ -104,7 +105,7 @@ public:
     void unsorted(pcx::vector<T, VAllocator, PackSize>& vector)
     {
         assert(size() == vector.size());
-        recursive_unsorted(vector.data(), size(), m_twiddles_unsorted.data(), sub_size());
+        recursive_unsorted(vector.data(), size(), m_twiddles_unsorted.data());
         // fixed_size_unsorted(vector.data(), size(), m_twiddles_unsorted.data());
     };
 
@@ -123,11 +124,11 @@ public:
     };
 
 private:
-    [[no_unique_address]] size_t                            m_size;
-    [[no_unique_address]] subsize_t                         m_sub_size;
-    const std::vector<std::size_t, sort_allocator_type>     m_sort;
-    const pcx::vector<real_type, allocator_type, pack_size> m_twiddles;
-    const std::vector<real_type, allocator_type>            m_twiddles_unsorted;
+    [[no_unique_address]] size_t                           m_size;
+    [[no_unique_address]] subsize_t                        m_sub_size;
+    const std::vector<std::size_t, sort_allocator_type>    m_sort;
+    const pcx::vector<real_type, allocator_type, reg_size> m_twiddles;
+    const std::vector<real_type, allocator_type>           m_twiddles_unsorted;
 
     [[nodiscard]] constexpr auto sub_size() const -> std::size_t
     {
@@ -144,8 +145,7 @@ public:
     void fft_internal_binary(float* source)
     {
         dept3_and_sort(source);
-        std::size_t sub_size_ = std::min(size(), sub_size());
-        recursive_subtransform(source, size(), sub_size_);
+        recursive_subtransform(source, size());
     }
 
     void fft_internal(float* source)
@@ -949,27 +949,18 @@ public:
 
     inline auto recursive_unsorted(float*       data,
                                    std::size_t  size,
-                                   const float* twiddle_ptr,
-                                   std::size_t  fixed_size) -> const float*
+                                   const float* twiddle_ptr) -> const float*
     {
-        if (size <= fixed_size)
+        if (size <= sub_size())
         {
             return fixed_size_unsorted(data, size, twiddle_ptr);
         } else
         {
             using reg_t = avx::cx_reg<float>;
-            auto re = *(twiddle_ptr);
-            twiddle_ptr++;
-            auto im = *(twiddle_ptr);
-            twiddle_ptr++;
-            auto a = std::complex(re, im);
-            auto tw0 = avx::broadcast(a);
-            // reg_t tw0   = {
-            //     avx::broadcast(twiddle_ptr++),
-            //     avx::broadcast(twiddle_ptr++),
-            // };
-
-            // std::cout << "read: " << a << "\n";
+            reg_t tw0   = {
+                avx::broadcast(twiddle_ptr++),
+                avx::broadcast(twiddle_ptr++),
+            };
 
             for (std::size_t offset = 0; offset < size / 2; offset += reg_size)
             {
@@ -984,45 +975,35 @@ public:
                 auto a0 = avx::add(p0, p1tw);
                 auto a1 = avx::sub(p0, p1tw);
 
-                // if ((size / fixed_size) > 1)
                 // {
-                    cxstore<PackSize>(ptr0, a0);
-                    cxstore<PackSize>(ptr1, a1);
-                // }
+                cxstore<PackSize>(ptr0, a0);
+                cxstore<PackSize>(ptr1, a1);
             }
-            auto twiddle_ptr2 =
-                recursive_unsorted(data, size / 2, twiddle_ptr, fixed_size);
-            // std::cout << "diff: " << twiddle_ptr2 - twiddle_ptr << ", size: " << size
-            //           << "\n";
-            twiddle_ptr = twiddle_ptr2;
-            return recursive_unsorted(data + pidx(size / 2), size / 2, twiddle_ptr, fixed_size);
-            return twiddle_ptr;
+
+            twiddle_ptr = recursive_unsorted(data, size / 2, twiddle_ptr);
+            return recursive_unsorted(data + (size / 2) * 2, size / 2, twiddle_ptr);
         }
     };
 
-    inline auto fixed_size_subtransform(float* data, std::size_t size)
-        -> std::array<std::size_t, 2>
+    inline auto fixed_size_subtransform(float* data, std::size_t max_size) -> const float*
     {
         const auto* twiddle_ptr = m_twiddles.data();
 
         std::size_t l_size     = reg_size * 2;
-        std::size_t group_size = size / reg_size / 4;
+        std::size_t group_size = max_size / reg_size / 4;
         std::size_t n_groups   = 1;
         std::size_t tw_offset  = 0;
 
-        while (l_size < size)
+        while (l_size < max_size)
         {
             for (std::size_t i_group = 0; i_group < n_groups; ++i_group)
             {
                 std::size_t offset = i_group * reg_size;
 
-                const auto tw0 = avx::cxload<PackSize>(twiddle_ptr + pidx(tw_offset));
-                const auto tw1 =
-                    avx::cxload<PackSize>(twiddle_ptr + pidx(tw_offset + reg_size));
-                const auto tw2 =
-                    avx::cxload<PackSize>(twiddle_ptr + pidx(tw_offset + reg_size * 2));
-
-                tw_offset += reg_size * 3;
+                const auto tw0 = avx::cxload<reg_size>(twiddle_ptr);
+                const auto tw1 = avx::cxload<reg_size>(twiddle_ptr + reg_size * 2);
+                const auto tw2 = avx::cxload<reg_size>(twiddle_ptr + reg_size * 4);
+                twiddle_ptr += reg_size * 6;
 
                 for (std::size_t i = 0; i < group_size; ++i)
                 {
@@ -1086,15 +1067,14 @@ public:
             group_size /= 4;
         }
 
-        if (l_size == size)
+        if (l_size == max_size)
         {
             for (std::size_t i_group = 0; i_group < n_groups; ++i_group)
             {
                 std::size_t offset = i_group * reg_size;
 
-                const auto tw0 = avx::cxload<PackSize>(twiddle_ptr + pidx(tw_offset));
-
-                tw_offset += reg_size;
+                const auto tw0 = avx::cxload<reg_size>(twiddle_ptr);
+                twiddle_ptr += reg_size * 2;
 
                 auto* ptr0 = data + pidx(offset);
                 auto* ptr1 = data + pidx(offset + l_size / 2);
@@ -1115,31 +1095,26 @@ public:
             group_size /= 2;
         }
 
-        return {tw_offset, n_groups};
+        return twiddle_ptr;
     };
 
-    inline auto recursive_subtransform(float*      data,
-                                       std::size_t size,
-                                       std::size_t fixed_size)
-        -> std::array<std::size_t, 2>
+    inline auto recursive_subtransform(float* data, std::size_t size) -> const float*
     {
-        if (size == fixed_size)
+        if (size <= sub_size())
         {
-            return fixed_size_subtransform(data, fixed_size);
+            return fixed_size_subtransform(data, size);
         } else
         {
-            auto* twiddle_ptr = m_twiddles.data();
-            recursive_subtransform(data, size / 2, fixed_size);
-            auto [tw_offset, n_groups] =
-                recursive_subtransform(data + pidx(size / 2), size / 2, fixed_size);
+            recursive_subtransform(data, size / 2);
+            auto twiddle_ptr = recursive_subtransform(data + pidx(size / 2), size / 2);
+            std::size_t n_groups = size / reg_size / 2;
 
             for (std::size_t i_group = 0; i_group < n_groups; ++i_group)
             {
                 std::size_t offset = i_group * reg_size;
 
-                const auto tw0 = avx::cxload<PackSize>(twiddle_ptr + pidx(tw_offset));
-
-                tw_offset += reg_size;
+                const auto tw0 = avx::cxload<reg_size>(twiddle_ptr);
+                twiddle_ptr += reg_size * 2;
 
                 auto* ptr0 = data + pidx(offset);
                 auto* ptr1 = data + pidx(offset + size / 2);
@@ -1156,19 +1131,17 @@ public:
                 cxstore<PackSize>(ptr1, a1);
             }
 
-            return {tw_offset, n_groups * 2};
+            return twiddle_ptr;
         }
     };
 
-
     inline void linear_subtransform(float* data)
     {
-        const auto* twiddle_ptr = m_twiddles.data();
-
         std::size_t sub_size_ = std::min(size(), sub_size());
 
-        auto [tw_offset, n_groups] = fixed_size_subtransform(data, sub_size_);
-        std::size_t sub_offset     = sub_size_;
+        auto        twiddle_ptr = fixed_size_subtransform(data, sub_size_);
+        std::size_t sub_offset  = sub_size_;
+        std::size_t n_groups    = sub_size_ / reg_size;
 
         for (uint i = 1; i < size() / sub_size_; ++i)
         {
@@ -1185,9 +1158,8 @@ public:
             {
                 std::size_t offset = i_group * reg_size;
 
-                const auto tw0 = avx::cxload<PackSize>(twiddle_ptr + pidx(tw_offset));
-
-                tw_offset += reg_size;
+                const auto tw0 = avx::cxload<reg_size>(twiddle_ptr);
+                twiddle_ptr += reg_size * 2;
 
                 for (std::size_t i = 0; i < group_size; ++i)
                 {
@@ -1671,8 +1643,6 @@ private:
         return idx + idx / PackSize * PackSize;
     }
 
-    static constexpr std::size_t reg_size = 32 / sizeof(real_type);
-
     static constexpr auto log2i(std::size_t num) -> std::size_t
     {
         std::size_t order = 0;
@@ -1743,14 +1713,14 @@ private:
     static auto get_twiddles(std::size_t    fft_size,
                              std::size_t    sub_size,
                              allocator_type allocator)
-        -> pcx::vector<real_type, allocator_type, pack_size>
+        -> pcx::vector<real_type, allocator_type, reg_size>
     {
         const auto depth = log2i(fft_size);
 
         const std::size_t n_twiddles = 8 * ((1U << (depth - 3)) - 1U);
 
         auto twiddles =
-            pcx::vector<real_type, allocator_type, pack_size>(n_twiddles, allocator);
+            pcx::vector<real_type, allocator_type, reg_size>(n_twiddles, allocator);
 
         auto tw_it = twiddles.begin();
 
@@ -1800,7 +1770,7 @@ private:
                                       allocator_type allocator)
         -> std::vector<T, allocator_type>
     {
-        auto twiddles  = std::vector<T, allocator_type>(allocator);
+        auto twiddles = std::vector<T, allocator_type>(allocator);
 
 
         std::size_t l_size = 2;
