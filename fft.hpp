@@ -40,13 +40,15 @@ public:
     fft_unit(allocator_type allocator = allocator_type())
         requires(Size != pcx::dynamic_size) && (SubSize != pcx::dynamic_size)
     : m_sort(get_sort(size(), static_cast<sort_allocator_type>(allocator)))
-    , m_twiddles(get_twiddles(size(), sub_size(), allocator)){};
+    , m_twiddles(get_twiddles(size(), sub_size(), allocator))
+    , m_twiddles_unsorted(get_twiddles_unsorted(size(), sub_size(), allocator)){};
 
     fft_unit(std::size_t sub_size = 1, allocator_type allocator = allocator_type())
         requires(Size != pcx::dynamic_size) && (SubSize == pcx::dynamic_size)
     : m_sub_size(check_sub_size(sub_size))
     , m_sort(get_sort(size(), static_cast<sort_allocator_type>(allocator)))
-    , m_twiddles(get_twiddles(size(), sub_size, allocator)){};
+    , m_twiddles(get_twiddles(size(), sub_size, allocator))
+    , m_twiddles_unsorted(get_twiddles_unsorted(size(), sub_size, allocator)){};
 
     fft_unit(std::size_t fft_size, allocator_type allocator = allocator_type())
         requires(Size == pcx::dynamic_size) && (SubSize != pcx::dynamic_size)
@@ -62,7 +64,8 @@ public:
     : m_size(check_size(fft_size))
     , m_sub_size(check_sub_size(sub_size))
     , m_sort(get_sort(size(), static_cast<sort_allocator_type>(allocator)))
-    , m_twiddles(get_twiddles(size(), sub_size, allocator)){};
+    , m_twiddles(get_twiddles(size(), sub_size, allocator))
+    , m_twiddles_unsorted(get_twiddles_unsorted(size(), sub_size, allocator)){};
 
     fft_unit(const fft_unit& other)     = default;
     fft_unit(fft_unit&& other) noexcept = default;
