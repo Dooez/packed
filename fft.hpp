@@ -41,6 +41,7 @@ public:
         requires(Size != pcx::dynamic_size) && (SubSize != pcx::dynamic_size)
     : m_sort(get_sort(size(), static_cast<sort_allocator_type>(allocator)))
     , m_twiddles(get_twiddles(size(), sub_size(), allocator))
+    , m_twiddles4(get_twiddles4(size(), sub_size(), allocator))
     , m_twiddles_unsorted(get_twiddles_unsorted(size(), sub_size(), allocator))
     , m_twiddles_unsorted_linear(
           get_twiddles_unsorted_linear(size(), sub_size(), allocator)){};
@@ -50,6 +51,7 @@ public:
     : m_sub_size(check_sub_size(sub_size))
     , m_sort(get_sort(size(), static_cast<sort_allocator_type>(allocator)))
     , m_twiddles(get_twiddles(size(), sub_size, allocator))
+    , m_twiddles4(get_twiddles4(size(), sub_size, allocator))
     , m_twiddles_unsorted(get_twiddles_unsorted(size(), sub_size, allocator))
     , m_twiddles_unsorted_linear(
           get_twiddles_unsorted_linear(size(), sub_size, allocator)){};
@@ -59,6 +61,7 @@ public:
     : m_size(check_size(fft_size))
     , m_sort(get_sort(size(), static_cast<sort_allocator_type>(allocator)))
     , m_twiddles(get_twiddles(size(), sub_size(), allocator))
+    , m_twiddles4(get_twiddles4(size(), sub_size(), allocator))
     , m_twiddles_unsorted(get_twiddles_unsorted(size(), sub_size(), allocator))
     , m_twiddles_unsorted_linear(
           get_twiddles_unsorted_linear(size(), sub_size(), allocator)){};
@@ -71,6 +74,7 @@ public:
     , m_sub_size(check_sub_size(sub_size))
     , m_sort(get_sort(size(), static_cast<sort_allocator_type>(allocator)))
     , m_twiddles(get_twiddles(size(), sub_size, allocator))
+    , m_twiddles4(get_twiddles4(size(), sub_size, allocator))
     , m_twiddles_unsorted(get_twiddles_unsorted(size(), sub_size, allocator))
     , m_twiddles_unsorted_linear(
           get_twiddles_unsorted_linear(size(), sub_size, allocator)){};
@@ -113,12 +117,19 @@ public:
         fft_internal_binary(vector.data());
     };
     template<typename VAllocator>
+    void binary4(pcx::vector<T, VAllocator, PackSize>& vector)
+    {
+        assert(size() == vector.size());
+        fft_internal_binary4(vector.data());
+    };
+    template<typename VAllocator>
     void unsorted(pcx::vector<T, VAllocator, PackSize>& vector)
     {
         assert(size() == vector.size());
         recursive_unsorted(vector.data(), size(), m_twiddles_unsorted.data());
         // fixed_size_unsorted(vector.data(), size(), m_twiddles_unsorted.data());
     };
+
 
     template<typename VAllocator>
     void unsorted_linear(pcx::vector<T, VAllocator, PackSize>& vector)
@@ -147,6 +158,7 @@ private:
     [[no_unique_address]] subsize_t                        m_sub_size;
     const std::vector<std::size_t, sort_allocator_type>    m_sort;
     const pcx::vector<real_type, allocator_type, reg_size> m_twiddles;
+    const pcx::vector<real_type, allocator_type, reg_size> m_twiddles4;
     const std::vector<real_type, allocator_type>           m_twiddles_unsorted;
     const std::vector<real_type, allocator_type>           m_twiddles_unsorted_linear;
 
@@ -166,6 +178,11 @@ public:
     {
         dept3_and_sort(source);
         recursive_subtransform(source, size());
+    }
+    void fft_internal_binary4(float* source)
+    {
+        dept3_and_sort(source);
+        recursive_subtransform4(source, size());
     }
 
     void fft_internal(float* source)
@@ -957,11 +974,11 @@ public:
                 auto [she0, she1]   = avx::unpack_128(she0s, she1s);
                 auto [she2, she3]   = avx::unpack_128(she2s, she3s);
 
-//                 auto [sht0, sht1] = avx::unpack_ps(tw0, tw0);
-//                 auto [t0, t1]     = avx::unpack_128(sht0, sht1);
-// 
-//                 auto [sht2, sht3] = avx::unpack_ps(tw0, tw0);
-//                 auto [t2, t3]     = avx::unpack_128(sht2, sht3);
+                //                 auto [sht0, sht1] = avx::unpack_ps(tw0, tw0);
+                //                 auto [t0, t1]     = avx::unpack_128(sht0, sht1);
+                //
+                //                 auto [sht2, sht3] = avx::unpack_ps(tw0, tw0);
+                //                 auto [t2, t3]     = avx::unpack_128(sht2, sht3);
                 cxstore<PackSize>(ptr0, she0);
                 cxstore<PackSize>(ptr1, she1);
                 cxstore<PackSize>(ptr2, she2);
@@ -1198,6 +1215,202 @@ public:
 
                 cxstore<PackSize>(ptr0, a0);
                 cxstore<PackSize>(ptr1, a1);
+            }
+
+            return twiddle_ptr;
+        }
+    };
+
+    inline auto fixed_size_subtransform4(float* data, std::size_t max_size) -> const
+        float*
+    {
+        const auto* twiddle_ptr = m_twiddles4.data();
+
+        std::size_t l_size     = reg_size * 2;
+        std::size_t group_size = max_size / reg_size / 4;
+        std::size_t n_groups   = 1;
+        std::size_t tw_offset  = 0;
+
+        while (l_size < max_size)
+        {
+            for (std::size_t i_group = 0; i_group < n_groups; ++i_group)
+            {
+                std::size_t offset = i_group * reg_size;
+
+                const auto tw0 = avx::cxload<reg_size>(twiddle_ptr);
+                const auto tw1 = avx::cxload<reg_size>(twiddle_ptr + reg_size * 2);
+                const auto tw2 = avx::cxload<reg_size>(twiddle_ptr + reg_size * 4);
+                twiddle_ptr += reg_size * 6;
+
+                for (std::size_t i = 0; i < group_size; ++i)
+                {
+                    auto* ptr0 = data + pidx(offset);
+                    auto* ptr1 = data + pidx(offset + l_size / 2);
+                    auto* ptr2 = data + pidx(offset + l_size);
+                    auto* ptr3 = data + pidx(offset + l_size / 2 * 3);
+
+                    auto p1 = avx::cxload<PackSize>(ptr1);
+                    auto p3 = avx::cxload<PackSize>(ptr3);
+                    auto p0 = avx::cxload<PackSize>(ptr0);
+                    auto p2 = avx::cxload<PackSize>(ptr2);
+
+                    auto p1tw_re = avx::mul(p1.real, tw0.real);
+                    auto p3tw_re = avx::mul(p3.real, tw0.real);
+                    auto p1tw_im = avx::mul(p1.real, tw0.imag);
+                    auto p3tw_im = avx::mul(p3.real, tw0.imag);
+
+                    p1tw_re = avx::fnmadd(p1.imag, tw0.imag, p1tw_re);
+                    p3tw_re = avx::fnmadd(p3.imag, tw0.imag, p3tw_re);
+                    p1tw_im = avx::fmadd(p1.imag, tw0.real, p1tw_im);
+                    p3tw_im = avx::fmadd(p3.imag, tw0.real, p3tw_im);
+
+                    avx::cx_reg<float> p1tw = {p1tw_re, p1tw_im};
+                    avx::cx_reg<float> p3tw = {p3tw_re, p3tw_im};
+
+                    auto a2 = avx::add(p2, p3tw);
+                    auto a3 = avx::sub(p2, p3tw);
+                    auto a0 = avx::add(p0, p1tw);
+                    auto a1 = avx::sub(p0, p1tw);
+
+                    auto a2tw_re = avx::mul(a2.real, tw1.real);
+                    auto a2tw_im = avx::mul(a2.real, tw1.imag);
+                    auto a3tw_re = avx::mul(a3.real, tw2.real);
+                    auto a3tw_im = avx::mul(a3.real, tw2.imag);
+
+                    a2tw_re = avx::fnmadd(a2.imag, tw1.imag, a2tw_re);
+                    a2tw_im = avx::fmadd(a2.imag, tw1.real, a2tw_im);
+                    a3tw_re = avx::fnmadd(a3.imag, tw2.imag, a3tw_re);
+                    a3tw_im = avx::fmadd(a3.imag, tw2.real, a3tw_im);
+
+                    avx::cx_reg<float> a2tw = {a2tw_re, a2tw_im};
+                    avx::cx_reg<float> a3tw = {a3tw_re, a3tw_im};
+
+                    auto b0 = avx::add(a0, a2tw);
+                    auto b2 = avx::sub(a0, a2tw);
+                    auto b1 = avx::add(a1, a3tw);
+                    auto b3 = avx::sub(a1, a3tw);
+
+                    cxstore<PackSize>(ptr0, b0);
+                    cxstore<PackSize>(ptr1, b1);
+                    cxstore<PackSize>(ptr2, b2);
+                    cxstore<PackSize>(ptr3, b3);
+
+                    offset += l_size * 2;
+                }
+            }
+
+            l_size *= 4;
+            n_groups *= 4;
+            group_size /= 4;
+        }
+
+        if (l_size == max_size)
+        {
+            for (std::size_t i_group = 0; i_group < n_groups; ++i_group)
+            {
+                std::size_t offset = i_group * reg_size;
+
+                const auto tw0 = avx::cxload<reg_size>(twiddle_ptr);
+                twiddle_ptr += reg_size * 2;
+
+                auto* ptr0 = data + pidx(offset);
+                auto* ptr1 = data + pidx(offset + l_size / 2);
+
+                auto p1 = avx::cxload<PackSize>(ptr1);
+                auto p0 = avx::cxload<PackSize>(ptr0);
+
+                auto p1tw = avx::mul(p1, tw0);
+
+                auto a0 = avx::add(p0, p1tw);
+                auto a1 = avx::sub(p0, p1tw);
+
+                cxstore<PackSize>(ptr0, a0);
+                cxstore<PackSize>(ptr1, a1);
+            }
+            l_size *= 2;
+            n_groups *= 2;
+            group_size /= 2;
+        }
+
+        return twiddle_ptr;
+    };
+
+    inline auto recursive_subtransform4(float* data, std::size_t size) -> const float*
+    {
+        if (size <= sub_size())
+        {
+           return fixed_size_subtransform4(data, size);
+        } else
+        {
+            recursive_subtransform4(data, size / 4);
+            recursive_subtransform4(data + pidx(size / 4), size / 4);
+            recursive_subtransform4(data + pidx(size / 2), size / 4);
+            auto twiddle_ptr =
+                recursive_subtransform4(data + pidx(3 * size / 4), size / 4);
+
+
+            std::size_t n_groups = size / reg_size / 4;
+
+
+            for (std::size_t i_group = 0; i_group < n_groups; ++i_group)
+            {
+                std::size_t offset = i_group * reg_size;
+
+                const auto tw0 = avx::cxload<reg_size>(twiddle_ptr);
+                const auto tw1 = avx::cxload<reg_size>(twiddle_ptr + reg_size * 2);
+                const auto tw2 = avx::cxload<reg_size>(twiddle_ptr + reg_size * 4);
+                twiddle_ptr += reg_size * 6;
+
+                auto* ptr0 = data + pidx(offset);
+                auto* ptr1 = data + pidx(offset + size / 4);
+                auto* ptr2 = data + pidx(offset + size / 2);
+                auto* ptr3 = data + pidx(offset + size * 3 / 4);
+
+                auto p1 = avx::cxload<PackSize>(ptr1);
+                auto p3 = avx::cxload<PackSize>(ptr3);
+                auto p0 = avx::cxload<PackSize>(ptr0);
+                auto p2 = avx::cxload<PackSize>(ptr2);
+
+                auto p1tw_re = avx::mul(p1.real, tw0.real);
+                auto p3tw_re = avx::mul(p3.real, tw0.real);
+                auto p1tw_im = avx::mul(p1.real, tw0.imag);
+                auto p3tw_im = avx::mul(p3.real, tw0.imag);
+
+                p1tw_re = avx::fnmadd(p1.imag, tw0.imag, p1tw_re);
+                p3tw_re = avx::fnmadd(p3.imag, tw0.imag, p3tw_re);
+                p1tw_im = avx::fmadd(p1.imag, tw0.real, p1tw_im);
+                p3tw_im = avx::fmadd(p3.imag, tw0.real, p3tw_im);
+
+                avx::cx_reg<float> p1tw = {p1tw_re, p1tw_im};
+                avx::cx_reg<float> p3tw = {p3tw_re, p3tw_im};
+
+                auto a2 = avx::add(p2, p3tw);
+                auto a3 = avx::sub(p2, p3tw);
+                auto a0 = avx::add(p0, p1tw);
+                auto a1 = avx::sub(p0, p1tw);
+
+                auto a2tw_re = avx::mul(a2.real, tw1.real);
+                auto a2tw_im = avx::mul(a2.real, tw1.imag);
+                auto a3tw_re = avx::mul(a3.real, tw2.real);
+                auto a3tw_im = avx::mul(a3.real, tw2.imag);
+
+                a2tw_re = avx::fnmadd(a2.imag, tw1.imag, a2tw_re);
+                a2tw_im = avx::fmadd(a2.imag, tw1.real, a2tw_im);
+                a3tw_re = avx::fnmadd(a3.imag, tw2.imag, a3tw_re);
+                a3tw_im = avx::fmadd(a3.imag, tw2.real, a3tw_im);
+
+                avx::cx_reg<float> a2tw = {a2tw_re, a2tw_im};
+                avx::cx_reg<float> a3tw = {a3tw_re, a3tw_im};
+
+                auto b0 = avx::add(a0, a2tw);
+                auto b2 = avx::sub(a0, a2tw);
+                auto b1 = avx::add(a1, a3tw);
+                auto b3 = avx::sub(a1, a3tw);
+
+                cxstore<PackSize>(ptr0, b0);
+                cxstore<PackSize>(ptr1, b1);
+                cxstore<PackSize>(ptr2, b2);
+                cxstore<PackSize>(ptr3, b3);
             }
 
             return twiddle_ptr;
@@ -1820,6 +2033,95 @@ private:
         }
 
         while (l_size <= fft_size)
+        {
+            for (std::size_t i_group = 0; i_group < n_groups; ++i_group)
+            {
+                for (uint k = 0; k < reg_size; ++k)
+                {
+                    *(tw_it++) = wnk(l_size, k + i_group * reg_size);
+                }
+            }
+            l_size *= 2;
+            n_groups *= 2;
+        };
+        return twiddles;
+    }
+
+    static auto get_twiddles4(std::size_t    fft_size,
+                              std::size_t    sub_size,
+                              allocator_type allocator)
+        -> pcx::vector<real_type, allocator_type, reg_size>
+    {
+        const auto depth = log2i(fft_size);
+
+        const std::size_t n_twiddles = 8 * ((1U << (depth - 3)) - 1U);
+
+        auto twiddles =
+            pcx::vector<real_type, allocator_type, reg_size>(n_twiddles, allocator);
+
+        auto tw_it = twiddles.begin();
+
+        std::size_t l_size   = reg_size * 2;
+        std::size_t n_groups = 1;
+
+        std::size_t sub_size_ = std::min(fft_size, sub_size);
+
+        while (l_size < sub_size_)
+        {
+            for (std::size_t i_group = 0; i_group < n_groups; ++i_group)
+            {
+                for (uint k = 0; k < reg_size; ++k)
+                {
+                    *(tw_it++) = wnk(l_size, k + i_group * reg_size);
+                }
+                for (uint k = 0; k < reg_size; ++k)
+                {
+                    *(tw_it++) = wnk(l_size * 2UL, k + i_group * reg_size);
+                }
+                for (uint k = 0; k < reg_size; ++k)
+                {
+                    *(tw_it++) = wnk(l_size * 2UL, k + i_group * reg_size + l_size / 2);
+                }
+            }
+            l_size *= 4;
+            n_groups *= 4;
+        }
+
+        if (l_size == sub_size_)
+        {
+            for (std::size_t i_group = 0; i_group < n_groups; ++i_group)
+            {
+                for (uint k = 0; k < reg_size; ++k)
+                {
+                    *(tw_it++) = wnk(l_size, k + i_group * reg_size);
+                }
+            }
+            l_size *= 2;
+            n_groups *= 2;
+        };
+
+        while (l_size < fft_size)
+        {
+            for (std::size_t i_group = 0; i_group < n_groups; ++i_group)
+            {
+                for (uint k = 0; k < reg_size; ++k)
+                {
+                    *(tw_it++) = wnk(l_size, k + i_group * reg_size);
+                }
+                for (uint k = 0; k < reg_size; ++k)
+                {
+                    auto a =  wnk(l_size * 2UL, k + i_group * reg_size);
+                    *(tw_it++) = wnk(l_size * 2UL, k + i_group * reg_size);
+                }
+                for (uint k = 0; k < reg_size; ++k)
+                {
+                    *(tw_it++) = wnk(l_size * 2UL, k + i_group * reg_size + l_size / 2);
+                }
+            }
+            l_size *= 4;
+            n_groups *= 4;
+        };
+        if (l_size == fft_size)
         {
             for (std::size_t i_group = 0; i_group < n_groups; ++i_group)
             {
