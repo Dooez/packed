@@ -182,7 +182,37 @@ public:
     void fft_internal_binary4(float* source)
     {
         dept3_and_sort(source);
-        recursive_subtransform4(source, size());
+        if (size() <= sub_size() || log2i(size() / sub_size()) % 2 == 0)
+        {
+            recursive_subtransform4(source, size());
+        } else
+        {
+            recursive_subtransform4(source, size() / 2);
+            auto twiddle_ptr = recursive_subtransform4(source + pidx(size() / 2), size() / 2);
+            std::size_t n_groups = size() / reg_size / 2;
+
+            for (std::size_t i_group = 0; i_group < n_groups; ++i_group)
+            {
+                std::size_t offset = i_group * reg_size;
+
+                const auto tw0 = avx::cxload<reg_size>(twiddle_ptr);
+                twiddle_ptr += reg_size * 2;
+
+                auto* ptr0 = source + pidx(offset);
+                auto* ptr1 = source + pidx(offset + size() / 2);
+
+                auto p1 = avx::cxload<PackSize>(ptr1);
+                auto p0 = avx::cxload<PackSize>(ptr0);
+
+                auto p1tw = avx::mul(p1, tw0);
+
+                auto a0 = avx::add(p0, p1tw);
+                auto a1 = avx::sub(p0, p1tw);
+
+                cxstore<PackSize>(ptr0, a0);
+                cxstore<PackSize>(ptr1, a1);
+            }
+        }
     }
 
     void fft_internal(float* source)
@@ -1339,7 +1369,7 @@ public:
     {
         if (size <= sub_size())
         {
-           return fixed_size_subtransform4(data, size);
+            return fixed_size_subtransform4(data, size);
         } else
         {
             recursive_subtransform4(data, size / 4);
@@ -2110,7 +2140,7 @@ private:
                 }
                 for (uint k = 0; k < reg_size; ++k)
                 {
-                    auto a =  wnk(l_size * 2UL, k + i_group * reg_size);
+                    auto a     = wnk(l_size * 2UL, k + i_group * reg_size);
                     *(tw_it++) = wnk(l_size * 2UL, k + i_group * reg_size);
                 }
                 for (uint k = 0; k < reg_size; ++k)
