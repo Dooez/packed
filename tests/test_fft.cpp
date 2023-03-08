@@ -253,42 +253,53 @@ int test_fftu_float(std::size_t size)
 int main()
 {
     int ret = 0;
-
-    for (uint i = 6; i < 16; ++i)
-    {
-        std::cout << (1U << i) << "\n";
-        ret += test_fft_float4(1U << i);
-        // ret += test_fft_float(1U << i);
-        // ret += test_fftu_float(1U << i);
-        if (ret > 0)
-        {
-            return ret;
-        }
-    }
+    //
+    //     for (uint i = 6; i < 16; ++i)
+    //     {
+    //         std::cout << (1U << i) << "\n";
+    //         ret += test_fft_float4(1U << i);
+    //         // ret += test_fft_float(1U << i);
+    //         // ret += test_fftu_float(1U << i);
+    //         if (ret > 0)
+    //         {
+    //             return ret;
+    //         }
+    //     }
 
     // ret += test_fft_float4(64*2);
 
-// 
-//     constexpr std::size_t size = 64 * 16;
-//     constexpr float       pi   = 3.14159265358979323846;
-// 
-//     auto vec  = pcx::vector<float>(size);
-//     auto vec2 = pcx::vector<float>(size);
-//     for (uint i = 0; i < size; ++i)
-//     {
-//         vec[i] = std::exp(std::complex(0.F, 2 * pi * i / size * 1.F));
-//     }
-// 
-//     auto unit = pcx::fft_unit<float, pcx::dynamic_size, 64>(size);
-// 
-//     auto vec3 = fft(vec);
-//     unit.binary4(vec);
-// 
-//     for (uint i = 0; i < size; ++i)
-//     {
-//         std::cout << "#" << i << " " << (vec3[i].value()) << "  " << (vec[i].value())
-//                   << "  " << abs(vec[i].value() - vec3[i].value()) << "\n";
-//     }
+    //
+    constexpr std::size_t size = 64 * 16;
+    //     constexpr float       pi   = 3.14159265358979323846;
+    //
+    //     auto vec  = pcx::vector<float>(size);
+    //     auto vec2 = pcx::vector<float>(size);
+    //     for (uint i = 0; i < size; ++i)
+    //     {
+    //         vec[i] = std::exp(std::complex(0.F, 2 * pi * i / size * 1.F));
+    //     }
+    //
+    auto unit = pcx::fft_unit<float, pcx::dynamic_size, 64>(size);
+    //
+    //     auto vec3 = fft(vec);
+    //     unit.binary4(vec);
+    //
+    //     for (uint i = 0; i < size; ++i)
+    //     {
+    //         std::cout << "#" << i << " " << (vec3[i].value()) << "  " << (vec[i].value())
+    //                   << "  " << abs(vec[i].value() - vec3[i].value()) << "\n";
+    //     }
+
+    auto til = std::vector<std::complex<float>>(8 * 4);
+
+    for (uint i = 0; i < 32; ++i)
+    {
+        til.at(i) = std::complex<float>(i, 100 + i);
+    }
+
+    unit.test_itrlv(reinterpret_cast<float*>(til.data()));
+
+    std::cout << til[0] << " " << til[1];
 
     return 0;
 }

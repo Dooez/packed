@@ -130,6 +130,23 @@ public:
         // fixed_size_unsorted(vector.data(), size(), m_twiddles_unsorted.data());
     };
 
+    void test_itrlv(float* source)
+    {
+        auto p0 = avx::cxload<reg_size>(source);
+        auto p1 = avx::cxload<reg_size>(source + reg_size * 2);
+        auto p2 = avx::cxload<reg_size>(source + reg_size * 4);
+        auto p3 = avx::cxload<reg_size>(source + reg_size * 6);
+        // interleaved_to_packed(p0, p1, p2, p3);
+
+        // std::tie(p0, p1, p2, p3) = interleaved_to_packed(p0, p1, p2, p3);
+
+        std::tie(p0, p1, p2, p3) = packed_to_interleaved(p0, p1, p2, p3);
+
+        avx::cxstore<reg_size>(source, p0);
+        avx::cxstore<reg_size>(source + reg_size * 2, p1);
+        avx::cxstore<reg_size>(source + reg_size * 4, p2);
+        avx::cxstore<reg_size>(source + reg_size * 6, p3);
+    };
 
     template<typename VAllocator>
     void unsorted_linear(pcx::vector<T, VAllocator, PackSize>& vector)
@@ -254,52 +271,14 @@ public:
             auto offset_first  = m_sort[i];
             auto offset_second = m_sort[i + 1];
 
-            auto p1 = reg_t{};
-            auto p5 = reg_t{};
-            auto p3 = reg_t{};
-            auto p7 = reg_t{};
+            auto p1 = avx::cxload<TMPPackSize>(source + sh1 + offset_first);
+            auto p5 = avx::cxload<TMPPackSize>(source + sh5 + offset_first);
+            auto p3 = avx::cxload<TMPPackSize>(source + sh3 + offset_first);
+            auto p7 = avx::cxload<TMPPackSize>(source + sh7 + offset_first);
 
-            if constexpr (PackedSrc)
+            if constexpr (!PackedSrc)
             {
-                p1 = avx::cxload<TMPPackSize>(source + sh1 + offset_first);
-                p5 = avx::cxload<TMPPackSize>(source + sh5 + offset_first);
-                p3 = avx::cxload<TMPPackSize>(source + sh3 + offset_first);
-                p7 = avx::cxload<TMPPackSize>(source + sh7 + offset_first);
-            } else
-            {
-                auto p1r = avx::load(source + sh1 + offset_first);
-                auto p1i = avx::load(source + sh1 + offset_first + TMPPackSize);
-                auto p5r = avx::load(source + sh5 + offset_first);
-                auto p5i = avx::load(source + sh5 + offset_first + TMPPackSize);
-                auto p3r = avx::load(source + sh3 + offset_first);
-                auto p3i = avx::load(source + sh3 + offset_first + TMPPackSize);
-                auto p7r = avx::load(source + sh7 + offset_first);
-                auto p7i = avx::load(source + sh7 + offset_first + TMPPackSize);
-
-                auto [p1r_d, p1i_d] = avx::unpack_pd(p1r, p1i);
-                auto [p5r_d, p5i_d] = avx::unpack_pd(p5r, p5i);
-                auto [p3r_d, p3i_d] = avx::unpack_pd(p3r, p3i);
-                auto [p7r_d, p7i_d] = avx::unpack_pd(p7r, p7i);
-
-                auto [p1r_s, p1i_s] = avx::unpack_ps(p1r_d, p1i_d);
-                auto [p5r_s, p5i_s] = avx::unpack_ps(p5r_d, p5i_d);
-                auto [p3r_s, p3i_s] = avx::unpack_ps(p3r_d, p3i_d);
-                auto [p7r_s, p7i_s] = avx::unpack_ps(p7r_d, p7i_d);
-
-                auto [p1r_128, p1i_128] = avx::unpack_ps(p1r_s, p1i_s);
-                auto [p5r_128, p5i_128] = avx::unpack_ps(p5r_s, p5i_s);
-                auto [p3r_128, p3i_128] = avx::unpack_ps(p3r_s, p3i_s);
-                auto [p7r_128, p7i_128] = avx::unpack_ps(p7r_s, p7i_s);
-
-                auto [p1_re, p1_im] = avx::unpack_pd(p1r_128, p1i_128);
-                auto [p5_re, p5_im] = avx::unpack_pd(p5r_128, p5i_128);
-                auto [p3_re, p3_im] = avx::unpack_pd(p3r_128, p3i_128);
-                auto [p7_re, p7_im] = avx::unpack_pd(p7r_128, p7i_128);
-
-                p1 = {p1_re, p1_im};
-                p5 = {p5_re, p5_im};
-                p3 = {p3_re, p3_im};
-                p7 = {p7_re, p7_im};
+                std::tie(p1, p5, p3, p7) = interleaved_to_packed(p1, p5, p3, p7);
             }
 
             auto a5 = avx::sub(p1, p5);
@@ -3017,6 +2996,67 @@ private:
 
         return twiddles;
     }
+
+    template<typename... Args>
+    inline static auto interleaved_to_packed(Args... args)
+    {
+        auto p_128 = swap_128(args...);
+
+        auto r = std::apply([](auto... a) { return pack_s(a...); }, p_128);
+
+        return r;
+    }
+
+    template<typename... Args>
+    inline static auto packed_to_interleaved(Args... args)
+    {
+        auto p_s = upack_s(args...);
+
+        auto r = std::apply([](auto... a) { return swap_128(a...); }, p_s);
+
+        return r;
+    }
+
+    inline static auto swap_128(avx::cx_reg<real_type> arg0)
+        -> std::tuple<avx::cx_reg<real_type>>
+    {
+        auto real = avx::unpacklo_128(arg0.real, arg0.imag);
+        auto imag = avx::unpackhi_128(arg0.real, arg0.imag);
+        return avx::cx_reg<real_type>({real, imag});
+    }
+    template<typename... Args>
+    inline static auto swap_128(avx::cx_reg<real_type> arg0, Args... args)
+    {
+        return std::tuple_cat(swap_128(arg0), swap_128(args...));
+    }
+
+    inline static auto pack_s(avx::cx_reg<real_type> arg0)
+        -> std::tuple<avx::cx_reg<real_type>>
+    {
+        auto real = _mm256_shuffle_ps(arg0.real, arg0.imag, 0b10001000);
+        auto imag = _mm256_shuffle_ps(arg0.real, arg0.imag, 0b11011101);
+        return avx::cx_reg<real_type>({real, imag});
+    }
+    template<typename... Args>
+    inline static auto pack_s(avx::cx_reg<real_type> arg0, Args... args)
+    {
+        return std::tuple_cat(pack_s(arg0), pack_s(args...));
+    }
+
+    inline static auto upack_s(avx::cx_reg<real_type> arg0)
+        -> std::tuple<avx::cx_reg<real_type>>
+    {
+        auto real = avx::unpacklo_ps(arg0.real, arg0.imag);
+        auto imag = avx::unpackhi_ps(arg0.real, arg0.imag);
+        return avx::cx_reg<real_type>({real, imag});
+    }
+    template<typename... Args>
+    inline static auto upack_s(avx::cx_reg<real_type> arg0, Args... args)
+    {
+        return std::tuple_cat(upack_s(arg0), upack_s(args...));
+    }
+
+
 };
 
 
