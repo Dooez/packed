@@ -284,10 +284,10 @@ public:
             auto offset_first  = m_sort[i];
             auto offset_second = m_sort[i + 1];
 
-            auto p1 = avx::cxload<PackSize>(source + sh1 + offset_first);
-            auto p5 = avx::cxload<PackSize>(source + sh5 + offset_first);
-            auto p3 = avx::cxload<PackSize>(source + sh3 + offset_first);
-            auto p7 = avx::cxload<PackSize>(source + sh7 + offset_first);
+            auto p1 = avx::cxload<TMPPackSize>(source + sh1 + offset_first);
+            auto p5 = avx::cxload<TMPPackSize>(source + sh5 + offset_first);
+            auto p3 = avx::cxload<TMPPackSize>(source + sh3 + offset_first);
+            auto p7 = avx::cxload<TMPPackSize>(source + sh7 + offset_first);
 
             if constexpr (!PackedSrc)
             {
@@ -311,10 +311,10 @@ public:
             b5_tw = avx::mul(b5_tw, twsq2);
             b7_tw = avx::mul(b7_tw, twsq2);
 
-            auto p0 = avx::cxload<PackSize>(source + sh0 + offset_first);
-            auto p4 = avx::cxload<PackSize>(source + sh4 + offset_first);
-            auto p2 = avx::cxload<PackSize>(source + sh2 + offset_first);
-            auto p6 = avx::cxload<PackSize>(source + sh6 + offset_first);
+            auto p0 = avx::cxload<TMPPackSize>(source + sh0 + offset_first);
+            auto p4 = avx::cxload<TMPPackSize>(source + sh4 + offset_first);
+            auto p2 = avx::cxload<TMPPackSize>(source + sh2 + offset_first);
+            auto p6 = avx::cxload<TMPPackSize>(source + sh6 + offset_first);
 
             if constexpr (!PackedSrc)
             {
@@ -352,14 +352,14 @@ public:
             auto [shc0, shc1] = avx::unpack_128(shb0, shb1);
             auto [shc2, shc3] = avx::unpack_128(shb2, shb3);
 
-            auto q0 = avx::cxload<PackSize>(source + sh0 + offset_second);
-            avx::cxstore<PackSize>(source + sh0 + offset_second, shc0);
-            auto q1 = avx::cxload<PackSize>(source + sh1 + offset_second);
-            avx::cxstore<PackSize>(source + sh1 + offset_second, shc1);
-            auto q4 = avx::cxload<PackSize>(source + sh4 + offset_second);
-            avx::cxstore<PackSize>(source + sh4 + offset_second, shc2);
-            auto q5 = avx::cxload<PackSize>(source + sh5 + offset_second);
-            avx::cxstore<PackSize>(source + sh5 + offset_second, shc3);
+            auto q0 = avx::cxload<TMPPackSize>(source + sh0 + offset_second);
+            avx::cxstore<TMPPackSize>(source + sh0 + offset_second, shc0);
+            auto q1 = avx::cxload<TMPPackSize>(source + sh1 + offset_second);
+            avx::cxstore<TMPPackSize>(source + sh1 + offset_second, shc1);
+            auto q4 = avx::cxload<TMPPackSize>(source + sh4 + offset_second);
+            avx::cxstore<TMPPackSize>(source + sh4 + offset_second, shc2);
+            auto q5 = avx::cxload<TMPPackSize>(source + sh5 + offset_second);
+            avx::cxstore<TMPPackSize>(source + sh5 + offset_second, shc3);
 
             if constexpr (!PackedSrc)
             {
@@ -370,17 +370,17 @@ public:
 
             auto [shc4, shc5] = avx::unpack_128(shb4, shb5);
 
-            auto q2 = avx::cxload<PackSize>(source + sh2 + offset_second);
-            avx::cxstore<PackSize>(source + sh2 + offset_second, shc4);
-            auto q3 = avx::cxload<PackSize>(source + sh3 + offset_second);
-            avx::cxstore<PackSize>(source + sh3 + offset_second, shc5);
+            auto q2 = avx::cxload<TMPPackSize>(source + sh2 + offset_second);
+            avx::cxstore<TMPPackSize>(source + sh2 + offset_second, shc4);
+            auto q3 = avx::cxload<TMPPackSize>(source + sh3 + offset_second);
+            avx::cxstore<TMPPackSize>(source + sh3 + offset_second, shc5);
 
             auto [shc6, shc7] = avx::unpack_128(shb6, shb7);
 
-            auto q6 = avx::cxload<PackSize>(source + sh6 + offset_second);
-            avx::cxstore<PackSize>(source + sh6 + offset_second, shc6);
-            auto q7 = avx::cxload<PackSize>(source + sh7 + offset_second);
-            avx::cxstore<PackSize>(source + sh7 + offset_second, shc7);
+            auto q6 = avx::cxload<TMPPackSize>(source + sh6 + offset_second);
+            avx::cxstore<TMPPackSize>(source + sh6 + offset_second, shc6);
+            auto q7 = avx::cxload<TMPPackSize>(source + sh7 + offset_second);
+            avx::cxstore<TMPPackSize>(source + sh7 + offset_second, shc7);
 
             if constexpr (!PackedSrc)
             {
@@ -437,10 +437,10 @@ public:
             auto [shz0, shz1] = avx::unpack_128(shy0, shy1);
             auto [shz2, shz3] = avx::unpack_128(shy2, shy3);
 
-            avx::cxstore<PackSize>(source + sh0 + offset_first, shz0);
-            avx::cxstore<PackSize>(source + sh1 + offset_first, shz1);
-            avx::cxstore<PackSize>(source + sh4 + offset_first, shz2);
-            avx::cxstore<PackSize>(source + sh5 + offset_first, shz3);
+            avx::cxstore<TMPPackSize>(source + sh0 + offset_first, shz0);
+            avx::cxstore<TMPPackSize>(source + sh1 + offset_first, shz1);
+            avx::cxstore<TMPPackSize>(source + sh4 + offset_first, shz2);
+            avx::cxstore<TMPPackSize>(source + sh5 + offset_first, shz3);
 
             auto [shy4, shy6] = avx::unpack_pd(shx4, shx6);
             auto [shy5, shy7] = avx::unpack_pd(shx5, shx7);
@@ -448,10 +448,10 @@ public:
             auto [shz4, shz5] = avx::unpack_128(shy4, shy5);
             auto [shz6, shz7] = avx::unpack_128(shy6, shy7);
 
-            avx::cxstore<PackSize>(source + sh2 + offset_first, shz4);
-            avx::cxstore<PackSize>(source + sh3 + offset_first, shz5);
-            avx::cxstore<PackSize>(source + sh6 + offset_first, shz6);
-            avx::cxstore<PackSize>(source + sh7 + offset_first, shz7);
+            avx::cxstore<TMPPackSize>(source + sh2 + offset_first, shz4);
+            avx::cxstore<TMPPackSize>(source + sh3 + offset_first, shz5);
+            avx::cxstore<TMPPackSize>(source + sh6 + offset_first, shz6);
+            avx::cxstore<TMPPackSize>(source + sh7 + offset_first, shz7);
         };
 
         for (; i < size() / 64; ++i)
@@ -459,10 +459,10 @@ public:
             using reg_t = avx::cx_reg<float>;
             auto offset = m_sort[i];
 
-            auto p1 = avx::cxload<PackSize>(source + sh1 + offset);
-            auto p3 = avx::cxload<PackSize>(source + sh3 + offset);
-            auto p5 = avx::cxload<PackSize>(source + sh5 + offset);
-            auto p7 = avx::cxload<PackSize>(source + sh7 + offset);
+            auto p1 = avx::cxload<TMPPackSize>(source + sh1 + offset);
+            auto p3 = avx::cxload<TMPPackSize>(source + sh3 + offset);
+            auto p5 = avx::cxload<TMPPackSize>(source + sh5 + offset);
+            auto p7 = avx::cxload<TMPPackSize>(source + sh7 + offset);
 
             if constexpr (!PackedSrc)
             {
@@ -486,10 +486,10 @@ public:
             b5_tw = avx::mul(b5_tw, twsq2);
             b7_tw = avx::mul(b7_tw, twsq2);
 
-            auto p0 = avx::cxload<PackSize>(source + sh0 + offset);
-            auto p2 = avx::cxload<PackSize>(source + sh2 + offset);
-            auto p4 = avx::cxload<PackSize>(source + sh4 + offset);
-            auto p6 = avx::cxload<PackSize>(source + sh6 + offset);
+            auto p0 = avx::cxload<TMPPackSize>(source + sh0 + offset);
+            auto p2 = avx::cxload<TMPPackSize>(source + sh2 + offset);
+            auto p4 = avx::cxload<TMPPackSize>(source + sh4 + offset);
+            auto p6 = avx::cxload<TMPPackSize>(source + sh6 + offset);
 
             if constexpr (!PackedSrc)
             {
@@ -528,10 +528,10 @@ public:
             auto [shc0, shc1] = avx::unpack_128(shb0, shb1);
             auto [shc2, shc3] = avx::unpack_128(shb2, shb3);
 
-            avx::cxstore<PackSize>(source + sh0 + offset, shc0);
-            avx::cxstore<PackSize>(source + sh1 + offset, shc1);
-            avx::cxstore<PackSize>(source + sh4 + offset, shc2);
-            avx::cxstore<PackSize>(source + sh5 + offset, shc3);
+            avx::cxstore<TMPPackSize>(source + sh0 + offset, shc0);
+            avx::cxstore<TMPPackSize>(source + sh1 + offset, shc1);
+            avx::cxstore<TMPPackSize>(source + sh4 + offset, shc2);
+            avx::cxstore<TMPPackSize>(source + sh5 + offset, shc3);
 
             auto [shb4, shb6] = avx::unpack_pd(sha4, sha6);
             auto [shb5, shb7] = avx::unpack_pd(sha5, sha7);
@@ -539,10 +539,10 @@ public:
             auto [shc4, shc5] = avx::unpack_128(shb4, shb5);
             auto [shc6, shc7] = avx::unpack_128(shb6, shb7);
 
-            avx::cxstore<PackSize>(source + sh2 + offset, shc4);
-            avx::cxstore<PackSize>(source + sh3 + offset, shc5);
-            avx::cxstore<PackSize>(source + sh6 + offset, shc6);
-            avx::cxstore<PackSize>(source + sh7 + offset, shc7);
+            avx::cxstore<TMPPackSize>(source + sh2 + offset, shc4);
+            avx::cxstore<TMPPackSize>(source + sh3 + offset, shc5);
+            avx::cxstore<TMPPackSize>(source + sh6 + offset, shc6);
+            avx::cxstore<TMPPackSize>(source + sh7 + offset, shc7);
         }
     }
 
@@ -1315,7 +1315,7 @@ public:
         }
     };
 
-    template<bool PackedDest = true>
+    template<bool PackedDest = true, std::size_t TMPPackSize = PackSize>
     inline auto fixed_size_subtransform4(float* data, std::size_t max_size) -> const
         float*
     {
@@ -1344,10 +1344,10 @@ public:
                     auto* ptr2 = data + pidx(offset + l_size);
                     auto* ptr3 = data + pidx(offset + l_size / 2 * 3);
 
-                    auto p1 = avx::cxload<PackSize>(ptr1);
-                    auto p3 = avx::cxload<PackSize>(ptr3);
-                    auto p0 = avx::cxload<PackSize>(ptr0);
-                    auto p2 = avx::cxload<PackSize>(ptr2);
+                    auto p1 = avx::cxload<TMPPackSize>(ptr1);
+                    auto p3 = avx::cxload<TMPPackSize>(ptr3);
+                    auto p0 = avx::cxload<TMPPackSize>(ptr0);
+                    auto p2 = avx::cxload<TMPPackSize>(ptr2);
 
                     auto p1tw_re = avx::mul(p1.real, tw0.real);
                     auto p3tw_re = avx::mul(p3.real, tw0.real);
@@ -1393,10 +1393,10 @@ public:
                                 avx::packed_to_interleaved(b0, b1, b2, b3);
                         }
                     }
-                    cxstore<PackSize>(ptr0, b0);
-                    cxstore<PackSize>(ptr1, b1);
-                    cxstore<PackSize>(ptr2, b2);
-                    cxstore<PackSize>(ptr3, b3);
+                    cxstore<TMPPackSize>(ptr0, b0);
+                    cxstore<TMPPackSize>(ptr1, b1);
+                    cxstore<TMPPackSize>(ptr2, b2);
+                    cxstore<TMPPackSize>(ptr3, b3);
 
                     offset += l_size * 2;
                 }
@@ -1419,8 +1419,8 @@ public:
                 auto* ptr0 = data + pidx(offset);
                 auto* ptr1 = data + pidx(offset + l_size / 2);
 
-                auto p1 = avx::cxload<PackSize>(ptr1);
-                auto p0 = avx::cxload<PackSize>(ptr0);
+                auto p1 = avx::cxload<TMPPackSize>(ptr1);
+                auto p0 = avx::cxload<TMPPackSize>(ptr0);
 
                 auto p1tw = avx::mul(p1, tw0);
 
@@ -1432,8 +1432,8 @@ public:
                     std::tie(a0, a1) = avx::packed_to_interleaved(a0, a1);
                 }
 
-                cxstore<PackSize>(ptr0, a0);
-                cxstore<PackSize>(ptr1, a1);
+                cxstore<TMPPackSize>(ptr0, a0);
+                cxstore<TMPPackSize>(ptr1, a1);
             }
             l_size *= 2;
             n_groups *= 2;
@@ -1443,12 +1443,12 @@ public:
         return twiddle_ptr;
     };
 
-    template<bool PackedDest>
+    template<bool PackedDest, std::size_t TMPPackSize = PackSize>
     inline auto recursive_subtransform4(float* data, std::size_t size) -> const float*
     {
         if (size <= sub_size())
         {
-            return fixed_size_subtransform4<PackedDest>(data, size);
+            return fixed_size_subtransform4<PackedDest, TMPPackSize>(data, size);
         } else
         {
             recursive_subtransform4<true>(data, size / 4);
@@ -1475,10 +1475,10 @@ public:
                 auto* ptr2 = data + pidx(offset + size / 2);
                 auto* ptr3 = data + pidx(offset + size * 3 / 4);
 
-                auto p1 = avx::cxload<PackSize>(ptr1);
-                auto p3 = avx::cxload<PackSize>(ptr3);
-                auto p0 = avx::cxload<PackSize>(ptr0);
-                auto p2 = avx::cxload<PackSize>(ptr2);
+                auto p1 = avx::cxload<TMPPackSize>(ptr1);
+                auto p3 = avx::cxload<TMPPackSize>(ptr3);
+                auto p0 = avx::cxload<TMPPackSize>(ptr0);
+                auto p2 = avx::cxload<TMPPackSize>(ptr2);
 
                 auto p1tw_re = avx::mul(p1.real, tw0.real);
                 auto p3tw_re = avx::mul(p3.real, tw0.real);
@@ -1521,10 +1521,10 @@ public:
                     std::tie(b0, b1, b2, b3) = avx::packed_to_interleaved(b0, b1, b2, b3);
                 }
 
-                cxstore<PackSize>(ptr0, b0);
-                cxstore<PackSize>(ptr1, b1);
-                cxstore<PackSize>(ptr2, b2);
-                cxstore<PackSize>(ptr3, b3);
+                cxstore<TMPPackSize>(ptr0, b0);
+                cxstore<TMPPackSize>(ptr1, b1);
+                cxstore<TMPPackSize>(ptr2, b2);
+                cxstore<TMPPackSize>(ptr3, b3);
             }
 
             return twiddle_ptr;
