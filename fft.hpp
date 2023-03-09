@@ -134,7 +134,7 @@ public:
     void operator()(std::vector<std::complex<T>, VAllocator>& vector)
     {
         assert(size() == vector.size());
-        fft_internal_binary4<false, reg_size >(reinterpret_cast<T*>(vector.data()));
+        fft_internal_binary4<false, reg_size>(reinterpret_cast<T*>(vector.data()));
     };
 
 
@@ -146,7 +146,7 @@ public:
         auto p3 = avx::cxload<reg_size>(source + reg_size * 6);
         // interleaved_to_packed(p0, p1, p2, p3);
 
-        // std::tie(p0, p1, p2, p3) = interleaved_to_packed(p0, p1, p2, p3);
+        std::tie(p0, p1, p2, p3) = interleaved_to_packed(p0, p1, p2, p3);
 
         std::tie(p0, p1, p2, p3) = packed_to_interleaved(p0, p1, p2, p3);
 
@@ -209,6 +209,7 @@ public:
     void fft_internal_binary4(float* source)
     {
         dept3_and_sort<PackedSrc, TMPPackSize>(source);
+        // return;
         if (size() <= sub_size() || log2i(size() / sub_size()) % 2 == 0)
         {
             recursive_subtransform4<PackedSrc>(source, size());
@@ -284,10 +285,10 @@ public:
             auto offset_first  = m_sort[i];
             auto offset_second = m_sort[i + 1];
 
-            auto p1 = avx::cxload<TMPPackSize>(source + sh1 + offset_first);
-            auto p5 = avx::cxload<TMPPackSize>(source + sh5 + offset_first);
-            auto p3 = avx::cxload<TMPPackSize>(source + sh3 + offset_first);
-            auto p7 = avx::cxload<TMPPackSize>(source + sh7 + offset_first);
+            auto p1 = avx::cxload<PackSize>(source + sh1 + offset_first);
+            auto p5 = avx::cxload<PackSize>(source + sh5 + offset_first);
+            auto p3 = avx::cxload<PackSize>(source + sh3 + offset_first);
+            auto p7 = avx::cxload<PackSize>(source + sh7 + offset_first);
 
             if constexpr (!PackedSrc)
             {
@@ -315,6 +316,11 @@ public:
             auto p4 = avx::cxload<PackSize>(source + sh4 + offset_first);
             auto p2 = avx::cxload<PackSize>(source + sh2 + offset_first);
             auto p6 = avx::cxload<PackSize>(source + sh6 + offset_first);
+
+            if constexpr (!PackedSrc)
+            {
+                std::tie(p0, p4, p2, p6) = interleaved_to_packed(p0, p4, p2, p6);
+            }
 
             auto a0 = avx::add(p0, p4);
             auto a4 = avx::sub(p0, p4);
@@ -356,6 +362,10 @@ public:
             auto q5 = avx::cxload<PackSize>(source + sh5 + offset_second);
             avx::cxstore<PackSize>(source + sh5 + offset_second, shc3);
 
+            if constexpr (!PackedSrc)
+            {
+                std::tie(q0, q1, q4, q5) = interleaved_to_packed(q0, q1, q4, q5);
+            }
             auto [shb4, shb6] = avx::unpack_pd(sha4, sha6);
             auto [shb5, shb7] = avx::unpack_pd(sha5, sha7);
 
@@ -372,6 +382,11 @@ public:
             avx::cxstore<PackSize>(source + sh6 + offset_second, shc6);
             auto q7 = avx::cxload<PackSize>(source + sh7 + offset_second);
             avx::cxstore<PackSize>(source + sh7 + offset_second, shc7);
+
+            if constexpr (!PackedSrc)
+            {
+                std::tie(q2, q3, q6, q7) = interleaved_to_packed(q2, q3, q6, q7);
+            }
 
             auto x5 = avx::sub(q1, q5);
             auto x1 = avx::add(q1, q5);
@@ -450,6 +465,11 @@ public:
             auto p5 = avx::cxload<PackSize>(source + sh5 + offset);
             auto p7 = avx::cxload<PackSize>(source + sh7 + offset);
 
+            if constexpr (!PackedSrc)
+            {
+                std::tie(p1, p3, p5, p7) = interleaved_to_packed(p1, p3, p5, p7);
+            }
+
             auto a5 = avx::sub(p1, p5);
             auto a1 = avx::add(p1, p5);
             auto a7 = avx::sub(p3, p7);
@@ -472,10 +492,16 @@ public:
             auto p4 = avx::cxload<PackSize>(source + sh4 + offset);
             auto p6 = avx::cxload<PackSize>(source + sh6 + offset);
 
+            if constexpr (!PackedSrc)
+            {
+                std::tie(p0, p4, p2, p6) = interleaved_to_packed(p0, p4, p2, p6);
+            }
+
             auto a0 = avx::add(p0, p4);
             auto a4 = avx::sub(p0, p4);
             auto a2 = avx::add(p2, p6);
             auto a6 = avx::sub(p2, p6);
+
 
             auto  b0 = avx::add(a0, a2);
             auto  b2 = avx::sub(a0, a2);
@@ -1618,10 +1644,10 @@ public:
 
                     if constexpr (!PackedDest)
                     {
-                        if (l_size * 4 == max_size)
+                        if (l_size * 2 == max_size)
                         {
                             std::tie(b0, b1, b2, b3) =
-                                interleaved_to_packed(b0, b1, b2, b3);
+                                packed_to_interleaved(b0, b1, b2, b3);
                         }
                     }
                     cxstore<PackSize>(ptr0, b0);
@@ -1660,7 +1686,7 @@ public:
 
                 if constexpr (!PackedDest)
                 {
-                    std::tie(a0, a1) = interleaved_to_packed(a0, a1);
+                    std::tie(a0, a1) = packed_to_interleaved(a0, a1);
                 }
 
                 cxstore<PackSize>(ptr0, a0);
@@ -1749,7 +1775,7 @@ public:
 
                 if constexpr (!PackedDest)
                 {
-                    std::tie(b0, b1, b2, b3) = interleaved_to_packed(b0, b1, b2, b3);
+                    std::tie(b0, b1, b2, b3) = packed_to_interleaved(b0, b1, b2, b3);
                 }
 
                 cxstore<PackSize>(ptr0, b0);
