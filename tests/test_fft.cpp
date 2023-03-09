@@ -264,8 +264,22 @@ int test_fftu_float(std::size_t size)
     auto unit = pcx::fft_unit<float, pcx::dynamic_size, 64>(size);
 
     auto ffu = fftu(vec);
+    vec_out   = vec;
     unit.unsorted_linear(vec_out);
 
+    for (uint i = 0; i < size; ++i)
+    {
+        auto val = std::complex<float>(ffu[i].value());
+        if (!equal_eps(val, vec_out[i].value(), 1U))
+        {
+            std::cout << size << " #" << i << ": " << abs(val - vec_out[i].value())
+                      << "  " << val << vec_out[i].value() << "\n";
+            return 1;
+        }
+    }
+
+    vec_out   = vec;
+    unit.unsorted(vec_out);
     for (uint i = 0; i < size; ++i)
     {
         auto val = std::complex<float>(ffu[i].value());
@@ -288,7 +302,7 @@ int main()
         std::cout << (1U << i) << "\n";
         // ret += test_fft_float4(1U << i);
         ret += test_fft_float(1U << i);
-        // ret += test_fftu_float(1U << i);
+        ret += test_fftu_float(1U << i);
         if (ret > 0)
         {
             return ret;

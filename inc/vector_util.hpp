@@ -5,6 +5,7 @@
 #include <complex>
 #include <cstring>
 #include <immintrin.h>
+#include <tuple>
 
 namespace pcx {
 
@@ -155,7 +156,6 @@ namespace avx {
         return _mm256_permute2f128_pd(a, b, 0b00110001);
     };
 
-
     inline auto unpack_ps(cx_reg<float> a, cx_reg<float> b)
         -> std::array<cx_reg<float>, 2>
     {
@@ -188,6 +188,61 @@ namespace avx {
 
         return {cx_reg<float>({real_lo, imag_lo}), cx_reg<float>({real_hi, imag_hi})};
     };
+
+    namespace interleaved {
+        template<typename T>
+        inline auto swap_128(cx_reg<T> reg) -> std::tuple<cx_reg<T>>
+        {
+            auto real = unpacklo_128(reg.real, reg.imag);
+            auto imag = unpackhi_128(reg.real, reg.imag);
+            return cx_reg<T>({real, imag});
+        }
+        template<typename T, typename... Args>
+        inline auto swap_128(cx_reg<T> arg0, Args... args)
+        {
+            return std::tuple_cat(interleaved::swap_128(arg0), interleaved::swap_128(args...));
+        }
+
+        template<typename T>
+        inline auto pack_ps(cx_reg<T> reg) -> std::tuple<cx_reg<T>>
+        {
+            auto real = _mm256_shuffle_ps(reg.real, reg.imag, 0b10001000);
+            auto imag = _mm256_shuffle_ps(reg.real, reg.imag, 0b11011101);
+            return cx_reg<T>({real, imag});
+        }
+        template<typename T, typename... Args>
+        inline auto pack_ps(cx_reg<T> arg0, Args... args)
+        {
+            return std::tuple_cat(interleaved::pack_ps(arg0), interleaved::pack_ps(args...));
+        }
+
+        template<typename T>
+        inline auto unpack_ps(cx_reg<T> reg) -> std::tuple<cx_reg<T>>
+        {
+            auto real = unpacklo_ps(reg.real, reg.imag);
+            auto imag = unpackhi_ps(reg.real, reg.imag);
+            return cx_reg<T>({real, imag});
+        }
+        template<typename T, typename... Args>
+        inline auto unpack_ps(cx_reg<T> arg0, Args... args)
+        {
+            return std::tuple_cat(interleaved::unpack_ps(arg0), interleaved::unpack_ps(args...));
+        }
+    }    // namespace interleaved
+
+    template<typename... Args>
+    inline auto interleaved_to_packed(Args... args)
+    {
+        auto a128 = interleaved::swap_128(args...);
+        return std::apply([](auto... a) { return interleaved::pack_ps(a...); }, a128);
+    }
+
+    template<typename... Args>
+    inline auto packed_to_interleaved(Args... args)
+    {
+        auto as = interleaved::unpack_ps(args...);
+        return std::apply([](auto... a) { return interleaved::swap_128(a...); }, as);
+    }
 
 }    // namespace avx
 
