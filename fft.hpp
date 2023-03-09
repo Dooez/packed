@@ -130,6 +130,14 @@ public:
         // fixed_size_unsorted(vector.data(), size(), m_twiddles_unsorted.data());
     };
 
+    template<typename VAllocator>
+    void operator()(std::vector<std::complex<T>, VAllocator>& vector)
+    {
+        assert(size() == vector.size());
+        fft_internal_binary4<false, reg_size >(reinterpret_cast<T*>(vector.data()));
+    };
+
+
     void test_itrlv(float* source)
     {
         auto p0 = avx::cxload<reg_size>(source);
@@ -203,12 +211,12 @@ public:
         dept3_and_sort<PackedSrc, TMPPackSize>(source);
         if (size() <= sub_size() || log2i(size() / sub_size()) % 2 == 0)
         {
-            recursive_subtransform4(source, size());
+            recursive_subtransform4<PackedSrc>(source, size());
         } else
         {
-            recursive_subtransform4(source, size() / 2);
+            recursive_subtransform4<true>(source, size() / 2);
             auto twiddle_ptr =
-                recursive_subtransform4(source + pidx(size() / 2), size() / 2);
+                recursive_subtransform4<true>(source + pidx(size() / 2), size() / 2);
             std::size_t n_groups = size() / reg_size / 2;
 
             for (std::size_t i_group = 0; i_group < n_groups; ++i_group)
@@ -228,6 +236,11 @@ public:
 
                 auto a0 = avx::add(p0, p1tw);
                 auto a1 = avx::sub(p0, p1tw);
+
+                if constexpr (!PackedSrc)
+                {
+                    std::tie(a0, a1) = packed_to_interleaved(a0, a1);
+                }
 
                 cxstore<PackSize>(ptr0, a0);
                 cxstore<PackSize>(ptr1, a1);
@@ -1533,6 +1546,7 @@ public:
         }
     };
 
+    template<bool PackedDest = true>
     inline auto fixed_size_subtransform4(float* data, std::size_t max_size) -> const
         float*
     {
@@ -1602,6 +1616,14 @@ public:
                     auto b1 = avx::add(a1, a3tw);
                     auto b3 = avx::sub(a1, a3tw);
 
+                    if constexpr (!PackedDest)
+                    {
+                        if (l_size * 4 == max_size)
+                        {
+                            std::tie(b0, b1, b2, b3) =
+                                interleaved_to_packed(b0, b1, b2, b3);
+                        }
+                    }
                     cxstore<PackSize>(ptr0, b0);
                     cxstore<PackSize>(ptr1, b1);
                     cxstore<PackSize>(ptr2, b2);
@@ -1636,6 +1658,11 @@ public:
                 auto a0 = avx::add(p0, p1tw);
                 auto a1 = avx::sub(p0, p1tw);
 
+                if constexpr (!PackedDest)
+                {
+                    std::tie(a0, a1) = interleaved_to_packed(a0, a1);
+                }
+
                 cxstore<PackSize>(ptr0, a0);
                 cxstore<PackSize>(ptr1, a1);
             }
@@ -1647,18 +1674,19 @@ public:
         return twiddle_ptr;
     };
 
+    template<bool PackedDest>
     inline auto recursive_subtransform4(float* data, std::size_t size) -> const float*
     {
         if (size <= sub_size())
         {
-            return fixed_size_subtransform4(data, size);
+            return fixed_size_subtransform4<PackedDest>(data, size);
         } else
         {
-            recursive_subtransform4(data, size / 4);
-            recursive_subtransform4(data + pidx(size / 4), size / 4);
-            recursive_subtransform4(data + pidx(size / 2), size / 4);
+            recursive_subtransform4<true>(data, size / 4);
+            recursive_subtransform4<true>(data + pidx(size / 4), size / 4);
+            recursive_subtransform4<true>(data + pidx(size / 2), size / 4);
             auto twiddle_ptr =
-                recursive_subtransform4(data + pidx(3 * size / 4), size / 4);
+                recursive_subtransform4<true>(data + pidx(3 * size / 4), size / 4);
 
 
             std::size_t n_groups = size / reg_size / 4;
@@ -1718,6 +1746,11 @@ public:
                 auto b2 = avx::sub(a0, a2tw);
                 auto b1 = avx::add(a1, a3tw);
                 auto b3 = avx::sub(a1, a3tw);
+
+                if constexpr (!PackedDest)
+                {
+                    std::tie(b0, b1, b2, b3) = interleaved_to_packed(b0, b1, b2, b3);
+                }
 
                 cxstore<PackSize>(ptr0, b0);
                 cxstore<PackSize>(ptr1, b1);
@@ -3055,8 +3088,6 @@ private:
     {
         return std::tuple_cat(upack_s(arg0), upack_s(args...));
     }
-
-
 };
 
 
