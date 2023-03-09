@@ -215,8 +215,9 @@ public:
         } else
         {
             recursive_subtransform4<true>(source, size() / 2);
-            auto twiddle_ptr =
-                recursive_subtransform4<true>(source + pidx(size() / 2), size() / 2);
+            auto twiddle_ptr = recursive_subtransform4<true>(
+                source + reg_offset<TMPPackSize>(size() / 2 / reg_size),
+                size() / 2);
             std::size_t n_groups = size() / reg_size / 2;
 
             for (std::size_t i_group = 0; i_group < n_groups; ++i_group)
@@ -226,8 +227,9 @@ public:
                 const auto tw0 = avx::cxload<reg_size>(twiddle_ptr);
                 twiddle_ptr += reg_size * 2;
 
-                auto* ptr0 = source + pidx(offset);
-                auto* ptr1 = source + pidx(offset + size() / 2);
+                auto* ptr0 = source + reg_offset<TMPPackSize>(i_group);
+                auto* ptr1 =
+                    source + reg_offset<TMPPackSize>(i_group + size() / 2 / reg_size);
 
                 auto p1 = avx::cxload<PackSize>(ptr1);
                 auto p0 = avx::cxload<PackSize>(ptr0);
@@ -267,13 +269,13 @@ public:
         auto       twsq2 = avx::broadcast(sq2.real());
 
         const auto sh0 = 0;
-        const auto sh1 = pidx(1 * size() / 8);
-        const auto sh2 = pidx(2 * size() / 8);
-        const auto sh3 = pidx(3 * size() / 8);
-        const auto sh4 = pidx(4 * size() / 8);
-        const auto sh5 = pidx(5 * size() / 8);
-        const auto sh6 = pidx(6 * size() / 8);
-        const auto sh7 = pidx(7 * size() / 8);
+        const auto sh1 = reg_offset<TMPPackSize>(1 * size() / 64);
+        const auto sh2 = reg_offset<TMPPackSize>(2 * size() / 64);
+        const auto sh3 = reg_offset<TMPPackSize>(3 * size() / 64);
+        const auto sh4 = reg_offset<TMPPackSize>(4 * size() / 64);
+        const auto sh5 = reg_offset<TMPPackSize>(5 * size() / 64);
+        const auto sh6 = reg_offset<TMPPackSize>(6 * size() / 64);
+        const auto sh7 = reg_offset<TMPPackSize>(7 * size() / 64);
 
         uint i = 0;
 
@@ -1452,10 +1454,15 @@ public:
         } else
         {
             recursive_subtransform4<true>(data, size / 4);
-            recursive_subtransform4<true>(data + pidx(size / 4), size / 4);
-            recursive_subtransform4<true>(data + pidx(size / 2), size / 4);
-            auto twiddle_ptr =
-                recursive_subtransform4<true>(data + pidx(3 * size / 4), size / 4);
+            recursive_subtransform4<true>(
+                data + reg_offset<TMPPackSize>(size / 4 / reg_size),
+                size / 4);
+            recursive_subtransform4<true>(
+                data + reg_offset<TMPPackSize>(size / 2 / reg_size),
+                size / 4);
+            auto twiddle_ptr = recursive_subtransform4<true>(
+                data + reg_offset<TMPPackSize>(size * 3 / 4 / reg_size),
+                size / 4);
 
 
             std::size_t n_groups = size / reg_size / 4;
@@ -1463,17 +1470,20 @@ public:
 
             for (std::size_t i_group = 0; i_group < n_groups; ++i_group)
             {
-                std::size_t offset = i_group * reg_size;
+                // std::size_t offset = i_group * reg_size;
 
                 const auto tw0 = avx::cxload<reg_size>(twiddle_ptr);
                 const auto tw1 = avx::cxload<reg_size>(twiddle_ptr + reg_size * 2);
                 const auto tw2 = avx::cxload<reg_size>(twiddle_ptr + reg_size * 4);
                 twiddle_ptr += reg_size * 6;
 
-                auto* ptr0 = data + pidx(offset);
-                auto* ptr1 = data + pidx(offset + size / 4);
-                auto* ptr2 = data + pidx(offset + size / 2);
-                auto* ptr3 = data + pidx(offset + size * 3 / 4);
+                auto* ptr0 = data + reg_offset<TMPPackSize>(i_group);
+                auto* ptr1 =
+                    data + reg_offset<TMPPackSize>(i_group + size / 4 / reg_size);
+                auto* ptr2 =
+                    data + reg_offset<TMPPackSize>(i_group + size / 2 / reg_size);
+                auto* ptr3 =
+                    data + reg_offset<TMPPackSize>(i_group + size * 3 / 4 / reg_size);
 
                 auto p1 = avx::cxload<TMPPackSize>(ptr1);
                 auto p3 = avx::cxload<TMPPackSize>(ptr3);
@@ -2034,9 +2044,26 @@ private:
         }
     }
 
+    template<std::size_t TMPPackSize>
+    static constexpr auto pidx(std::size_t idx) -> std::size_t
+    {
+        return idx + idx / TMPPackSize * TMPPackSize;
+    }
+
     static constexpr auto pidx(std::size_t idx) -> std::size_t
     {
         return idx + idx / PackSize * PackSize;
+    }
+
+    template<std::size_t TMPPackSize>
+    static constexpr auto reg_offset(std::size_t reg_idx) -> std::size_t
+    {
+        return reg_idx * reg_size + (reg_idx * reg_size / PackSize) * PackSize;
+    }
+    template<>
+    static constexpr auto reg_offset<reg_size>(std::size_t reg_idx) -> std::size_t
+    {
+        return reg_idx * reg_size * 2;
     }
 
     static constexpr auto log2i(std::size_t num) -> std::size_t
@@ -2798,7 +2825,6 @@ private:
 
         return twiddles;
     }
-
 };
 
 
