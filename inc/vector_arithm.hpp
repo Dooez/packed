@@ -179,24 +179,15 @@ namespace avx {
         return std::make_tuple(s, d);
     }
 
-    template<typename T>
-    inline auto group(cx_reg<T> arg0, cx_reg<T> arg1)
+    template<typename... Args>
+    inline auto mul(std::initializer_list<Args>... args)
     {
-        return std::make_tuple(std::make_tuple(arg0, arg1));
-    }
-    template<typename T>
-    inline auto group(cx_reg<T> arg0, cx_reg<T> arg1, auto... args)
-    {
-        return std::tuple_cat(group(arg0, arg1), group(args...));
-    }
-
-    inline auto group_mul(auto... args)
-    {
-        auto tup = group(args...);
+        auto tup = std::make_tuple(args...);
 
         auto real_mul = [](auto opearands) {
-            auto lhs  = std::get<0>(opearands);
-            auto rhs  = std::get<1>(opearands);
+
+            auto lhs  = data(opearands)[0];
+            auto rhs  = data(opearands)[1];
             auto real = avx::mul(lhs.real, rhs.real);
             auto imag = avx::mul(lhs.real, rhs.imag);
             return std::make_tuple(lhs, rhs, real, imag);
