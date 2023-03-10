@@ -144,11 +144,10 @@ public:
         auto p1 = avx::cxload<reg_size>(source + reg_size * 2);
         auto p2 = avx::cxload<reg_size>(source + reg_size * 4);
         auto p3 = avx::cxload<reg_size>(source + reg_size * 6);
-        // avx::interleaved_to_packed(p0, p1, p2, p3);
 
-        std::tie(p0, p1, p2, p3) = avx::interleaved_to_packed(p0, p1, p2, p3);
+        std::tie(p0, p1, p2, p3) = avx::convert<float>::interleaved_to_packed(p0, p1, p2, p3);
 
-        std::tie(p0, p1, p2, p3) = avx::packed_to_interleaved(p0, p1, p2, p3);
+        std::tie(p0, p1, p2, p3) = avx::convert<float>::packed_to_interleaved(p0, p1, p2, p3);
 
         avx::cxstore<reg_size>(source, p0);
         avx::cxstore<reg_size>(source + reg_size * 2, p1);
@@ -241,7 +240,7 @@ public:
 
                 if constexpr (!PackedSrc)
                 {
-                    std::tie(a0, a1) = avx::packed_to_interleaved(a0, a1);
+                    std::tie(a0, a1) = avx::convert<float>::packed_to_interleaved(a0, a1);
                 }
 
                 cxstore<PackSize>(ptr0, a0);
@@ -293,7 +292,7 @@ public:
 
             if constexpr (!PackedSrc)
             {
-                std::tie(p1, p5, p3, p7) = avx::interleaved_to_packed(p1, p5, p3, p7);
+                std::tie(p1, p5, p3, p7) = avx::convert<float>::interleaved_to_packed(p1, p5, p3, p7);
             }
 
             auto a5 = avx::sub(p1, p5);
@@ -320,7 +319,7 @@ public:
 
             if constexpr (!PackedSrc)
             {
-                std::tie(p0, p4, p2, p6) = avx::interleaved_to_packed(p0, p4, p2, p6);
+                std::tie(p0, p4, p2, p6) = avx::convert<float>::interleaved_to_packed(p0, p4, p2, p6);
             }
 
             auto a0 = avx::add(p0, p4);
@@ -365,7 +364,7 @@ public:
 
             if constexpr (!PackedSrc)
             {
-                std::tie(q0, q1, q4, q5) = avx::interleaved_to_packed(q0, q1, q4, q5);
+                std::tie(q0, q1, q4, q5) = avx::convert<float>::interleaved_to_packed(q0, q1, q4, q5);
             }
             auto [shb4, shb6] = avx::unpack_pd(sha4, sha6);
             auto [shb5, shb7] = avx::unpack_pd(sha5, sha7);
@@ -386,7 +385,7 @@ public:
 
             if constexpr (!PackedSrc)
             {
-                std::tie(q2, q3, q6, q7) = avx::interleaved_to_packed(q2, q3, q6, q7);
+                std::tie(q2, q3, q6, q7) = avx::convert<float>::interleaved_to_packed(q2, q3, q6, q7);
             }
 
             auto x5 = avx::sub(q1, q5);
@@ -468,7 +467,7 @@ public:
 
             if constexpr (!PackedSrc)
             {
-                std::tie(p1, p3, p5, p7) = avx::interleaved_to_packed(p1, p3, p5, p7);
+                std::tie(p1, p3, p5, p7) = avx::convert<float>::interleaved_to_packed(p1, p3, p5, p7);
             }
 
             auto a5 = avx::sub(p1, p5);
@@ -495,7 +494,7 @@ public:
 
             if constexpr (!PackedSrc)
             {
-                std::tie(p0, p4, p2, p6) = avx::interleaved_to_packed(p0, p4, p2, p6);
+                std::tie(p0, p4, p2, p6) = avx::convert<float>::interleaved_to_packed(p0, p4, p2, p6);
             }
 
             auto a0 = avx::add(p0, p4);
@@ -1392,7 +1391,7 @@ public:
                         if (l_size * 2 == max_size)
                         {
                             std::tie(b0, b1, b2, b3) =
-                                avx::packed_to_interleaved(b0, b1, b2, b3);
+                                avx::convert<float>::packed_to_interleaved(b0, b1, b2, b3);
                         }
                     }
                     cxstore<TMPPackSize>(ptr0, b0);
@@ -1431,7 +1430,7 @@ public:
 
                 if constexpr (!PackedDest)
                 {
-                    std::tie(a0, a1) = avx::packed_to_interleaved(a0, a1);
+                    std::tie(a0, a1) = avx::convert<float>::packed_to_interleaved(a0, a1);
                 }
 
                 cxstore<TMPPackSize>(ptr0, a0);
@@ -1528,7 +1527,7 @@ public:
 
                 if constexpr (!PackedDest)
                 {
-                    std::tie(b0, b1, b2, b3) = avx::packed_to_interleaved(b0, b1, b2, b3);
+                    std::tie(b0, b1, b2, b3) = avx::convert<float>::packed_to_interleaved(b0, b1, b2, b3);
                 }
 
                 cxstore<TMPPackSize>(ptr0, b0);
