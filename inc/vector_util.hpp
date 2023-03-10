@@ -1,8 +1,6 @@
 #ifndef VECTOR_UTIL_HPP
 #define VECTOR_UTIL_HPP
 
-#include "apply_for_each.hpp"
-
 #include <array>
 #include <complex>
 #include <cstring>
@@ -36,6 +34,39 @@ class iterator;
 
 template<typename T, bool Const, std::size_t Size, std::size_t PackSize>
 class subrange;
+
+namespace internal {
+    template<std::size_t I>
+    auto extract(auto arg0)
+    {
+        return std::make_tuple(std::get<I>(arg0));
+    }
+    template<std::size_t I>
+    auto extract(auto arg0, auto... args)
+    {
+        return std::tuple_cat(extract<I>(arg0), extract<I>(args...));
+    }
+
+    template<std::size_t N, typename T>
+    auto apply_for_each_(auto& callable, T arg0, auto... args)
+    {
+        auto row = extract<N>(arg0, args...);
+        auto res = std::make_tuple(std::apply(callable, row));
+        if constexpr (N < std::tuple_size_v<T> - 1)
+        {
+            return std::tuple_cat(res, apply_for_each_<N + 1>(callable, arg0, args...));
+        } else
+        {
+            return res;
+        }
+    }
+    template<typename C, typename... T>
+    auto apply_for_each(C& callable, T... args)
+    {
+        return apply_for_each_<0>(callable, args...);
+    }
+
+}    // namespace internal
 
 /**
  * @brief alias for templated avx2 types and functions
@@ -197,7 +228,7 @@ namespace avx {
         static inline auto packed_to_interleaved(auto... args);
         static inline auto interleaved_to_packed(auto... args);
     };
-    
+
     template<>
     struct convert<float>
     {
@@ -216,8 +247,8 @@ namespace avx {
                 return cx_reg<float>({real, imag});
             };
 
-            auto tmp = apply_for_each(unpack_ps, tup);
-            return apply_for_each(unpack_128, tmp);
+            auto tmp = internal::apply_for_each(unpack_ps, tup);
+            return internal::apply_for_each(unpack_128, tmp);
         }
 
         static inline auto interleaved_to_packed(auto... args)
@@ -235,8 +266,8 @@ namespace avx {
                 return cx_reg<float>({real, imag});
             };
 
-            auto tmp = apply_for_each(pack_128, tup);
-            return apply_for_each(pack_ps, tmp);
+            auto tmp = internal::apply_for_each(pack_128, tup);
+            return internal::apply_for_each(pack_ps, tmp);
         }
     };
 }    // namespace avx

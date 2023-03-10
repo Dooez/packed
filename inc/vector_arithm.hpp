@@ -171,6 +171,53 @@ namespace avx {
         return {avx::div(lhs.real, rhs), avx::div(lhs.imag, rhs)};
     }
 
+    template<typename T>
+    inline auto btfly(cx_reg<T> lhs, cx_reg<T> rhs)
+    {
+        auto s = add(lhs, rhs);
+        auto d = sub(lhs, rhs);
+        return std::make_tuple(s, d);
+    }
+
+    template<typename T>
+    inline auto group(cx_reg<T> arg0, cx_reg<T> arg1)
+    {
+        return std::make_tuple(std::make_tuple(arg0, arg1));
+    }
+    template<typename T>
+    inline auto group(cx_reg<T> arg0, cx_reg<T> arg1, auto... args)
+    {
+        return std::tuple_cat(group(arg0, arg1), group(args...));
+    }
+
+    inline auto group_mul(auto... args)
+    {
+        auto tup = group(args...);
+
+        auto real_mul = [](auto opearands) {
+            auto lhs  = std::get<0>(opearands);
+            auto rhs  = std::get<1>(opearands);
+            auto real = avx::mul(lhs.real, rhs.real);
+            auto imag = avx::mul(lhs.real, rhs.imag);
+            return std::make_tuple(lhs, rhs, real, imag);
+        };
+
+        auto imag_mul = [](auto opearands) {
+            auto lhs   = std::get<0>(opearands);
+            auto rhs   = std::get<1>(opearands);
+            auto real_ = std::get<2>(opearands);
+            auto imag_ = std::get<3>(opearands);
+
+            using reg_t = decltype(lhs);
+
+            auto real = avx::fnmadd(lhs.imag, rhs.imag, real_);
+            auto imag = avx::fmadd(lhs.imag, rhs.real, imag_);
+            return reg_t{real, imag};
+        };
+        auto tmp = internal::apply_for_each(real_mul, tup);
+        return internal::apply_for_each(imag_mul, tmp);
+    }
+
 }    // namespace avx
 
 namespace internal {
