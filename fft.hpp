@@ -198,7 +198,7 @@ public:
 
                 if constexpr (!PackedSrc)
                 {
-                    std::tie(a0, a1) = avx::packed_to_interleaved(a0, a1);
+                    std::tie(a0, a1) = avx::convert<T>::packed_to_interleaved(a0, a1);
                 }
 
                 cxstore<PackSize>(ptr0, a0);
@@ -243,7 +243,7 @@ public:
 
                 if constexpr (!PackedSrc)
                 {
-                    std::tie(a0, a1) = avx::packed_to_interleaved(a0, a1);
+                    std::tie(a0, a1) = avx::convert<T>::packed_to_interleaved(a0, a1);
                 }
 
                 cxstore<PackSize>(ptr0, a0);
@@ -283,7 +283,7 @@ public:
 
             if constexpr (!PackedSrc)
             {
-                std::tie(p1, p5, p3, p7) = avx::interleaved_to_packed(p1, p5, p3, p7);
+                std::tie(p1, p5, p3, p7) = avx::convert<T>::interleaved_to_packed(p1, p5, p3, p7);
             }
 
             auto a5 = avx::sub(p1, p5);
@@ -310,7 +310,7 @@ public:
 
             if constexpr (!PackedSrc)
             {
-                std::tie(p0, p4, p2, p6) = avx::interleaved_to_packed(p0, p4, p2, p6);
+                std::tie(p0, p4, p2, p6) = avx::convert<T>::interleaved_to_packed(p0, p4, p2, p6);
             }
 
             auto a0 = avx::add(p0, p4);
@@ -355,7 +355,7 @@ public:
 
             if constexpr (!PackedSrc)
             {
-                std::tie(q0, q1, q4, q5) = avx::interleaved_to_packed(q0, q1, q4, q5);
+                std::tie(q0, q1, q4, q5) = avx::convert<T>::interleaved_to_packed(q0, q1, q4, q5);
             }
 
             auto [shb4, shb6] = avx::unpack_pd(sha4, sha6);
@@ -377,7 +377,7 @@ public:
 
             if constexpr (!PackedSrc)
             {
-                std::tie(q2, q3, q6, q7) = avx::interleaved_to_packed(q2, q3, q6, q7);
+                std::tie(q2, q3, q6, q7) = avx::convert<T>::interleaved_to_packed(q2, q3, q6, q7);
             }
 
             auto x5 = avx::sub(q1, q5);
@@ -459,7 +459,7 @@ public:
 
             if constexpr (!PackedSrc)
             {
-                std::tie(p1, p3, p5, p7) = avx::interleaved_to_packed(p1, p3, p5, p7);
+                std::tie(p1, p3, p5, p7) = avx::convert<T>::interleaved_to_packed(p1, p3, p5, p7);
             }
 
             auto a5 = avx::sub(p1, p5);
@@ -486,7 +486,7 @@ public:
 
             if constexpr (!PackedSrc)
             {
-                std::tie(p0, p4, p2, p6) = avx::interleaved_to_packed(p0, p4, p2, p6);
+                std::tie(p0, p4, p2, p6) = avx::convert<T>::interleaved_to_packed(p0, p4, p2, p6);
             }
 
             auto a0 = avx::add(p0, p4);
@@ -572,7 +572,7 @@ public:
 
                 if constexpr (!PackedSrc)
                 {
-                    std::tie(p1, p5, p3, p7) = avx::interleaved_to_packed(p1, p5, p3, p7);
+                    std::tie(p1, p5, p3, p7) = avx::convert<T>::interleaved_to_packed(p1, p5, p3, p7);
                 }
 
                 auto a5 = avx::sub(p1, p5);
@@ -599,7 +599,7 @@ public:
 
                 if constexpr (!PackedSrc)
                 {
-                    std::tie(p0, p4, p2, p6) = avx::interleaved_to_packed(p0, p4, p2, p6);
+                    std::tie(p0, p4, p2, p6) = avx::convert<T>::interleaved_to_packed(p0, p4, p2, p6);
                 }
 
                 auto a0 = avx::add(p0, p4);
@@ -663,7 +663,7 @@ public:
 
             if constexpr (!PackedSrc)
             {
-                std::tie(p1, p5, p3, p7) = avx::interleaved_to_packed(p1, p5, p3, p7);
+                std::tie(p1, p5, p3, p7) = avx::convert<T>::interleaved_to_packed(p1, p5, p3, p7);
             }
 
             auto a5 = avx::sub(p1, p5);
@@ -690,7 +690,7 @@ public:
 
             if constexpr (!PackedSrc)
             {
-                std::tie(p0, p4, p2, p6) = avx::interleaved_to_packed(p0, p4, p2, p6);
+                std::tie(p0, p4, p2, p6) = avx::convert<T>::interleaved_to_packed(p0, p4, p2, p6);
             }
 
             auto a0 = avx::add(p0, p4);
@@ -816,7 +816,7 @@ public:
                         if (l_size * 2 == max_size)
                         {
                             std::tie(b0, b1, b2, b3) =
-                                avx::packed_to_interleaved(b0, b1, b2, b3);
+                                avx::convert<T>::packed_to_interleaved(b0, b1, b2, b3);
                         }
                     }
                     cxstore<TMPPackSize>(ptr0, b0);
@@ -855,7 +855,7 @@ public:
 
                 if constexpr (!PackedDest)
                 {
-                    std::tie(a0, a1) = avx::packed_to_interleaved(a0, a1);
+                    std::tie(a0, a1) = avx::convert<T>::packed_to_interleaved(a0, a1);
                 }
 
                 cxstore<TMPPackSize>(ptr0, a0);
@@ -948,7 +948,7 @@ public:
 
                 if constexpr (!PackedDest)
                 {
-                    std::tie(b0, b1, b2, b3) = avx::packed_to_interleaved(b0, b1, b2, b3);
+                    std::tie(b0, b1, b2, b3) = avx::convert<T>::packed_to_interleaved(b0, b1, b2, b3);
                 }
 
                 cxstore<TMPPackSize>(ptr0, b0);
@@ -1005,7 +1005,7 @@ public:
                     if constexpr (!PackedSrc)
                     {
                         std::tie(p1, p3, p0, p2) =
-                            avx::interleaved_to_packed(p1, p3, p0, p2);
+                            avx::convert<T>::interleaved_to_packed(p1, p3, p0, p2);
                     }
 
                     auto p1tw_re = avx::mul(p1.real, tw0.real);
@@ -1077,7 +1077,7 @@ public:
                     {
                         if (size == reg_size * 8)
                         {
-                            std::tie(p1, p0) = avx::interleaved_to_packed(p1, p0);
+                            std::tie(p1, p0) = avx::convert<T>::interleaved_to_packed(p1, p0);
                         }
                     }
 
@@ -1220,7 +1220,7 @@ public:
                 if constexpr (!PackedDest)
                 {
                     std::tie(she0, she1, she2, she3) =
-                        avx::packed_to_interleaved(she0, she1, she2, she3);
+                        avx::convert<T>::packed_to_interleaved(she0, she1, she2, she3);
                 }
 
                 cxstore<TMPPackSize>(ptr0, she0);
@@ -1264,7 +1264,7 @@ public:
 
                 if constexpr (!PackedSrc)
                 {
-                    std::tie(p1, p0) = avx::interleaved_to_packed(p1, p0);
+                    std::tie(p1, p0) = avx::convert<T>::interleaved_to_packed(p1, p0);
                 }
 
                 auto p1tw = avx::mul(p1, tw0);
