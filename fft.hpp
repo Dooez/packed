@@ -119,6 +119,13 @@ public:
         // subtransform_cached_unsorted(vector.data(), size(), m_twiddles_unsorted.data());
     };
 
+    template<typename VAllocator>
+    void unsorted(std::vector<std::complex<T>, VAllocator>& vector)
+    {
+        assert(size() == vector.size());
+        subtransform_unsorted<false, false, reg_size>(reinterpret_cast<T*>(vector.data()), size(), m_twiddles_unsorted.data());
+    };
+
 
     template<typename VAllocator>
     void operator()(pcx::vector<T, VAllocator, PackSize>&       dest,
@@ -203,7 +210,7 @@ public:
     template<bool PackedSrc, std::size_t TMPPackSize>
     void fft_internal(float* dest, const float* source)
     {
-        dept3_and_sort(dest, source);
+        dept3_and_sort<PackedSrc, TMPPackSize>(dest, source);
         if (size() <= sub_size() || log2i(size() / sub_size()) % 2 == 0)
         {
             subtransform<PackedSrc>(dest, size());
@@ -245,7 +252,7 @@ public:
         }
     };
 
-    template<bool PackedSrc = true, std::size_t TMPPackSize = PackSize>
+    template<bool PackedSrc, std::size_t TMPPackSize = PackSize>
     inline void dept3_and_sort(float* source)
     {
         const auto sq2   = wnk(8, 1);
@@ -532,7 +539,7 @@ public:
         }
     }
 
-    template<bool PackedSrc = true, std::size_t TMPPackSize = PackSize>
+    template<bool PackedSrc, std::size_t TMPPackSize = PackSize>
     inline void dept3_and_sort(float* dest, const float* source)
     {
         const auto sq2   = wnk(8, 1);
@@ -735,7 +742,7 @@ public:
         }
     }
 
-    template<bool PackedDest = true, std::size_t TMPPackSize = PackSize>
+    template<bool PackedDest, std::size_t TMPPackSize = PackSize>
     inline auto subtransform_cached(float* data, std::size_t max_size) -> const float*
     {
         const auto* twiddle_ptr = m_twiddles4.data();
@@ -954,6 +961,9 @@ public:
         }
     };
 
+    template<bool        PackedSrc   = true,
+             bool        PackedDest  = true,
+             std::size_t TMPPackSize = PackSize>
     inline auto subtransform_cached_unsorted(float*       data,
                                              std::size_t  size,
                                              const float* twiddle_ptr) -> const float*
@@ -987,10 +997,16 @@ public:
                     auto* ptr2 = group_ptr + pidx(offset + l_size / 4);
                     auto* ptr3 = group_ptr + pidx(offset + l_size / 4 * 3);
 
-                    auto p1 = avx::cxload<PackSize>(ptr1);
-                    auto p3 = avx::cxload<PackSize>(ptr3);
-                    auto p0 = avx::cxload<PackSize>(ptr0);
-                    auto p2 = avx::cxload<PackSize>(ptr2);
+                    auto p1 = avx::cxload<TMPPackSize>(ptr1);
+                    auto p3 = avx::cxload<TMPPackSize>(ptr3);
+                    auto p0 = avx::cxload<TMPPackSize>(ptr0);
+                    auto p2 = avx::cxload<TMPPackSize>(ptr2);
+
+                    if constexpr (!PackedSrc)
+                    {
+                        std::tie(p1, p3, p0, p2) =
+                            avx::interleaved_to_packed(p1, p3, p0, p2);
+                    }
 
                     auto p1tw_re = avx::mul(p1.real, tw0.real);
                     auto p3tw_re = avx::mul(p3.real, tw0.real);
@@ -1028,10 +1044,10 @@ public:
                     auto b1 = avx::add(a1, a3tw);
                     auto b3 = avx::sub(a1, a3tw);
 
-                    cxstore<PackSize>(ptr0, b0);
-                    cxstore<PackSize>(ptr1, b1);
-                    cxstore<PackSize>(ptr2, b2);
-                    cxstore<PackSize>(ptr3, b3);
+                    cxstore<TMPPackSize>(ptr0, b0);
+                    cxstore<TMPPackSize>(ptr1, b1);
+                    cxstore<TMPPackSize>(ptr2, b2);
+                    cxstore<TMPPackSize>(ptr3, b3);
                 }
             }
             l_size /= 4;
@@ -1054,16 +1070,24 @@ public:
                     auto*       ptr0   = group_ptr + pidx(offset);
                     auto*       ptr1   = group_ptr + pidx(offset + l_size / 2);
 
-                    auto p1 = avx::cxload<PackSize>(ptr1);
-                    auto p0 = avx::cxload<PackSize>(ptr0);
+                    auto p1 = avx::cxload<TMPPackSize>(ptr1);
+                    auto p0 = avx::cxload<TMPPackSize>(ptr0);
+
+                    if constexpr (!PackedSrc)
+                    {
+                        if (size == reg_size * 8)
+                        {
+                            std::tie(p1, p0) = avx::interleaved_to_packed(p1, p0);
+                        }
+                    }
 
                     auto p1tw = avx::mul(p1, tw0);
 
                     auto a0 = avx::add(p0, p1tw);
                     auto a1 = avx::sub(p0, p1tw);
 
-                    cxstore<PackSize>(ptr0, a0);
-                    cxstore<PackSize>(ptr1, a1);
+                    cxstore<TMPPackSize>(ptr0, a0);
+                    cxstore<TMPPackSize>(ptr1, a1);
                 }
             }
             l_size /= 2;
@@ -1096,13 +1120,13 @@ public:
                 reg_t tw4   = {avx::unpacklo_128(tw4_1.real, tw4_2.real),
                                avx::unpacklo_128(tw4_1.imag, tw4_2.imag)};
 
-                auto tw56 = avx::cxload<PackSize>(twiddle_ptr);
+                auto tw56 = avx::cxload<reg_size>(twiddle_ptr);
                 twiddle_ptr += reg_size * 2;
                 auto [tw5, tw6] = avx::unpack_ps(tw56, tw56);
 
-                auto tw7 = avx::cxload<PackSize>(twiddle_ptr);
+                auto tw7 = avx::cxload<reg_size>(twiddle_ptr);
                 twiddle_ptr += reg_size * 2;
-                auto tw8 = avx::cxload<PackSize>(twiddle_ptr);
+                auto tw8 = avx::cxload<reg_size>(twiddle_ptr);
                 twiddle_ptr += reg_size * 2;
 
                 std::size_t offset = i_group * reg_size * 4;
@@ -1112,10 +1136,10 @@ public:
                 auto* ptr2 = data + pidx(offset + reg_size * 2);
                 auto* ptr3 = data + pidx(offset + reg_size * 3);
 
-                auto p2 = avx::cxload<PackSize>(ptr2);
-                auto p3 = avx::cxload<PackSize>(ptr3);
-                auto p0 = avx::cxload<PackSize>(ptr0);
-                auto p1 = avx::cxload<PackSize>(ptr1);
+                auto p2 = avx::cxload<TMPPackSize>(ptr2);
+                auto p3 = avx::cxload<TMPPackSize>(ptr3);
+                auto p0 = avx::cxload<TMPPackSize>(ptr0);
+                auto p1 = avx::cxload<TMPPackSize>(ptr1);
 
                 auto p2tw_re = avx::mul(p2.real, tw0.real);
                 auto p3tw_re = avx::mul(p3.real, tw0.real);
@@ -1135,12 +1159,6 @@ public:
                 auto a0 = avx::add(p0, p2tw);
                 auto a2 = avx::sub(p0, p2tw);
 
-                // cxstore<PackSize>(ptr0, a0);
-                // cxstore<PackSize>(ptr1, a1);
-                // cxstore<PackSize>(ptr2, a2);
-                // cxstore<PackSize>(ptr3, a3);
-                // continue;
-
                 auto a1tw_re = avx::mul(a1.real, tw1.real);
                 auto a1tw_im = avx::mul(a1.real, tw1.imag);
                 auto a3tw_re = avx::mul(a3.real, tw2.real);
@@ -1159,12 +1177,6 @@ public:
                 auto b2 = avx::add(a2, a3tw);
                 auto b3 = avx::sub(a2, a3tw);
 
-                // cxstore<PackSize>(ptr0, b0);
-                // cxstore<PackSize>(ptr1, b1);
-                // cxstore<PackSize>(ptr2, b2);
-                // cxstore<PackSize>(ptr3, b3);
-                // continue;
-
                 auto [shb0, shb1] = avx::unpack_128(b0, b1);
                 auto [shb2, shb3] = avx::unpack_128(b2, b3);
 
@@ -1176,14 +1188,6 @@ public:
                 auto c2 = avx::add(shb2, shb3tw);
                 auto c3 = avx::sub(shb2, shb3tw);
 
-                // auto [shcc0, shcc1] = avx::unpack_128(c0, c1);
-                // auto [shcc2, shcc3] = avx::unpack_128(c2, c3);
-                // cxstore<PackSize>(ptr0, shcc0);
-                // cxstore<PackSize>(ptr1, shcc1);
-                // cxstore<PackSize>(ptr2, shcc2);
-                // cxstore<PackSize>(ptr3, shcc3);
-                // continue;
-
                 auto [shc0, shc1] = avx::unpack_pd(c0, c1);
                 auto [shc2, shc3] = avx::unpack_pd(c2, c3);
 
@@ -1194,16 +1198,6 @@ public:
                 auto d1 = avx::sub(shc0, shc1tw);
                 auto d2 = avx::add(shc2, shc3tw);
                 auto d3 = avx::sub(shc2, shc3tw);
-
-                // auto [shdd0, shdd1] = avx::unpack_pd(d0, d1);
-                // auto [shdd2, shdd3] = avx::unpack_pd(d2, d3);
-                // auto [shddd0, shddd1] = avx::unpack_128(shdd0, shdd1);
-                // auto [shddd2, shddd3] = avx::unpack_128(shdd2, shdd3);
-                // cxstore<PackSize>(ptr0, shddd0);
-                // cxstore<PackSize>(ptr1, shddd1);
-                // cxstore<PackSize>(ptr2, shddd2);
-                // cxstore<PackSize>(ptr3, shddd3);
-                // continue;
 
                 auto [shd0s, shd1s] = avx::unpack_ps(d0, d1);
                 auto [shd2s, shd3s] = avx::unpack_ps(d2, d3);
@@ -1223,28 +1217,35 @@ public:
                 auto [she0, she1]   = avx::unpack_128(she0s, she1s);
                 auto [she2, she3]   = avx::unpack_128(she2s, she3s);
 
-                //                 auto [sht0, sht1] = avx::unpack_ps(tw0, tw0);
-                //                 auto [t0, t1]     = avx::unpack_128(sht0, sht1);
-                //
-                //                 auto [sht2, sht3] = avx::unpack_ps(tw0, tw0);
-                //                 auto [t2, t3]     = avx::unpack_128(sht2, sht3);
-                cxstore<PackSize>(ptr0, she0);
-                cxstore<PackSize>(ptr1, she1);
-                cxstore<PackSize>(ptr2, she2);
-                cxstore<PackSize>(ptr3, she3);
+                if constexpr (!PackedDest)
+                {
+                    std::tie(she0, she1, she2, she3) =
+                        avx::packed_to_interleaved(she0, she1, she2, she3);
+                }
+
+                cxstore<TMPPackSize>(ptr0, she0);
+                cxstore<TMPPackSize>(ptr1, she1);
+                cxstore<TMPPackSize>(ptr2, she2);
+                cxstore<TMPPackSize>(ptr3, she3);
             }
         }
 
         return twiddle_ptr;
     }
 
+    template<bool        PackedSrc   = true,
+             bool        PackedDest  = true,
+             std::size_t TMPPackSize = PackSize>
     inline auto subtransform_unsorted(float*       data,
                                       std::size_t  size,
                                       const float* twiddle_ptr) -> const float*
     {
         if (size <= sub_size())
         {
-            return subtransform_cached_unsorted(data, size, twiddle_ptr);
+            return subtransform_cached_unsorted<PackedSrc, PackedDest, TMPPackSize>(
+                data,
+                size,
+                twiddle_ptr);
         } else
         {
             using reg_t = avx::cx_reg<float>;
@@ -1258,21 +1259,31 @@ public:
                 auto* ptr0 = data + pidx(offset);
                 auto* ptr1 = data + pidx(offset + size / 2);
 
-                auto p1 = avx::cxload<PackSize>(ptr1);
-                auto p0 = avx::cxload<PackSize>(ptr0);
+                auto p1 = avx::cxload<TMPPackSize>(ptr1);
+                auto p0 = avx::cxload<TMPPackSize>(ptr0);
+
+                if constexpr (!PackedSrc)
+                {
+                    std::tie(p1, p0) = avx::interleaved_to_packed(p1, p0);
+                }
 
                 auto p1tw = avx::mul(p1, tw0);
 
                 auto a0 = avx::add(p0, p1tw);
                 auto a1 = avx::sub(p0, p1tw);
 
-                // {
-                cxstore<PackSize>(ptr0, a0);
-                cxstore<PackSize>(ptr1, a1);
+                cxstore<TMPPackSize>(ptr0, a0);
+                cxstore<TMPPackSize>(ptr1, a1);
             }
 
-            twiddle_ptr = subtransform_unsorted(data, size / 2, twiddle_ptr);
-            return subtransform_unsorted(data + (size / 2) * 2, size / 2, twiddle_ptr);
+            twiddle_ptr =
+                subtransform_unsorted<true, PackedDest, TMPPackSize>(data,
+                                                                     size / 2,
+                                                                     twiddle_ptr);
+            return subtransform_unsorted<true, PackedDest, TMPPackSize>(
+                data + (size / 2) * 2,
+                size / 2,
+                twiddle_ptr);
         }
     };
 

@@ -197,9 +197,11 @@ int test_fftu_float(std::size_t size)
 
     auto vec     = pcx::vector<float>(size);
     auto vec_out = pcx::vector<float>(size);
+    auto svec_out = std::vector<std::complex<float>>(size);
     for (uint i = 0; i < size; ++i)
     {
         vec[i] = std::exp(std::complex(0.F, 2 * pi * i / size * 13.37F));
+        svec_out[i] = vec[i];
         // vec[i] = 0;
     }
     vec_out   = vec;
@@ -219,6 +221,19 @@ int test_fftu_float(std::size_t size)
             return 1;
         }
     }
+
+    unit.unsorted(svec_out);
+    for (uint i = 0; i < size; ++i)
+    {
+        auto val = std::complex<float>(ffu[i].value());
+        if (!equal_eps(val, svec_out[i], 1U))
+        {
+            std::cout << size << " #" << i << ": " << abs(val - svec_out[i])
+                      << "  " << val << svec_out[i] << "\n";
+            return 1;
+        }
+    }
+
     return 0;
 }
 
