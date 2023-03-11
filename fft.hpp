@@ -123,7 +123,9 @@ public:
     void unsorted(std::vector<std::complex<T>, VAllocator>& vector)
     {
         assert(size() == vector.size());
-        subtransform_unsorted<false, false, reg_size>(reinterpret_cast<T*>(vector.data()), size(), m_twiddles_unsorted.data());
+        subtransform_unsorted<false, false, reg_size>(reinterpret_cast<T*>(vector.data()),
+                                                      size(),
+                                                      m_twiddles_unsorted.data());
     };
 
 
@@ -283,13 +285,12 @@ public:
 
             if constexpr (!PackedSrc)
             {
-                std::tie(p1, p5, p3, p7) = avx::convert<T>::interleaved_to_packed(p1, p5, p3, p7);
+                std::tie(p1, p5, p3, p7) =
+                    avx::convert<T>::interleaved_to_packed(p1, p5, p3, p7);
             }
 
-            auto a5 = avx::sub(p1, p5);
-            auto a1 = avx::add(p1, p5);
-            auto a7 = avx::sub(p3, p7);
-            auto a3 = avx::add(p3, p7);
+            auto [a1, a5] = avx::btfly(p1, p5);
+            auto [a3, a7] = avx::btfly(p3, p7);
 
             reg_t b5 = {avx::add(a5.real, a7.imag), avx::sub(a5.imag, a7.real)};
             reg_t b7 = {avx::sub(a5.real, a7.imag), avx::add(a5.imag, a7.real)};
@@ -297,8 +298,7 @@ public:
             reg_t b5_tw = {avx::add(b5.real, b5.imag), avx::sub(b5.imag, b5.real)};
             reg_t b7_tw = {avx::sub(b7.real, b7.imag), avx::add(b7.real, b7.imag)};
 
-            auto b1 = avx::add(a1, a3);
-            auto b3 = avx::sub(a1, a3);
+            auto [b1, b3] = avx::btfly(a1, a3);
 
             b5_tw = avx::mul(b5_tw, twsq2);
             b7_tw = avx::mul(b7_tw, twsq2);
@@ -310,28 +310,23 @@ public:
 
             if constexpr (!PackedSrc)
             {
-                std::tie(p0, p4, p2, p6) = avx::convert<T>::interleaved_to_packed(p0, p4, p2, p6);
+                std::tie(p0, p4, p2, p6) =
+                    avx::convert<T>::interleaved_to_packed(p0, p4, p2, p6);
             }
 
-            auto a0 = avx::add(p0, p4);
-            auto a4 = avx::sub(p0, p4);
-            auto a2 = avx::add(p2, p6);
-            auto a6 = avx::sub(p2, p6);
+            auto [a0, a4] = avx::btfly(p0, p4);
+            auto [a2, a6] = avx::btfly(p2, p6);
 
-            auto  b0 = avx::add(a0, a2);
-            auto  b2 = avx::sub(a0, a2);
-            reg_t b4 = {avx::add(a4.real, a6.imag), avx::sub(a4.imag, a6.real)};
-            reg_t b6 = {avx::sub(a4.real, a6.imag), avx::add(a4.imag, a6.real)};
+            auto [b0, b2] = avx::btfly(a0, a2);
+            reg_t b4      = {avx::add(a4.real, a6.imag), avx::sub(a4.imag, a6.real)};
+            reg_t b6      = {avx::sub(a4.real, a6.imag), avx::add(a4.imag, a6.real)};
 
-            auto  c0 = avx::add(b0, b1);
-            auto  c1 = avx::sub(b0, b1);
-            reg_t c2 = {avx::add(b2.real, b3.imag), avx::sub(b2.imag, b3.real)};
-            reg_t c3 = {avx::sub(b2.real, b3.imag), avx::add(b2.imag, b3.real)};
+            auto [c0, c1] = avx::btfly(b0, b1);
+            reg_t c2      = {avx::add(b2.real, b3.imag), avx::sub(b2.imag, b3.real)};
+            reg_t c3      = {avx::sub(b2.real, b3.imag), avx::add(b2.imag, b3.real)};
 
-            reg_t c4 = avx::add(b4, b5_tw);
-            reg_t c5 = avx::sub(b4, b5_tw);
-            reg_t c6 = avx::sub(b6, b7_tw);
-            reg_t c7 = avx::add(b6, b7_tw);
+            auto [c4, c5] = avx::btfly(b4, b5_tw);
+            auto [c7, c6] = avx::btfly(b6, b7_tw);
 
             auto [sha0, sha4] = avx::unpack_ps(c0, c4);
             auto [sha2, sha6] = avx::unpack_ps(c2, c6);
@@ -355,7 +350,8 @@ public:
 
             if constexpr (!PackedSrc)
             {
-                std::tie(q0, q1, q4, q5) = avx::convert<T>::interleaved_to_packed(q0, q1, q4, q5);
+                std::tie(q0, q1, q4, q5) =
+                    avx::convert<T>::interleaved_to_packed(q0, q1, q4, q5);
             }
 
             auto [shb4, shb6] = avx::unpack_pd(sha4, sha6);
@@ -377,13 +373,12 @@ public:
 
             if constexpr (!PackedSrc)
             {
-                std::tie(q2, q3, q6, q7) = avx::convert<T>::interleaved_to_packed(q2, q3, q6, q7);
+                std::tie(q2, q3, q6, q7) =
+                    avx::convert<T>::interleaved_to_packed(q2, q3, q6, q7);
             }
 
-            auto x5 = avx::sub(q1, q5);
-            auto x1 = avx::add(q1, q5);
-            auto x7 = avx::sub(q3, q7);
-            auto x3 = avx::add(q3, q7);
+            auto [x1, x5] = avx::btfly(q1, q5);
+            auto [x3, x7] = avx::btfly(q3, q7);
 
             reg_t y5 = {avx::add(x5.real, x7.imag), avx::sub(x5.imag, x7.real)};
             reg_t y7 = {avx::sub(x5.real, x7.imag), avx::add(x5.imag, x7.real)};
@@ -398,26 +393,20 @@ public:
             y5_tw = avx::mul(y5_tw, twsq2);
             y7_tw = avx::mul(y7_tw, twsq2);
 
-            auto x0 = avx::add(q0, q4);
-            auto x4 = avx::sub(q0, q4);
-            auto x2 = avx::add(q2, q6);
-            auto x6 = avx::sub(q2, q6);
+            auto [x0, x4] = avx::btfly(q0, q4);
+            auto [x2, x6] = avx::btfly(q2, q6);
 
-            auto  y0 = avx::add(x0, x2);
-            auto  y2 = avx::sub(x0, x2);
-            reg_t y4 = {avx::add(x4.real, x6.imag), avx::sub(x4.imag, x6.real)};
-            reg_t y6 = {avx::sub(x4.real, x6.imag), avx::add(x4.imag, x6.real)};
+            auto [y0, y2] = avx::btfly(x0, x2);
+            reg_t y4      = {avx::add(x4.real, x6.imag), avx::sub(x4.imag, x6.real)};
+            reg_t y6      = {avx::sub(x4.real, x6.imag), avx::add(x4.imag, x6.real)};
 
-            auto z0 = avx::add(y0, y1);
-            auto z1 = avx::sub(y0, y1);
+            auto [z0, z1] = avx::btfly(y0, y1);
 
             reg_t z2 = {avx::add(y2.real, y3.imag), avx::sub(y2.imag, y3.real)};
             reg_t z3 = {avx::sub(y2.real, y3.imag), avx::add(y2.imag, y3.real)};
 
-            reg_t z4 = avx::add(y4, y5_tw);
-            reg_t z5 = avx::sub(y4, y5_tw);
-            reg_t z6 = avx::sub(y6, y7_tw);
-            reg_t z7 = avx::add(y6, y7_tw);
+            auto [z4, z5] = avx::btfly(y4, y5_tw);
+            auto [z7, z6] = avx::btfly(y6, y7_tw);
 
             auto [shx0, shx4] = avx::unpack_ps(z0, z4);
             auto [shx1, shx5] = avx::unpack_ps(z1, z5);
@@ -459,7 +448,8 @@ public:
 
             if constexpr (!PackedSrc)
             {
-                std::tie(p1, p3, p5, p7) = avx::convert<T>::interleaved_to_packed(p1, p3, p5, p7);
+                std::tie(p1, p3, p5, p7) =
+                    avx::convert<T>::interleaved_to_packed(p1, p3, p5, p7);
             }
 
             auto a5 = avx::sub(p1, p5);
@@ -486,7 +476,8 @@ public:
 
             if constexpr (!PackedSrc)
             {
-                std::tie(p0, p4, p2, p6) = avx::convert<T>::interleaved_to_packed(p0, p4, p2, p6);
+                std::tie(p0, p4, p2, p6) =
+                    avx::convert<T>::interleaved_to_packed(p0, p4, p2, p6);
             }
 
             auto a0 = avx::add(p0, p4);
@@ -572,13 +563,12 @@ public:
 
                 if constexpr (!PackedSrc)
                 {
-                    std::tie(p1, p5, p3, p7) = avx::convert<T>::interleaved_to_packed(p1, p5, p3, p7);
+                    std::tie(p1, p5, p3, p7) =
+                        avx::convert<T>::interleaved_to_packed(p1, p5, p3, p7);
                 }
 
-                auto a5 = avx::sub(p1, p5);
-                auto a1 = avx::add(p1, p5);
-                auto a7 = avx::sub(p3, p7);
-                auto a3 = avx::add(p3, p7);
+                auto [a1, a5] = avx::btfly(p1, p5);
+                auto [a3, a7] = avx::btfly(p3, p7);
 
                 reg_t b5 = {avx::add(a5.real, a7.imag), avx::sub(a5.imag, a7.real)};
                 reg_t b7 = {avx::sub(a5.real, a7.imag), avx::add(a5.imag, a7.real)};
@@ -586,8 +576,7 @@ public:
                 reg_t b5_tw = {avx::add(b5.real, b5.imag), avx::sub(b5.imag, b5.real)};
                 reg_t b7_tw = {avx::sub(b7.real, b7.imag), avx::add(b7.real, b7.imag)};
 
-                auto b1 = avx::add(a1, a3);
-                auto b3 = avx::sub(a1, a3);
+                auto [b1, b3] = avx::btfly(a1, a3);
 
                 b5_tw = avx::mul(b5_tw, twsq2);
                 b7_tw = avx::mul(b7_tw, twsq2);
@@ -599,28 +588,23 @@ public:
 
                 if constexpr (!PackedSrc)
                 {
-                    std::tie(p0, p4, p2, p6) = avx::convert<T>::interleaved_to_packed(p0, p4, p2, p6);
+                    std::tie(p0, p4, p2, p6) =
+                        avx::convert<T>::interleaved_to_packed(p0, p4, p2, p6);
                 }
 
-                auto a0 = avx::add(p0, p4);
-                auto a4 = avx::sub(p0, p4);
-                auto a2 = avx::add(p2, p6);
-                auto a6 = avx::sub(p2, p6);
+                auto [a0, a4] = avx::btfly(p0, p4);
+                auto [a2, a6] = avx::btfly(p2, p6);
 
-                auto  b0 = avx::add(a0, a2);
-                auto  b2 = avx::sub(a0, a2);
-                reg_t b4 = {avx::add(a4.real, a6.imag), avx::sub(a4.imag, a6.real)};
-                reg_t b6 = {avx::sub(a4.real, a6.imag), avx::add(a4.imag, a6.real)};
+                auto [b0, b2] = avx::btfly(a0, a2);
+                reg_t b4      = {avx::add(a4.real, a6.imag), avx::sub(a4.imag, a6.real)};
+                reg_t b6      = {avx::sub(a4.real, a6.imag), avx::add(a4.imag, a6.real)};
 
-                auto  c0 = avx::add(b0, b1);
-                auto  c1 = avx::sub(b0, b1);
-                reg_t c2 = {avx::add(b2.real, b3.imag), avx::sub(b2.imag, b3.real)};
-                reg_t c3 = {avx::sub(b2.real, b3.imag), avx::add(b2.imag, b3.real)};
+                auto [c0, c1] = avx::btfly(b0, b1);
+                reg_t c2      = {avx::add(b2.real, b3.imag), avx::sub(b2.imag, b3.real)};
+                reg_t c3      = {avx::sub(b2.real, b3.imag), avx::add(b2.imag, b3.real)};
 
-                reg_t c4 = avx::add(b4, b5_tw);
-                reg_t c5 = avx::sub(b4, b5_tw);
-                reg_t c6 = avx::sub(b6, b7_tw);
-                reg_t c7 = avx::add(b6, b7_tw);
+                auto [c4, c5] = avx::btfly(b4, b5_tw);
+                auto [c7, c6] = avx::btfly(b6, b7_tw);
 
                 auto [sha0, sha4] = avx::unpack_ps(c0, c4);
                 auto [sha2, sha6] = avx::unpack_ps(c2, c6);
@@ -663,13 +647,12 @@ public:
 
             if constexpr (!PackedSrc)
             {
-                std::tie(p1, p5, p3, p7) = avx::convert<T>::interleaved_to_packed(p1, p5, p3, p7);
+                std::tie(p1, p5, p3, p7) =
+                    avx::convert<T>::interleaved_to_packed(p1, p5, p3, p7);
             }
 
-            auto a5 = avx::sub(p1, p5);
-            auto a1 = avx::add(p1, p5);
-            auto a7 = avx::sub(p3, p7);
-            auto a3 = avx::add(p3, p7);
+            auto [a1, a5] = avx::btfly(p1, p5);
+            auto [a3, a7] = avx::btfly(p3, p7);
 
             reg_t b5 = {avx::add(a5.real, a7.imag), avx::sub(a5.imag, a7.real)};
             reg_t b7 = {avx::sub(a5.real, a7.imag), avx::add(a5.imag, a7.real)};
@@ -677,8 +660,7 @@ public:
             reg_t b5_tw = {avx::add(b5.real, b5.imag), avx::sub(b5.imag, b5.real)};
             reg_t b7_tw = {avx::sub(b7.real, b7.imag), avx::add(b7.real, b7.imag)};
 
-            auto b1 = avx::add(a1, a3);
-            auto b3 = avx::sub(a1, a3);
+            auto [b1, b3] = avx::btfly(a1, a3);
 
             b5_tw = avx::mul(b5_tw, twsq2);
             b7_tw = avx::mul(b7_tw, twsq2);
@@ -690,28 +672,23 @@ public:
 
             if constexpr (!PackedSrc)
             {
-                std::tie(p0, p4, p2, p6) = avx::convert<T>::interleaved_to_packed(p0, p4, p2, p6);
+                std::tie(p0, p4, p2, p6) =
+                    avx::convert<T>::interleaved_to_packed(p0, p4, p2, p6);
             }
 
-            auto a0 = avx::add(p0, p4);
-            auto a4 = avx::sub(p0, p4);
-            auto a2 = avx::add(p2, p6);
-            auto a6 = avx::sub(p2, p6);
+            auto [a0, a4] = avx::btfly(p0, p4);
+            auto [a2, a6] = avx::btfly(p2, p6);
 
-            auto  b0 = avx::add(a0, a2);
-            auto  b2 = avx::sub(a0, a2);
-            reg_t b4 = {avx::add(a4.real, a6.imag), avx::sub(a4.imag, a6.real)};
-            reg_t b6 = {avx::sub(a4.real, a6.imag), avx::add(a4.imag, a6.real)};
+            auto [b0, b2] = avx::btfly(a0, a2);
+            reg_t b4      = {avx::add(a4.real, a6.imag), avx::sub(a4.imag, a6.real)};
+            reg_t b6      = {avx::sub(a4.real, a6.imag), avx::add(a4.imag, a6.real)};
 
-            auto  c0 = avx::add(b0, b1);
-            auto  c1 = avx::sub(b0, b1);
-            reg_t c2 = {avx::add(b2.real, b3.imag), avx::sub(b2.imag, b3.real)};
-            reg_t c3 = {avx::sub(b2.real, b3.imag), avx::add(b2.imag, b3.real)};
+            auto [c0, c1] = avx::btfly(b0, b1);
+            reg_t c2      = {avx::add(b2.real, b3.imag), avx::sub(b2.imag, b3.real)};
+            reg_t c3      = {avx::sub(b2.real, b3.imag), avx::add(b2.imag, b3.real)};
 
-            reg_t c4 = avx::add(b4, b5_tw);
-            reg_t c5 = avx::sub(b4, b5_tw);
-            reg_t c6 = avx::sub(b6, b7_tw);
-            reg_t c7 = avx::add(b6, b7_tw);
+            auto [c4, c5] = avx::btfly(b4, b5_tw);
+            auto [c7, c6] = avx::btfly(b6, b7_tw);
 
             auto [sha0, sha4] = avx::unpack_ps(c0, c4);
             auto [sha2, sha6] = avx::unpack_ps(c2, c6);
@@ -775,41 +752,15 @@ public:
                     auto p0 = avx::cxload<TMPPackSize>(ptr0);
                     auto p2 = avx::cxload<TMPPackSize>(ptr2);
 
-                    auto p1tw_re = avx::mul(p1.real, tw0.real);
-                    auto p3tw_re = avx::mul(p3.real, tw0.real);
-                    auto p1tw_im = avx::mul(p1.real, tw0.imag);
-                    auto p3tw_im = avx::mul(p3.real, tw0.imag);
+                    auto [p1tw, p3tw] = avx::mul({p1, tw0}, {p3, tw0});
 
-                    p1tw_re = avx::fnmadd(p1.imag, tw0.imag, p1tw_re);
-                    p3tw_re = avx::fnmadd(p3.imag, tw0.imag, p3tw_re);
-                    p1tw_im = avx::fmadd(p1.imag, tw0.real, p1tw_im);
-                    p3tw_im = avx::fmadd(p3.imag, tw0.real, p3tw_im);
+                    auto [a2, a3] = avx::btfly(p2, p3tw);
+                    auto [a0, a1] = avx::btfly(p0, p1tw);
 
-                    avx::cx_reg<float> p1tw = {p1tw_re, p1tw_im};
-                    avx::cx_reg<float> p3tw = {p3tw_re, p3tw_im};
+                    auto [a2tw, a3tw] = avx::mul({a2, tw1}, {a3, tw2});
 
-                    auto a2 = avx::add(p2, p3tw);
-                    auto a3 = avx::sub(p2, p3tw);
-                    auto a0 = avx::add(p0, p1tw);
-                    auto a1 = avx::sub(p0, p1tw);
-
-                    auto a2tw_re = avx::mul(a2.real, tw1.real);
-                    auto a2tw_im = avx::mul(a2.real, tw1.imag);
-                    auto a3tw_re = avx::mul(a3.real, tw2.real);
-                    auto a3tw_im = avx::mul(a3.real, tw2.imag);
-
-                    a2tw_re = avx::fnmadd(a2.imag, tw1.imag, a2tw_re);
-                    a2tw_im = avx::fmadd(a2.imag, tw1.real, a2tw_im);
-                    a3tw_re = avx::fnmadd(a3.imag, tw2.imag, a3tw_re);
-                    a3tw_im = avx::fmadd(a3.imag, tw2.real, a3tw_im);
-
-                    avx::cx_reg<float> a2tw = {a2tw_re, a2tw_im};
-                    avx::cx_reg<float> a3tw = {a3tw_re, a3tw_im};
-
-                    auto b0 = avx::add(a0, a2tw);
-                    auto b2 = avx::sub(a0, a2tw);
-                    auto b1 = avx::add(a1, a3tw);
-                    auto b3 = avx::sub(a1, a3tw);
+                    auto [b0, b2] = avx::btfly(a0, a2tw);
+                    auto [b1, b3] = avx::btfly(a1, a3tw);
 
                     if constexpr (!PackedDest)
                     {
@@ -819,6 +770,7 @@ public:
                                 avx::convert<T>::packed_to_interleaved(b0, b1, b2, b3);
                         }
                     }
+
                     cxstore<TMPPackSize>(ptr0, b0);
                     cxstore<TMPPackSize>(ptr1, b1);
                     cxstore<TMPPackSize>(ptr2, b2);
@@ -850,8 +802,7 @@ public:
 
                 auto p1tw = avx::mul(p1, tw0);
 
-                auto a0 = avx::add(p0, p1tw);
-                auto a1 = avx::sub(p0, p1tw);
+                auto [a0, a1] = avx::btfly(p0, p1tw);
 
                 if constexpr (!PackedDest)
                 {
@@ -890,8 +841,6 @@ public:
 
             for (std::size_t i_group = 0; i_group < n_groups; ++i_group)
             {
-                // std::size_t offset = i_group * reg_size;
-
                 const auto tw0 = avx::cxload<reg_size>(twiddle_ptr);
                 const auto tw1 = avx::cxload<reg_size>(twiddle_ptr + reg_size * 2);
                 const auto tw2 = avx::cxload<reg_size>(twiddle_ptr + reg_size * 4);
@@ -910,45 +859,20 @@ public:
                 auto p0 = avx::cxload<TMPPackSize>(ptr0);
                 auto p2 = avx::cxload<TMPPackSize>(ptr2);
 
-                auto p1tw_re = avx::mul(p1.real, tw0.real);
-                auto p3tw_re = avx::mul(p3.real, tw0.real);
-                auto p1tw_im = avx::mul(p1.real, tw0.imag);
-                auto p3tw_im = avx::mul(p3.real, tw0.imag);
+                auto [p1tw, p3tw] = avx::mul({p1, tw0}, {p3, tw0});
 
-                p1tw_re = avx::fnmadd(p1.imag, tw0.imag, p1tw_re);
-                p3tw_re = avx::fnmadd(p3.imag, tw0.imag, p3tw_re);
-                p1tw_im = avx::fmadd(p1.imag, tw0.real, p1tw_im);
-                p3tw_im = avx::fmadd(p3.imag, tw0.real, p3tw_im);
+                auto [a2, a3] = avx::btfly(p2, p3tw);
+                auto [a0, a1] = avx::btfly(p0, p1tw);
 
-                avx::cx_reg<float> p1tw = {p1tw_re, p1tw_im};
-                avx::cx_reg<float> p3tw = {p3tw_re, p3tw_im};
+                auto [a2tw, a3tw] = avx::mul({a2, tw1}, {a3, tw2});
 
-                auto a2 = avx::add(p2, p3tw);
-                auto a3 = avx::sub(p2, p3tw);
-                auto a0 = avx::add(p0, p1tw);
-                auto a1 = avx::sub(p0, p1tw);
-
-                auto a2tw_re = avx::mul(a2.real, tw1.real);
-                auto a2tw_im = avx::mul(a2.real, tw1.imag);
-                auto a3tw_re = avx::mul(a3.real, tw2.real);
-                auto a3tw_im = avx::mul(a3.real, tw2.imag);
-
-                a2tw_re = avx::fnmadd(a2.imag, tw1.imag, a2tw_re);
-                a2tw_im = avx::fmadd(a2.imag, tw1.real, a2tw_im);
-                a3tw_re = avx::fnmadd(a3.imag, tw2.imag, a3tw_re);
-                a3tw_im = avx::fmadd(a3.imag, tw2.real, a3tw_im);
-
-                avx::cx_reg<float> a2tw = {a2tw_re, a2tw_im};
-                avx::cx_reg<float> a3tw = {a3tw_re, a3tw_im};
-
-                auto b0 = avx::add(a0, a2tw);
-                auto b2 = avx::sub(a0, a2tw);
-                auto b1 = avx::add(a1, a3tw);
-                auto b3 = avx::sub(a1, a3tw);
+                auto [b0, b2] = avx::btfly(a0, a2tw);
+                auto [b1, b3] = avx::btfly(a1, a3tw);
 
                 if constexpr (!PackedDest)
                 {
-                    std::tie(b0, b1, b2, b3) = avx::convert<T>::packed_to_interleaved(b0, b1, b2, b3);
+                    std::tie(b0, b1, b2, b3) =
+                        avx::convert<T>::packed_to_interleaved(b0, b1, b2, b3);
                 }
 
                 cxstore<TMPPackSize>(ptr0, b0);
@@ -1008,41 +932,15 @@ public:
                             avx::convert<T>::interleaved_to_packed(p1, p3, p0, p2);
                     }
 
-                    auto p1tw_re = avx::mul(p1.real, tw0.real);
-                    auto p3tw_re = avx::mul(p3.real, tw0.real);
-                    auto p1tw_im = avx::mul(p1.real, tw0.imag);
-                    auto p3tw_im = avx::mul(p3.real, tw0.imag);
+                    auto [p1tw, p3tw] = avx::mul({p1, tw0}, {p3, tw0});
 
-                    p1tw_re = avx::fnmadd(p1.imag, tw0.imag, p1tw_re);
-                    p3tw_re = avx::fnmadd(p3.imag, tw0.imag, p3tw_re);
-                    p1tw_im = avx::fmadd(p1.imag, tw0.real, p1tw_im);
-                    p3tw_im = avx::fmadd(p3.imag, tw0.real, p3tw_im);
+                    auto [a2, a3] = avx::btfly(p2, p3tw);
+                    auto [a0, a1] = avx::btfly(p0, p1tw);
 
-                    avx::cx_reg<float> p1tw = {p1tw_re, p1tw_im};
-                    avx::cx_reg<float> p3tw = {p3tw_re, p3tw_im};
+                    auto [a2tw, a3tw] = avx::mul({a2, tw1}, {a3, tw2});
 
-                    auto a2 = avx::add(p2, p3tw);
-                    auto a3 = avx::sub(p2, p3tw);
-                    auto a0 = avx::add(p0, p1tw);
-                    auto a1 = avx::sub(p0, p1tw);
-
-                    auto a2tw_re = avx::mul(a2.real, tw1.real);
-                    auto a2tw_im = avx::mul(a2.real, tw1.imag);
-                    auto a3tw_re = avx::mul(a3.real, tw2.real);
-                    auto a3tw_im = avx::mul(a3.real, tw2.imag);
-
-                    a2tw_re = avx::fnmadd(a2.imag, tw1.imag, a2tw_re);
-                    a2tw_im = avx::fmadd(a2.imag, tw1.real, a2tw_im);
-                    a3tw_re = avx::fnmadd(a3.imag, tw2.imag, a3tw_re);
-                    a3tw_im = avx::fmadd(a3.imag, tw2.real, a3tw_im);
-
-                    avx::cx_reg<float> a2tw = {a2tw_re, a2tw_im};
-                    avx::cx_reg<float> a3tw = {a3tw_re, a3tw_im};
-
-                    auto b0 = avx::add(a0, a2tw);
-                    auto b2 = avx::sub(a0, a2tw);
-                    auto b1 = avx::add(a1, a3tw);
-                    auto b3 = avx::sub(a1, a3tw);
+                    auto [b0, b2] = avx::btfly(a0, a2tw);
+                    auto [b1, b3] = avx::btfly(a1, a3tw);
 
                     cxstore<TMPPackSize>(ptr0, b0);
                     cxstore<TMPPackSize>(ptr1, b1);
@@ -1077,14 +975,14 @@ public:
                     {
                         if (size == reg_size * 8)
                         {
-                            std::tie(p1, p0) = avx::convert<T>::interleaved_to_packed(p1, p0);
+                            std::tie(p1, p0) =
+                                avx::convert<T>::interleaved_to_packed(p1, p0);
                         }
                     }
 
                     auto p1tw = avx::mul(p1, tw0);
 
-                    auto a0 = avx::add(p0, p1tw);
-                    auto a1 = avx::sub(p0, p1tw);
+                    auto [a0, a1] = avx::btfly(p0, p1tw);
 
                     cxstore<TMPPackSize>(ptr0, a0);
                     cxstore<TMPPackSize>(ptr1, a1);
@@ -1107,28 +1005,6 @@ public:
                 reg_t tw2 = {avx::broadcast(twiddle_ptr++),
                              avx::broadcast(twiddle_ptr++)};
 
-                reg_t tw3_1 = {avx::broadcast(twiddle_ptr++),
-                               avx::broadcast(twiddle_ptr++)};
-                reg_t tw3_2 = {avx::broadcast(twiddle_ptr++),
-                               avx::broadcast(twiddle_ptr++)};
-                reg_t tw3   = {avx::unpacklo_128(tw3_1.real, tw3_2.real),
-                               avx::unpacklo_128(tw3_1.imag, tw3_2.imag)};
-                reg_t tw4_1 = {avx::broadcast(twiddle_ptr++),
-                               avx::broadcast(twiddle_ptr++)};
-                reg_t tw4_2 = {avx::broadcast(twiddle_ptr++),
-                               avx::broadcast(twiddle_ptr++)};
-                reg_t tw4   = {avx::unpacklo_128(tw4_1.real, tw4_2.real),
-                               avx::unpacklo_128(tw4_1.imag, tw4_2.imag)};
-
-                auto tw56 = avx::cxload<reg_size>(twiddle_ptr);
-                twiddle_ptr += reg_size * 2;
-                auto [tw5, tw6] = avx::unpack_ps(tw56, tw56);
-
-                auto tw7 = avx::cxload<reg_size>(twiddle_ptr);
-                twiddle_ptr += reg_size * 2;
-                auto tw8 = avx::cxload<reg_size>(twiddle_ptr);
-                twiddle_ptr += reg_size * 2;
-
                 std::size_t offset = i_group * reg_size * 4;
 
                 auto* ptr0 = data + pidx(offset);
@@ -1141,76 +1017,62 @@ public:
                 auto p0 = avx::cxload<TMPPackSize>(ptr0);
                 auto p1 = avx::cxload<TMPPackSize>(ptr1);
 
-                auto p2tw_re = avx::mul(p2.real, tw0.real);
-                auto p3tw_re = avx::mul(p3.real, tw0.real);
-                auto p2tw_im = avx::mul(p2.real, tw0.imag);
-                auto p3tw_im = avx::mul(p3.real, tw0.imag);
+                auto [p2tw, p3tw] = avx::mul({p2, tw0}, {p3, tw0});
 
-                p2tw_re = avx::fnmadd(p2.imag, tw0.imag, p2tw_re);
-                p3tw_re = avx::fnmadd(p3.imag, tw0.imag, p3tw_re);
-                p2tw_im = avx::fmadd(p2.imag, tw0.real, p2tw_im);
-                p3tw_im = avx::fmadd(p3.imag, tw0.real, p3tw_im);
+                auto [a1, a3] = avx::btfly(p1, p3tw);
+                auto [a0, a2] = avx::btfly(p0, p2tw);
 
-                avx::cx_reg<float> p2tw = {p2tw_re, p2tw_im};
-                avx::cx_reg<float> p3tw = {p3tw_re, p3tw_im};
+                auto [a1tw, a3tw] = avx::mul({a1, tw1}, {a3, tw2});
 
-                auto a1 = avx::add(p1, p3tw);
-                auto a3 = avx::sub(p1, p3tw);
-                auto a0 = avx::add(p0, p2tw);
-                auto a2 = avx::sub(p0, p2tw);
+                reg_t tw3_1 = {avx::broadcast(twiddle_ptr++),
+                               avx::broadcast(twiddle_ptr++)};
+                reg_t tw3_2 = {avx::broadcast(twiddle_ptr++),
+                               avx::broadcast(twiddle_ptr++)};
+                reg_t tw3   = {avx::unpacklo_128(tw3_1.real, tw3_2.real),
+                               avx::unpacklo_128(tw3_1.imag, tw3_2.imag)};
+                reg_t tw4_1 = {avx::broadcast(twiddle_ptr++),
+                               avx::broadcast(twiddle_ptr++)};
+                reg_t tw4_2 = {avx::broadcast(twiddle_ptr++),
+                               avx::broadcast(twiddle_ptr++)};
+                reg_t tw4   = {avx::unpacklo_128(tw4_1.real, tw4_2.real),
+                               avx::unpacklo_128(tw4_1.imag, tw4_2.imag)};
+                auto  tw56  = avx::cxload<reg_size>(twiddle_ptr);
+                twiddle_ptr += reg_size * 2;
+                auto [tw5, tw6] = avx::unpack_ps(tw56, tw56);
 
-                auto a1tw_re = avx::mul(a1.real, tw1.real);
-                auto a1tw_im = avx::mul(a1.real, tw1.imag);
-                auto a3tw_re = avx::mul(a3.real, tw2.real);
-                auto a3tw_im = avx::mul(a3.real, tw2.imag);
-
-                a1tw_re = avx::fnmadd(a1.imag, tw1.imag, a1tw_re);
-                a1tw_im = avx::fmadd(a1.imag, tw1.real, a1tw_im);
-                a3tw_re = avx::fnmadd(a3.imag, tw2.imag, a3tw_re);
-                a3tw_im = avx::fmadd(a3.imag, tw2.real, a3tw_im);
-
-                avx::cx_reg<float> a1tw = {a1tw_re, a1tw_im};
-                avx::cx_reg<float> a3tw = {a3tw_re, a3tw_im};
-
-                auto b0 = avx::add(a0, a1tw);
-                auto b1 = avx::sub(a0, a1tw);
-                auto b2 = avx::add(a2, a3tw);
-                auto b3 = avx::sub(a2, a3tw);
+                auto [b0, b1] = avx::btfly(a0, a1tw);
+                auto [b2, b3] = avx::btfly(a2, a3tw);
 
                 auto [shb0, shb1] = avx::unpack_128(b0, b1);
                 auto [shb2, shb3] = avx::unpack_128(b2, b3);
 
-                auto shb1tw = avx::mul(shb1, tw3);
-                auto shb3tw = avx::mul(shb3, tw4);
+                auto [shb1tw, shb3tw] = avx::mul({shb1, tw3}, {shb3, tw4});
 
-                auto c0 = avx::add(shb0, shb1tw);
-                auto c1 = avx::sub(shb0, shb1tw);
-                auto c2 = avx::add(shb2, shb3tw);
-                auto c3 = avx::sub(shb2, shb3tw);
+                auto [c0, c1] = avx::btfly(shb0, shb1tw);
+                auto [c2, c3] = avx::btfly(shb2, shb3tw);
 
                 auto [shc0, shc1] = avx::unpack_pd(c0, c1);
                 auto [shc2, shc3] = avx::unpack_pd(c2, c3);
 
-                auto shc1tw = avx::mul(shc1, tw5);
-                auto shc3tw = avx::mul(shc3, tw6);
+                auto [shc1tw, shc3tw] = avx::mul({shc1, tw5}, {shc3, tw6});
 
-                auto d0 = avx::add(shc0, shc1tw);
-                auto d1 = avx::sub(shc0, shc1tw);
-                auto d2 = avx::add(shc2, shc3tw);
-                auto d3 = avx::sub(shc2, shc3tw);
+                auto tw7 = avx::cxload<reg_size>(twiddle_ptr);
+                twiddle_ptr += reg_size * 2;
+                auto tw8 = avx::cxload<reg_size>(twiddle_ptr);
+                twiddle_ptr += reg_size * 2;
+
+                auto [d0, d1] = avx::btfly(shc0, shc1tw);
+                auto [d2, d3] = avx::btfly(shc2, shc3tw);
 
                 auto [shd0s, shd1s] = avx::unpack_ps(d0, d1);
                 auto [shd2s, shd3s] = avx::unpack_ps(d2, d3);
                 auto [shd0, shd1]   = avx::unpack_pd(shd0s, shd1s);
                 auto [shd2, shd3]   = avx::unpack_pd(shd2s, shd3s);
 
-                auto shd1tw = avx::mul(shd1, tw7);
-                auto shd3tw = avx::mul(shd3, tw8);
+                auto [shd1tw, shd3tw] = avx::mul({shd1, tw7}, {shd3, tw8});
 
-                auto e0 = avx::add(shd0, shd1tw);
-                auto e1 = avx::sub(shd0, shd1tw);
-                auto e2 = avx::add(shd2, shd3tw);
-                auto e3 = avx::sub(shd2, shd3tw);
+                auto [e0, e1] = avx::btfly(shd0, shd1tw);
+                auto [e2, e3] = avx::btfly(shd2, shd3tw);
 
                 auto [she0s, she1s] = avx::unpack_ps(e0, e1);
                 auto [she2s, she3s] = avx::unpack_ps(e2, e3);
@@ -1269,8 +1131,7 @@ public:
 
                 auto p1tw = avx::mul(p1, tw0);
 
-                auto a0 = avx::add(p0, p1tw);
-                auto a1 = avx::sub(p0, p1tw);
+                auto [a0, a1] = avx::btfly(p0, p1tw);
 
                 cxstore<TMPPackSize>(ptr0, a0);
                 cxstore<TMPPackSize>(ptr1, a1);

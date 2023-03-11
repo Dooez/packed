@@ -5,7 +5,7 @@
 
 void test(pcx::fft_unit<float>& unit, float* v1, float* v2)
 {
-    // unit.fft_internal(v1, v2);
+    unit.fft_internal<true, 8>(v1);
 }
 
 template<typename T>

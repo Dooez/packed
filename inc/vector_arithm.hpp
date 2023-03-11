@@ -183,7 +183,6 @@ namespace avx {
     inline auto mul(std::initializer_list<Args>... args)
     {
         auto tup = std::make_tuple(args...);
-
         auto real_mul = [](auto opearands) {
 
             auto lhs  = data(opearands)[0];
@@ -192,7 +191,6 @@ namespace avx {
             auto imag = avx::mul(lhs.real, rhs.imag);
             return std::make_tuple(lhs, rhs, real, imag);
         };
-
         auto imag_mul = [](auto opearands) {
             auto lhs   = std::get<0>(opearands);
             auto rhs   = std::get<1>(opearands);
@@ -205,6 +203,7 @@ namespace avx {
             auto imag = avx::fmadd(lhs.imag, rhs.real, imag_);
             return reg_t{real, imag};
         };
+
         auto tmp = internal::apply_for_each(real_mul, tup);
         return internal::apply_for_each(imag_mul, tmp);
     }
