@@ -8,10 +8,17 @@
 //     set(v_def_2.begin(), v_def_2.end(), 1);
 // }
 
+void test_repack(float* data)
+{
+    using namespace pcx::avx;
+    auto a   = cxload<8>(data);
+    auto [b] = convert<float>::repack<1, 4>(a);
+    cxstore<8>(data, b);
+}
 
 void asm_test_fun(pcx::vector<double>& v1,
                   pcx::vector<double>& v2,
-                  std::complex<double>      v3)
+                  std::complex<double> v3)
 {
     v1 = v1 + v2;
 }
@@ -326,8 +333,23 @@ int main()
             return i;
         }
     }
-    // packed_cx_vector<float> vec(123);
-    // vec = vec + 123 + 15;
+
+    auto N = 8;
+
+    auto vec = std::vector<std::complex<float>>(N);
+
+    for (uint i = 0; i < N; ++i)
+    {
+        vec[i] = std::complex<float>(i, 10+i);
+    }
+
+    test_repack(reinterpret_cast<float*>(vec.data()));
+
+    for (auto val : vec)
+    {
+        std::cout << val << " ";
+    }
+    std::cout << "\n";
 
 
     return res;
