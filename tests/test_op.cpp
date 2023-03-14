@@ -12,8 +12,9 @@ void test_repack(float* data)
 {
     using namespace pcx::avx;
     auto a   = cxload<8>(data);
-    auto [b] = convert<float>::repack<1, 4>(a);
-    cxstore<8>(data, b);
+    auto [b] = convert<float>::repack<1, 8>(a);
+    auto [c] = convert<float>::repack<8, 8>(b);
+    cxstore<8>(data, c);
 }
 
 void asm_test_fun(pcx::vector<double>& v1,
@@ -340,7 +341,7 @@ int main()
 
     for (uint i = 0; i < N; ++i)
     {
-        vec[i] = std::complex<float>(i, 10+i);
+        vec[i] = std::complex<float>(i, 100+i);
     }
 
     test_repack(reinterpret_cast<float*>(vec.data()));
