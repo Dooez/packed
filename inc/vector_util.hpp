@@ -74,11 +74,10 @@ namespace internal {
     template<typename F, typename Tuple>
     struct apply_result
     {
-        using type =
-            typename apply_result_<F,
-                                       Tuple,
-                                       std::make_index_sequence<std::tuple_size_v<
-                                           std::remove_reference_t<Tuple>>>>::type;
+        using type = typename apply_result_<F,
+                                            Tuple,
+                                            std::make_index_sequence<std::tuple_size_v<
+                                                std::remove_reference_t<Tuple>>>>::type;
     };
 
     template<typename F, typename Tuple>
@@ -102,39 +101,40 @@ namespace internal {
                     std::make_index_sequence<std::tuple_size_v<decltype(zip_tuples(
                         std::declval<Tups>()...))>>>::value;
 
-    template<std::size_t... I, typename F, typename Tup>
-    constexpr auto apply_for_each_impl(std::index_sequence<I...>, F&& f, Tup&& args)
+    template<std::size_t... I, typename F, typename... Tups>
+    constexpr auto apply_for_each_impl(std::index_sequence<I...>, F&& f, Tups&&... args)
     {
-        return std::make_tuple(std::apply(std::forward<F>(f), std::get<I>(args))...);
+        return std::make_tuple(
+            std::apply(std::forward<F>(f), zip_tuple_element<I>(args...))...);
     }
 
-    template<std::size_t... I, typename F, typename Tup>
-    constexpr void void_apply_for_each_impl(std::index_sequence<I...>, F&& f, Tup&& args)
+    template<std::size_t... I, typename F, typename... Tups>
+    constexpr void void_apply_for_each_impl(std::index_sequence<I...>,
+                                            F&& f,
+                                            Tups&&... args)
     {
-        (std::apply(std::forward<F>(f), std::get<I>(args)), ...);
+        (std::apply(std::forward<F>(f), zip_tuple_element<I>(args...)), ...);
     }
 
     template<typename F, typename... Tups>
         requires has_result<F, Tups...>
     constexpr auto apply_for_each(F&& f, Tups&&... args)
     {
-        auto args_zip = zip_tuples(args...);
-
-        constexpr auto N = std::tuple_size_v<std::remove_cvref_t<decltype(args_zip)>>;
-        return apply_for_each_impl(std::make_index_sequence<N>{},
+        constexpr auto min_size =
+            std::min({std::tuple_size_v<std::remove_reference_t<Tups>>...});
+        return apply_for_each_impl(std::make_index_sequence<min_size>{},
                                    std::forward<F>(f),
-                                   std::move(args_zip));
+                                   std::forward<Tups>(args)...);
     }
 
     template<typename F, typename... Tups>
     constexpr void apply_for_each(F&& f, Tups&&... args)
     {
-        auto args_zip = zip_tuples(args...);
-
-        constexpr auto N = std::tuple_size_v<std::remove_cvref_t<decltype(args_zip)>>;
-        void_apply_for_each_impl(std::make_index_sequence<N>{},
+        constexpr auto min_size =
+            std::min({std::tuple_size_v<std::remove_reference_t<Tups>>...});
+        void_apply_for_each_impl(std::make_index_sequence<min_size>{},
                                  std::forward<F>(f),
-                                 std::move(args_zip));
+                                 std::forward<Tups>(args)...);
     }
 }    // namespace internal
 
