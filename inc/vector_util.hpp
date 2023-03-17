@@ -36,7 +36,6 @@ template<typename T, bool Const, std::size_t Size, std::size_t PackSize>
 class subrange;
 
 namespace internal {
-
     template<std::size_t I, typename... Tups>
     constexpr auto zip_tuple_element(Tups&&... tuples)
     {
@@ -60,6 +59,52 @@ namespace internal {
                                std::forward<Tups>(tuples)...);
     }
 
+    template<typename F, typename Tuple, typename I>
+    struct apply_result_impl;
+
+    template<typename F, typename Tuple, std::size_t... I>
+    struct apply_result_impl<F, Tuple, std::index_sequence<I...>>
+    {
+        using type = typename std::invoke_result_t<
+            std::remove_reference_t<F>,
+            std::tuple_element_t<I, std::remove_reference_t<Tuple>>...>;
+    };
+
+    template<typename F, typename Tuple, std::size_t... I>
+    struct apply_result
+    {
+        using type =
+            typename apply_result_impl<F,
+                                       Tuple,
+                                       std::make_index_sequence<std::tuple_size_v<
+                                           std::remove_reference_t<Tuple>>>>::type;
+    };
+
+    template<typename F, typename Tuple>
+    using apply_result_t = typename apply_result<F, std::remove_reference_t<Tuple>>::type;
+
+    template<typename F, typename TupleTuple, typename I>
+    struct has_result_impl
+    {
+        static constexpr bool value = false;
+    };
+
+    template<typename F, typename TupleTuple, std::size_t... I>
+    struct has_result_impl<F, TupleTuple, std::index_sequence<I...>>
+    {
+        static constexpr bool value = !(
+            std::same_as<apply_result_t<F, std::tuple_element_t<I, TupleTuple>>, void> ||
+            ...);
+    };
+
+    template<typename F, typename... Tups>
+    concept has_result =
+        has_result_impl<F,
+                        decltype(zip_tuples(std::declval<Tups>()...)),
+                        std::make_index_sequence<std::tuple_size_v<decltype(zip_tuples(
+                           std::declval<Tups>()...))>>>::value;
+
+
     template<std::size_t... I, typename C, typename Tup>
     constexpr auto apply_for_each_impl(std::index_sequence<I...>,
                                        C&&   callable,
@@ -69,13 +114,21 @@ namespace internal {
     }
 
     template<typename C, typename... Tups>
+        requires has_result<C, Tups...>
     constexpr auto apply_for_each(C&& callable, Tups&&... args)
     {
-        auto           args_zip = zip_tuples(args...);
+        auto args_zip = zip_tuples(args...);
+
         constexpr auto N = std::tuple_size_v<std::remove_cvref_t<decltype(args_zip)>>;
         return apply_for_each_impl(std::make_index_sequence<N>{},
                                    std::forward<C>(callable),
                                    std::move(args_zip));
+    }
+
+    template<typename C, typename... Tups>
+    constexpr auto apply_for_each(C&& callable, Tups&&... args)
+    {
+        return 13;
     }
 }    // namespace internal
 

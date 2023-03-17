@@ -12,9 +12,8 @@ void test_repack(float* data)
 {
     using namespace pcx::avx;
     auto a   = cxload<8>(data);
-    auto [b] = convert<float>::repack<1, 8>(a);
-    auto [c] = convert<float>::repack<8, 8>(b);
-    cxstore<8>(data, c);
+    auto [b] = convert<float>::repack<4, 8>(a);
+    cxstore<8>(data, b);
 }
 
 void asm_test_fun(pcx::vector<double>& v1,
@@ -341,7 +340,7 @@ int main()
 
     for (uint i = 0; i < N; ++i)
     {
-        vec[i] = std::complex<float>(i, 100+i);
+        vec[i] = std::complex<float>(i, 100 + i);
     }
 
     test_repack(reinterpret_cast<float*>(vec.data()));
@@ -352,6 +351,16 @@ int main()
     }
     std::cout << "\n";
 
+    auto t1  = std::make_tuple(1U, 2U, 3U);
+    auto t2  = std::make_tuple(1.1, 2.2, 3.3);
+    auto tr  = pcx::internal::zip_tuples(t1, t2);
+    auto tr2 = pcx::internal::zip_tuples(t1);
 
+    static_assert(
+        pcx::internal::has_result<decltype([](uint a, double b) { return a + b; }),
+                                  decltype(t1),
+                                  decltype(t2)>);
+    auto ersr =
+        pcx::internal::apply_for_each([](uint a, double b) { a + b; }, t1, t2);
     return res;
 }
