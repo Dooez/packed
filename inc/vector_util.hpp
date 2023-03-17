@@ -36,6 +36,27 @@ template<typename T, bool Const, std::size_t Size, std::size_t PackSize>
 class subrange;
 
 namespace internal {
+
+    template<std::size_t I, typename... Tups>
+    inline auto zip_tuple_element(Tups&&... tuples)
+    {
+        return std::make_tuple(std::get<I>(std::forward<Tups>(tuples))...);
+    }
+
+    template<std::size_t... I, typename... Tups>
+    inline auto zip_tuples_impl(std::index_sequence<I...>, Tups&&... tuples)
+    {
+        return std::make_tuple(zip_tuple_element<I>(std::forward<Tups>(tuples)...)...);
+    }
+
+    template<typename... Tups>
+    inline auto zip_tuples(Tups&&... tuples)
+    {
+        constexpr auto I = std::min(std::tuple_size_v<std::remove_cvref_t<Tups>>...);
+        return zip_tuples_impl(std::make_index_sequence<I>{},
+                               std::forward<Tups>(tuples)...);
+    }
+
     template<std::size_t I>
     auto extract(auto arg0)
     {
