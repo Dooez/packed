@@ -38,55 +38,45 @@ class subrange;
 namespace internal {
 
     template<std::size_t I, typename... Tups>
-    inline auto zip_tuple_element(Tups&&... tuples)
+    constexpr auto zip_tuple_element(Tups&&... tuples)
     {
         return std::make_tuple(std::get<I>(std::forward<Tups>(tuples))...);
     }
 
     template<std::size_t... I, typename... Tups>
-    inline auto zip_tuples_impl(std::index_sequence<I...>, Tups&&... tuples)
+    constexpr auto zip_tuples_impl(std::index_sequence<I...>, Tups&&... tuples)
     {
         return std::make_tuple(zip_tuple_element<I>(std::forward<Tups>(tuples)...)...);
     }
 
     template<typename... Tups>
-    inline auto zip_tuples(Tups&&... tuples)
+    constexpr auto zip_tuples(Tups&&... tuples)
     {
-        constexpr auto I = std::min(std::tuple_size_v<std::remove_cvref_t<Tups>>...);
-        return zip_tuples_impl(std::make_index_sequence<I>{},
+        static_assert(sizeof...(tuples) > 0);
+
+        constexpr auto min_size =
+            std::min({std::tuple_size_v<std::remove_reference_t<Tups>>...});
+        return zip_tuples_impl(std::make_index_sequence<min_size>{},
                                std::forward<Tups>(tuples)...);
     }
 
-    template<std::size_t I>
-    auto extract(auto arg0)
+    template<std::size_t... I, typename C, typename Tup>
+    constexpr auto apply_for_each_impl(std::index_sequence<I...>,
+                                       C&&   callable,
+                                       Tup&& args)
     {
-        return std::make_tuple(std::get<I>(arg0));
-    }
-    template<std::size_t I>
-    auto extract(auto arg0, auto... args)
-    {
-        return std::tuple_cat(extract<I>(arg0), extract<I>(args...));
+        return std::make_tuple(std::apply(callable, std::get<I>(args))...);
     }
 
-    template<std::size_t N, typename T>
-    auto apply_for_each_(auto& callable, T arg0, auto... args)
+    template<typename C, typename... Tups>
+    constexpr auto apply_for_each(C&& callable, Tups&&... args)
     {
-        auto row = extract<N>(arg0, args...);
-        auto res = std::make_tuple(std::apply(callable, row));
-        if constexpr (N < std::tuple_size_v<T> - 1)
-        {
-            return std::tuple_cat(res, apply_for_each_<N + 1>(callable, arg0, args...));
-        } else
-        {
-            return res;
-        }
+        auto           args_zip = zip_tuples(args...);
+        constexpr auto N = std::tuple_size_v<std::remove_cvref_t<decltype(args_zip)>>;
+        return apply_for_each_impl(std::make_index_sequence<N>{},
+                                   std::forward<C>(callable),
+                                   std::move(args_zip));
     }
-    template<typename C, typename... T>
-    auto apply_for_each(C& callable, T... args)
-    {
-        return apply_for_each_<0>(callable, args...);
-    }
-
 }    // namespace internal
 
 /**
