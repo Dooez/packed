@@ -356,11 +356,19 @@ int main()
     auto tr  = pcx::internal::zip_tuples(t1, t2);
     auto tr2 = pcx::internal::zip_tuples(t1);
 
-    static_assert(
-        pcx::internal::has_result<decltype([](uint a, double b) { return a + b; }),
-                                  decltype(t1),
-                                  decltype(t2)>);
-    auto ersr =
-        pcx::internal::apply_for_each([](uint a, double b) { a + b; }, t1, t2);
+    auto tst_appl =
+        pcx::internal::apply_for_each([](uint a, double b) {return a + b; }, t1, t2);
+
+    pcx::internal::apply_for_each(
+        [](auto a, auto b) { std::cout << a << " " << b << "\n"; },
+        t1,
+        t2);
+
+    uint  a, b, c = 0;
+    uint& ar   = a;
+    auto  tref = std::tuple<const uint&, uint&, volatile uint&>{a, b, c};
+
+    auto refzip = pcx::internal::zip_tuples(tref, std::move(t2));
+
     return res;
 }
