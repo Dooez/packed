@@ -134,10 +134,10 @@ public:
         assert(size() == dest.size() && size() == source.size());
         if (&dest == &source)
         {
-            fft_internal<true, PackSize>(dest.data());
+            fft_internal<PackSize>(dest.data());
         } else
         {
-            fft_internal<true, PackSize>(dest.data(), source.data());
+            fft_internal<PackSize, PackSize>(dest.data(), source.data());
         }
     };
 
@@ -1324,12 +1324,12 @@ public:
             return subtransform_cached<PDest, PTform>(data, size);
         } else
         {
-            subtransform<PDest, PTform>(data, size / 4);
-            subtransform<PDest, PTform>(data + reg_offset<PTform>(size / 4 / reg_size),
+            subtransform<PTform, PTform>(data, size / 4);
+            subtransform<PTform, PTform>(data + reg_offset<PTform>(size / 4 / reg_size),
                                         size / 4);
-            subtransform<PDest, PTform>(data + reg_offset<PTform>(size / 2 / reg_size),
+            subtransform<PTform, PTform>(data + reg_offset<PTform>(size / 2 / reg_size),
                                         size / 4);
-            auto twiddle_ptr = subtransform<PDest, PTform>(
+            auto twiddle_ptr = subtransform<PTform, PTform>(
                 data + reg_offset<PTform>(size * 3 / 4 / reg_size),
                 size / 4);
 
@@ -1365,7 +1365,7 @@ public:
                 if constexpr (PDest < PTform)
                 {
                     std::tie(b0, b1, b2, b3) =
-                        avx::convert<float>::repack<PDest, PTform>(b0, b1, b2, b3);
+                        avx::convert<float>::repack<PTform, PDest>(b0, b1, b2, b3);
                 }
 
                 cxstore<PTform>(ptr0, b0);
