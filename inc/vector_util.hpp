@@ -35,7 +35,14 @@ class iterator;
 template<typename T, bool Const, std::size_t Size, std::size_t PackSize>
 class subrange;
 
+template<std::size_t PackSize>
+constexpr auto pidx(std::size_t idx) -> std::size_t
+{
+    return idx + idx / PackSize * PackSize;
+}
+
 namespace internal {
+
     template<std::size_t I, typename... Tups>
     constexpr auto zip_tuple_element(Tups&&... tuples)
     {
@@ -212,6 +219,14 @@ namespace avx {
         store(ptr + PackSize, reg.imag);
     }
 
+    template<std::size_t PackSize, typename T>
+    inline auto cxloadstore(T* ptr, cx_reg<T> reg) -> cx_reg<T>
+    {
+        auto tmp = cxload<PackSize>(ptr);
+        cxstore<PackSize>(ptr, reg);
+        return tmp;
+    }
+
     inline auto unpacklo_ps(reg<float>::type a, reg<float>::type b) -> reg<float>::type
     {
         return _mm256_unpacklo_ps(a, b);
@@ -293,11 +308,7 @@ namespace avx {
     };
 
     template<typename T>
-    struct convert
-    {
-        static inline auto packed_to_interleaved(auto... args);
-        static inline auto interleaved_to_packed(auto... args);
-    };
+    struct convert;
 
     template<>
     struct convert<float>
@@ -359,6 +370,7 @@ namespace avx {
         };
 
         template<std::size_t PackFrom, std::size_t PackTo>
+            requires(PackFrom <= 8) && (PackFrom > 0) && (PackTo <= 8) && (PackTo > 0)
         static inline auto repack(auto... args)
         {
             auto tup = std::make_tuple(args...);
