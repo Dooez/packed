@@ -57,8 +57,8 @@ template<typename T, typename Allocator, std::size_t PackSize>
 auto fft(const pcx::vector<T, Allocator, PackSize>& vector)
 {
     using vector_t = pcx::vector<T, Allocator, PackSize>;
-    auto fft_size = vector.size();
-    auto res      = vector_t(fft_size);
+    auto fft_size  = vector.size();
+    auto res       = vector_t(fft_size);
     if (fft_size == 1)
     {
         res = vector;
@@ -146,57 +146,58 @@ int test_fft_float(std::size_t size)
     {
         vec[i]      = std::exp(std::complex(0.F, 2 * pi * i / size * 13.37F));
         svec_out[i] = vec[i];
-        // vec[i] = 0;
     }
 
     auto ff = fft(vec);
 
-    auto unit = pcx::fft_unit<float, pcx::dynamic_size, 2048>(size);
-
-    vec_out      = vec;
-    auto old_vec = vec;
-
-    unit(vec_out);
-    for (uint i = 0; i < size; ++i)
+    for (std::size_t sub_size = 64; sub_size <= size * 2; sub_size *= 2)
     {
-        auto val = std::complex<float>(ff[i].value());
-        if (!equal_eps(val, vec_out[i].value(), 1U << (depth)))
+        auto unit =
+            pcx::fft_unit<float, pcx::dynamic_size, pcx::dynamic_size>(size, sub_size);
+
+        vec_out = vec;
+
+        unit(vec_out);
+        for (uint i = 0; i < size; ++i)
         {
-            std::cout << size << " #" << i << ": " << abs(val - vec_out[i].value())
-                      << "  " << val << vec_out[i].value() << "\n";
-            return 1;
+            auto val = std::complex<float>(ff[i].value());
+            if (!equal_eps(val, vec_out[i].value(), 1U << (depth)))
+            {
+                std::cout << size << " #" << i << ": " << abs(val - vec_out[i].value())
+                          << "  " << val << vec_out[i].value() << "\n";
+                return 1;
+            }
+        }
+
+        vec_out = vec;
+        unit(vec_out, vec);
+        for (uint i = 0; i < size; ++i)
+        {
+            auto val = std::complex<float>(ff[i].value());
+            if (!equal_eps(val, vec_out[i].value(), 1U << (depth)))
+            {
+                std::cout << size << " #" << i << ": " << abs(val - vec_out[i].value())
+                          << "  " << val << vec_out[i].value() << "\n";
+                return 1;
+            }
+        }
+
+        for (uint i = 0; i < size; ++i)
+        {
+            svec_out[i] = vec[i];
+        }
+        unit(svec_out);
+        for (uint i = 0; i < size; ++i)
+        {
+            auto val = std::complex<float>(ff[i].value());
+            if (!equal_eps(val, svec_out[i], 1U << (depth)))
+            {
+                std::cout << "svec" << size << " #" << i << ": " << abs(val - svec_out[i])
+                          << "  " << val << svec_out[i] << "\n";
+                return 1;
+            }
         }
     }
-
-    unit(vec_out, vec);
-    for (uint i = 0; i < size; ++i)
-    {
-        auto val = std::complex<float>(ff[i].value());
-        if (!equal_eps(val, vec_out[i].value(), 1U << (depth)))
-        {
-            std::cout << size << " #" << i << ": " << abs(val - vec_out[i].value())
-                      << "  " << val << vec_out[i].value() << "\n";
-            return 1;
-        }
-    }
-
-    uint ret = 0;
-    unit(svec_out);
-    for (uint i = 0; i < 16; ++i)
-    {
-        auto val = std::complex<float>(ff[i].value());
-        if (!equal_eps(val, svec_out[i], 1U << (depth)))
-        {
-            std::cout << "svec" << size << " #" << i << ": " << abs(val - svec_out[i])
-                      << "  " << val << svec_out[i] << "\n";
-            ret = 1;
-        }
-    }
-    if (ret == 1)
-    {
-        return 1;
-    }
-
 
     return 0;
 }
@@ -215,38 +216,47 @@ int test_fftu_float(std::size_t size)
     {
         vec[i]      = std::exp(std::complex(0.F, 2 * pi * i / size * 13.37F));
         svec_out[i] = vec[i];
-        // vec[i] = 0;
     }
-    vec_out   = vec;
-    auto unit = pcx::fft_unit<float, pcx::dynamic_size, 64>(size);
 
-    auto ffu = fftu(vec);
-
-    vec_out = vec;
-    unit.unsorted(vec_out);
-    for (uint i = 0; i < size; ++i)
+    for (std::size_t sub_size = 64; sub_size <= size * 2; sub_size *= 2)
     {
-        auto val = std::complex<float>(ffu[i].value());
-        if (!equal_eps(val, vec_out[i].value(), 1U))
+        vec_out = vec;
+
+        auto unit =
+            pcx::fft_unit<float, pcx::dynamic_size, pcx::dynamic_size>(size, sub_size);
+
+        auto ffu = fftu(vec);
+
+        vec_out = vec;
+        unit.unsorted(vec_out);
+        for (uint i = 0; i < size; ++i)
         {
-            std::cout << size << " #" << i << ": " << abs(val - vec_out[i].value())
-                      << "  " << val << vec_out[i].value() << "\n";
-            return 1;
+            auto val = std::complex<float>(ffu[i].value());
+            if (!equal_eps(val, vec_out[i].value(), 1U))
+            {
+                std::cout << "fftu " << size << ":" << sub_size << " #" << i << ": "
+                          << abs(val - vec_out[i].value()) << "  " << val
+                          << vec_out[i].value() << "\n";
+                return 1;
+            }
+        }
+        for (uint i = 0; i < size; ++i)
+        {
+            svec_out[i] = vec[i];
+        }
+        unit.unsorted(svec_out);
+        for (uint i = 0; i < size; ++i)
+        {
+            auto val = std::complex<float>(ffu[i].value());
+            if (!equal_eps(val, svec_out[i], 1U))
+            {
+                std::cout << "fftu svec " << size << ":" << sub_size << " #" << i << ": "
+                          << abs(val - vec_out[i].value()) << "  " << val
+                          << vec_out[i].value() << "\n";
+                return 1;
+            }
         }
     }
-
-    unit.unsorted(svec_out);
-    for (uint i = 0; i < size; ++i)
-    {
-        auto val = std::complex<float>(ffu[i].value());
-        if (!equal_eps(val, svec_out[i], 1U))
-        {
-            std::cout << size << " #" << i << ": " << abs(val - svec_out[i]) << "  "
-                      << val << svec_out[i] << "\n";
-            return 1;
-        }
-    }
-
     return 0;
 }
 
