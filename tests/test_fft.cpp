@@ -3,9 +3,9 @@
 
 #include <iostream>
 
-void test(pcx::fft_unit<float>& unit, float* v1, float* v2)
+void test(pcx::fft_unit<float>& unit, std::vector<std::complex<float>>& v1)
 {
-    unit.fft_internal<8>(v1);
+    unit(v1);
 }
 
 template<typename T>

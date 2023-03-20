@@ -157,7 +157,7 @@ public:
         {
             subtransform_recursive<PTform, PTform>(data, size() / 2);
             auto twiddle_ptr = subtransform_recursive<PTform, PTform>(
-                data + reg_offset<PTform>(size() / 2 / reg_size),
+                data + avx::reg_offset<float, PTform>(size() / 2 / reg_size),
                 size() / 2);
             std::size_t n_groups = size() / reg_size / 2;
 
@@ -168,8 +168,9 @@ public:
                 const auto tw0 = avx::cxload<reg_size>(twiddle_ptr);
                 twiddle_ptr += reg_size * 2;
 
-                auto* ptr0 = data + reg_offset<PTform>(i_group);
-                auto* ptr1 = data + reg_offset<PTform>(i_group + size() / 2 / reg_size);
+                auto* ptr0 = data + avx::reg_offset<float, PTform>(i_group);
+                auto* ptr1 = data + avx::reg_offset<float, PTform>(i_group +
+                                                                   size() / 2 / reg_size);
 
                 auto p1 = avx::cxload<PTform>(ptr1);
                 auto p0 = avx::cxload<PTform>(ptr0);
@@ -202,7 +203,7 @@ public:
         {
             subtransform_recursive<PDest, PTform>(dest, size() / 2);
             auto twiddle_ptr = subtransform_recursive<PDest, PTform>(
-                dest + reg_offset<PTform>(size() / 2 / reg_size),
+                dest + avx::reg_offset<float, PTform>(size() / 2 / reg_size),
                 size() / 2);
             std::size_t n_groups = size() / reg_size / 2;
 
@@ -213,8 +214,9 @@ public:
                 const auto tw0 = avx::cxload<reg_size>(twiddle_ptr);
                 twiddle_ptr += reg_size * 2;
 
-                auto* ptr0 = dest + reg_offset<PTform>(i_group);
-                auto* ptr1 = dest + reg_offset<PTform>(i_group + size() / 2 / reg_size);
+                auto* ptr0 = dest + avx::reg_offset<float, PTform>(i_group);
+                auto* ptr1 = dest + avx::reg_offset<float, PTform>(i_group +
+                                                                   size() / 2 / reg_size);
 
                 auto p1 = avx::cxload<PTform>(ptr1);
                 auto p0 = avx::cxload<PTform>(ptr0);
@@ -254,8 +256,9 @@ public:
 
             for (std::size_t i_group = 0; i_group < size() / 2 / reg_size; ++i_group)
             {
-                auto* ptr0 = data + reg_offset<PTform>(i_group);
-                auto* ptr1 = data + reg_offset<PTform>(i_group + size() / 2 / reg_size);
+                auto* ptr0 = data + avx::reg_offset<float, PTform>(i_group);
+                auto* ptr1 = data + avx::reg_offset<float, PTform>(i_group +
+                                                                   size() / 2 / reg_size);
 
                 auto p1 = avx::cxload<PTform>(ptr1);
                 auto p0 = avx::cxload<PTform>(ptr0);
@@ -288,13 +291,13 @@ public:
         auto       twsq2 = avx::broadcast(sq2.real());
 
         const auto sh0 = 0;
-        const auto sh1 = reg_offset<PTform>(1 * size() / 64);
-        const auto sh2 = reg_offset<PTform>(2 * size() / 64);
-        const auto sh3 = reg_offset<PTform>(3 * size() / 64);
-        const auto sh4 = reg_offset<PTform>(4 * size() / 64);
-        const auto sh5 = reg_offset<PTform>(5 * size() / 64);
-        const auto sh6 = reg_offset<PTform>(6 * size() / 64);
-        const auto sh7 = reg_offset<PTform>(7 * size() / 64);
+        const auto sh1 = avx::reg_offset<float, PTform>(1 * size() / 64);
+        const auto sh2 = avx::reg_offset<float, PTform>(2 * size() / 64);
+        const auto sh3 = avx::reg_offset<float, PTform>(3 * size() / 64);
+        const auto sh4 = avx::reg_offset<float, PTform>(4 * size() / 64);
+        const auto sh5 = avx::reg_offset<float, PTform>(5 * size() / 64);
+        const auto sh6 = avx::reg_offset<float, PTform>(6 * size() / 64);
+        const auto sh7 = avx::reg_offset<float, PTform>(7 * size() / 64);
 
         uint i = 0;
 
@@ -302,8 +305,8 @@ public:
         {
             using reg_t = avx::cx_reg<float>;
 
-            auto offset_first  = reg_offset<PTform>(m_sort[i]);
-            auto offset_second = reg_offset<PTform>(m_sort[i + 1]);
+            auto offset_first  = avx::reg_offset<float, PTform>(m_sort[i]);
+            auto offset_second = avx::reg_offset<float, PTform>(m_sort[i + 1]);
 
             auto p1 = avx::cxload<PTform>(data + sh1 + offset_first);
             auto p5 = avx::cxload<PTform>(data + sh5 + offset_first);
@@ -458,7 +461,7 @@ public:
         for (; i < size() / 64; ++i)
         {
             using reg_t = avx::cx_reg<float>;
-            auto offset = reg_offset<PTform>(m_sort[i]);
+            auto offset = avx::reg_offset<float, PTform>(m_sort[i]);
 
             auto p1 = avx::cxload<PTform>(data + sh1 + offset);
             auto p3 = avx::cxload<PTform>(data + sh3 + offset);
@@ -557,30 +560,30 @@ public:
         auto       twsq2 = avx::broadcast(sq2.real());
 
         const auto shs0 = 0;
-        const auto shs1 = reg_offset<PLoad>(1 * size() / 64);
-        const auto shs2 = reg_offset<PLoad>(2 * size() / 64);
-        const auto shs3 = reg_offset<PLoad>(3 * size() / 64);
-        const auto shs4 = reg_offset<PLoad>(4 * size() / 64);
-        const auto shs5 = reg_offset<PLoad>(5 * size() / 64);
-        const auto shs6 = reg_offset<PLoad>(6 * size() / 64);
-        const auto shs7 = reg_offset<PLoad>(7 * size() / 64);
+        const auto shs1 = avx::reg_offset<float, PLoad>(1 * size() / 64);
+        const auto shs2 = avx::reg_offset<float, PLoad>(2 * size() / 64);
+        const auto shs3 = avx::reg_offset<float, PLoad>(3 * size() / 64);
+        const auto shs4 = avx::reg_offset<float, PLoad>(4 * size() / 64);
+        const auto shs5 = avx::reg_offset<float, PLoad>(5 * size() / 64);
+        const auto shs6 = avx::reg_offset<float, PLoad>(6 * size() / 64);
+        const auto shs7 = avx::reg_offset<float, PLoad>(7 * size() / 64);
 
         const auto shd0 = 0;
-        const auto shd1 = reg_offset<PTform>(1 * size() / 64);
-        const auto shd2 = reg_offset<PTform>(2 * size() / 64);
-        const auto shd3 = reg_offset<PTform>(3 * size() / 64);
-        const auto shd4 = reg_offset<PTform>(4 * size() / 64);
-        const auto shd5 = reg_offset<PTform>(5 * size() / 64);
-        const auto shd6 = reg_offset<PTform>(6 * size() / 64);
-        const auto shd7 = reg_offset<PTform>(7 * size() / 64);
+        const auto shd1 = avx::reg_offset<float, PTform>(1 * size() / 64);
+        const auto shd2 = avx::reg_offset<float, PTform>(2 * size() / 64);
+        const auto shd3 = avx::reg_offset<float, PTform>(3 * size() / 64);
+        const auto shd4 = avx::reg_offset<float, PTform>(4 * size() / 64);
+        const auto shd5 = avx::reg_offset<float, PTform>(5 * size() / 64);
+        const auto shd6 = avx::reg_offset<float, PTform>(6 * size() / 64);
+        const auto shd7 = avx::reg_offset<float, PTform>(7 * size() / 64);
 
         uint i = 0;
         for (; i < n_reversals(size() / 64); i += 2)
         {
             using reg_t = avx::cx_reg<float>;
 
-            auto offset_src  = reg_offset<PLoad>(m_sort[i]);
-            auto offset_dest = reg_offset<PTform>(m_sort[i + 1]);
+            auto offset_src  = avx::reg_offset<float, PLoad>(m_sort[i]);
+            auto offset_dest = avx::reg_offset<float, PTform>(m_sort[i + 1]);
 
             for (uint k = 0; k < 2; ++k)
             {
@@ -659,8 +662,8 @@ public:
                 avx::cxstore<PTform>(dest + shd6 + offset_dest, shc6);
                 avx::cxstore<PTform>(dest + shd7 + offset_dest, shc7);
 
-                offset_src  = reg_offset<PLoad>(m_sort[i + 1]);
-                offset_dest = reg_offset<PTform>(m_sort[i]);
+                offset_src  = avx::reg_offset<float, PLoad>(m_sort[i + 1]);
+                offset_dest = avx::reg_offset<float, PTform>(m_sort[i]);
             }
         };
 
@@ -668,8 +671,8 @@ public:
         {
             using reg_t = avx::cx_reg<float>;
 
-            auto offset_src  = reg_offset<PLoad>(m_sort[i]);
-            auto offset_dest = reg_offset<PTform>(m_sort[i]);
+            auto offset_src  = avx::reg_offset<float, PLoad>(m_sort[i]);
+            auto offset_dest = avx::reg_offset<float, PTform>(m_sort[i]);
 
             auto p1 = avx::cxload<PLoad>(source + shs1 + offset_src);
             auto p5 = avx::cxload<PLoad>(source + shs5 + offset_src);
@@ -769,7 +772,13 @@ public:
         std::size_t n_groups   = 1;
         std::size_t tw_offset  = 0;
 
-        while (l_size < max_size)
+        std::size_t max_size_ = max_size;
+        if constexpr (PDest < reg_size)
+        {
+            max_size_ = max_size_ / 2;
+        }
+
+        while (l_size < max_size_)
         {
             for (std::size_t i_group = 0; i_group < n_groups; ++i_group)
             {
@@ -782,14 +791,14 @@ public:
 
                 for (std::size_t i = 0; i < group_size; ++i)
                 {
-                    auto* ptr0 =    //
-                        data + reg_offset<PTform>((offset) / reg_size);
-                    auto* ptr1 =
-                        data + reg_offset<PTform>((offset + l_size / 2) / reg_size);
-                    auto* ptr2 =    //
-                        data + reg_offset<PTform>((offset + l_size) / reg_size);
-                    auto* ptr3 =
-                        data + reg_offset<PTform>((offset + l_size / 2 * 3) / reg_size);
+                    auto* ptr0 = data + avx::reg_offset<float, PTform>((offset) /    //
+                                                                       reg_size);
+                    auto* ptr1 = data + avx::reg_offset<float, PTform>(
+                                            (offset + l_size / 2) / reg_size);
+                    auto* ptr2 = data + avx::reg_offset<float, PTform>((offset + l_size) /
+                                                                       reg_size);
+                    auto* ptr3 = data + avx::reg_offset<float, PTform>(
+                                            (offset + l_size / 2 * 3) / reg_size);
 
                     auto p1 = avx::cxload<PTform>(ptr1);
                     auto p3 = avx::cxload<PTform>(ptr3);
@@ -806,18 +815,6 @@ public:
                     auto [b0, b2] = avx::btfly(a0, a2tw);
                     auto [b1, b3] = avx::btfly(a1, a3tw);
 
-                    if constexpr (PDest < reg_size)
-                    {
-                        if (l_size * 2 == max_size)
-                        {
-                            std::tie(b0, b1, b2, b3) =
-                                avx::convert<float>::repack<PTform, PDest>(b0,
-                                                                           b1,
-                                                                           b2,
-                                                                           b3);
-                        }
-                    }
-
                     cxstore<PTform>(ptr0, b0);
                     cxstore<PTform>(ptr1, b1);
                     cxstore<PTform>(ptr2, b2);
@@ -832,6 +829,66 @@ public:
             group_size /= 4;
         }
 
+        if constexpr (PDest < reg_size)
+        {
+            if (l_size == max_size / 2)
+            {
+                for (std::size_t i_group = 0; i_group < n_groups; ++i_group)
+                {
+                    std::size_t offset = i_group * reg_size;
+
+                    const auto tw0 = avx::cxload<reg_size>(twiddle_ptr);
+                    const auto tw1 = avx::cxload<reg_size>(twiddle_ptr + reg_size * 2);
+                    const auto tw2 = avx::cxload<reg_size>(twiddle_ptr + reg_size * 4);
+                    twiddle_ptr += reg_size * 6;
+
+                    for (std::size_t i = 0; i < group_size; ++i)
+                    {
+                        auto* ptr0 =    //
+                            data + avx::reg_offset<float, PTform>((offset) / reg_size);
+                        auto* ptr1 =    //
+                            data + avx::reg_offset<float, PTform>((offset + l_size / 2) /
+                                                                  reg_size);
+                        auto* ptr2 =    //
+                            data +
+                            avx::reg_offset<float, PTform>((offset + l_size) / reg_size);
+                        auto* ptr3 =    //
+                            data + avx::reg_offset<float, PTform>(
+                                       (offset + l_size / 2 * 3) / reg_size);
+
+                        auto p1 = avx::cxload<PTform>(ptr1);
+                        auto p3 = avx::cxload<PTform>(ptr3);
+                        auto p0 = avx::cxload<PTform>(ptr0);
+                        auto p2 = avx::cxload<PTform>(ptr2);
+
+                        auto [p1tw, p3tw] = avx::mul({p1, tw0}, {p3, tw0});
+
+                        auto [a2, a3] = avx::btfly(p2, p3tw);
+                        auto [a0, a1] = avx::btfly(p0, p1tw);
+
+                        auto [a2tw, a3tw] = avx::mul({a2, tw1}, {a3, tw2});
+
+                        auto [b0, b2] = avx::btfly(a0, a2tw);
+                        auto [b1, b3] = avx::btfly(a1, a3tw);
+
+                        std::tie(b0, b1, b2, b3) =
+                            avx::convert<float>::repack<PTform, PDest>(b0, b1, b2, b3);
+
+                        cxstore<PTform>(ptr0, b0);
+                        cxstore<PTform>(ptr1, b1);
+                        cxstore<PTform>(ptr2, b2);
+                        cxstore<PTform>(ptr3, b3);
+
+                        offset += l_size * 2;
+                    }
+                }
+
+                l_size *= 4;
+                n_groups *= 4;
+                group_size /= 4;
+            }
+        }
+
         if (l_size == max_size)
         {
             for (std::size_t i_group = 0; i_group < n_groups; ++i_group)
@@ -839,8 +896,9 @@ public:
                 const auto tw0 = avx::cxload<reg_size>(twiddle_ptr);
                 twiddle_ptr += reg_size * 2;
 
-                auto* ptr0 = data + reg_offset<PTform>(i_group);
-                auto* ptr1 = data + reg_offset<PTform>(i_group + l_size / reg_size / 2);
+                auto* ptr0 = data + avx::reg_offset<float, PTform>(i_group);
+                auto* ptr1 = data + avx::reg_offset<float, PTform>(i_group +
+                                                                   l_size / reg_size / 2);
 
                 auto p1 = avx::cxload<PTform>(ptr1);
                 auto p0 = avx::cxload<PTform>(ptr0);
@@ -872,16 +930,50 @@ public:
         {
             return subtransform<PDest, PTform>(data, size);
         } else
+//  if (size == sub_size() * 2)
+// 
+//         {
+//             std::size_t n_groups = size() / reg_size / 2;
+// 
+//             for (std::size_t i_group = 0; i_group < n_groups; ++i_group)
+//             {
+//                 std::size_t offset = i_group * reg_size;
+// 
+//                 const auto tw0 = avx::cxload<reg_size>(twiddle_ptr);
+//                 twiddle_ptr += reg_size * 2;
+// 
+//                 auto* ptr0 = data + avx::reg_offset<float, PTform>(i_group);
+//                 auto* ptr1 = data + avx::reg_offset<float, PTform>(i_group +
+//                                                                    size() / 2 / reg_size);
+// 
+//                 auto p1 = avx::cxload<PTform>(ptr1);
+//                 auto p0 = avx::cxload<PTform>(ptr0);
+// 
+//                 auto p1tw = avx::mul(p1, tw0);
+// 
+//                 auto a0 = avx::add(p0, p1tw);
+//                 auto a1 = avx::sub(p0, p1tw);
+// 
+//                 if constexpr (PData < PTform)
+//                 {
+//                     std::tie(a0, a1) = avx::convert<float>::repack<PTform, PData>(a0, a1);
+//                 }
+// 
+//                 cxstore<PTform>(ptr0, a0);
+//                 cxstore<PTform>(ptr1, a1);
+//             }
+// 
+//         } else
         {
             subtransform_recursive<PTform, PTform>(data, size / 4);
             subtransform_recursive<PTform, PTform>(
-                data + reg_offset<PTform>(size / 4 / reg_size),
+                data + avx::reg_offset<float, PTform>(size / 4 / reg_size),
                 size / 4);
             subtransform_recursive<PTform, PTform>(
-                data + reg_offset<PTform>(size / 2 / reg_size),
+                data + avx::reg_offset<float, PTform>(size / 2 / reg_size),
                 size / 4);
             auto twiddle_ptr = subtransform_recursive<PTform, PTform>(
-                data + reg_offset<PTform>(size * 3 / 4 / reg_size),
+                data + avx::reg_offset<float, PTform>(size * 3 / 4 / reg_size),
                 size / 4);
 
             std::size_t n_groups = size / reg_size / 4;
@@ -893,10 +985,13 @@ public:
                 const auto tw2 = avx::cxload<reg_size>(twiddle_ptr + reg_size * 4);
                 twiddle_ptr += reg_size * 6;
 
-                auto* ptr0 = data + reg_offset<PTform>(i_group);
-                auto* ptr1 = data + reg_offset<PTform>(i_group + size / 4 / reg_size);
-                auto* ptr2 = data + reg_offset<PTform>(i_group + size / 2 / reg_size);
-                auto* ptr3 = data + reg_offset<PTform>(i_group + size * 3 / 4 / reg_size);
+                auto* ptr0 = data + avx::reg_offset<float, PTform>(i_group);
+                auto* ptr1 =
+                    data + avx::reg_offset<float, PTform>(i_group + size / 4 / reg_size);
+                auto* ptr2 =
+                    data + avx::reg_offset<float, PTform>(i_group + size / 2 / reg_size);
+                auto* ptr3 = data + avx::reg_offset<float, PTform>(
+                                        i_group + size * 3 / 4 / reg_size);
 
                 auto p1 = avx::cxload<PTform>(ptr1);
                 auto p3 = avx::cxload<PTform>(ptr3);
@@ -915,8 +1010,8 @@ public:
 
                 if constexpr (PDest < PTform)
                 {
-                    std::tie(b0, b1, b2, b3) =
-                        avx::convert<float>::repack<PTform, PDest>(b0, b1, b2, b3);
+                    std::tie(b0, b2, b1, b3) =
+                        avx::convert<float>::repack<PTform, PDest>(b0, b2, b1, b3);
                 }
 
                 cxstore<PTform>(ptr0, b0);
@@ -959,13 +1054,13 @@ public:
                 for (std::size_t i = 0; i < group_size / 2; ++i)
                 {
                     auto* ptr0 =    //
-                        group_ptr + reg_offset<PTform>(i);
-                    auto* ptr1 =
-                        group_ptr + reg_offset<PTform>(i + l_size / reg_size / 2);
-                    auto* ptr2 =
-                        group_ptr + reg_offset<PTform>(i + l_size / reg_size / 4);
-                    auto* ptr3 =
-                        group_ptr + reg_offset<PTform>(i + l_size / reg_size / 4 * 3);
+                        group_ptr + avx::reg_offset<float, PTform>(i);
+                    auto* ptr1 = group_ptr + avx::reg_offset<float, PTform>(
+                                                 i + l_size / reg_size / 2);
+                    auto* ptr2 = group_ptr + avx::reg_offset<float, PTform>(
+                                                 i + l_size / reg_size / 4);
+                    auto* ptr3 = group_ptr + avx::reg_offset<float, PTform>(
+                                                 i + l_size / reg_size / 4 * 3);
 
                     auto p1 = avx::cxload<PTform>(ptr1);
                     auto p3 = avx::cxload<PTform>(ptr3);
@@ -1007,9 +1102,9 @@ public:
                     std::size_t offset = i * reg_size;
 
                     auto* ptr0 =    //
-                        group_ptr + reg_offset<PTform>(i);
-                    auto* ptr1 =
-                        group_ptr + reg_offset<PTform>(i + l_size / 2 / reg_size);
+                        group_ptr + avx::reg_offset<float, PTform>(i);
+                    auto* ptr1 = group_ptr + avx::reg_offset<float, PTform>(
+                                                 i + l_size / 2 / reg_size);
 
                     auto p1 = avx::cxload<PTform>(ptr1);
                     auto p0 = avx::cxload<PTform>(ptr0);
@@ -1042,18 +1137,20 @@ public:
                 reg_t tw2 = {avx::broadcast(twiddle_ptr++),
                              avx::broadcast(twiddle_ptr++)};
 
-                auto* group_ptr = data + reg_offset<PTform>(i_group * l_size / reg_size);
+                auto* group_ptr =
+                    data + avx::reg_offset<float, PTform>(i_group * l_size / reg_size);
 
                 for (std::size_t i = 0; i < group_size / 2; ++i)
                 {
                     auto* ptr0 =    //
-                        group_ptr + reg_offset<PTform>(i);
-                    auto* ptr1 =
-                        group_ptr + reg_offset<PTform>(i + l_size / reg_size / 4);
-                    auto* ptr2 =
-                        group_ptr + reg_offset<PTform>(i + l_size / reg_size / 2);
+                        group_ptr + avx::reg_offset<float, PTform>(i);
+                    auto* ptr1 = group_ptr + avx::reg_offset<float, PTform>(
+                                                 i + l_size / reg_size / 4);
+                    auto* ptr2 = group_ptr + avx::reg_offset<float, PTform>(
+                                                 i + l_size / reg_size / 2);
                     auto* ptr3 =    //
-                        group_ptr + reg_offset<PTform>(i + l_size / reg_size / 4 * 3);
+                        group_ptr +
+                        avx::reg_offset<float, PTform>(i + l_size / reg_size / 4 * 3);
 
                     auto p2 = avx::cxload<PTform>(ptr2);
                     auto p3 = avx::cxload<PTform>(ptr3);
@@ -1088,16 +1185,17 @@ public:
                 reg_t tw0 = {avx::broadcast(twiddle_ptr++),
                              avx::broadcast(twiddle_ptr++)};
 
-                auto* group_ptr = data + reg_offset<PTform>(i_group * l_size / reg_size);
+                auto* group_ptr =
+                    data + avx::reg_offset<float, PTform>(i_group * l_size / reg_size);
 
                 for (std::size_t i = 0; i < group_size; ++i)
                 {
                     std::size_t offset = i * reg_size;
 
                     auto* ptr0 =    //
-                        group_ptr + reg_offset<PTform>(i);
-                    auto* ptr1 =
-                        group_ptr + reg_offset<PTform>(i + l_size / 2 / reg_size);
+                        group_ptr + avx::reg_offset<float, PTform>(i);
+                    auto* ptr1 = group_ptr + avx::reg_offset<float, PTform>(
+                                                 i + l_size / 2 / reg_size);
 
                     auto p1 = avx::cxload<PTform>(ptr1);
                     auto p0 = avx::cxload<PTform>(ptr0);
@@ -1127,10 +1225,10 @@ public:
                 reg_t tw2 = {avx::broadcast(twiddle_ptr++),
                              avx::broadcast(twiddle_ptr++)};
 
-                auto* ptr0 = data + reg_offset<PTform>(i_group * 4);
-                auto* ptr1 = data + reg_offset<PTform>(i_group * 4 + 1);
-                auto* ptr2 = data + reg_offset<PTform>(i_group * 4 + 2);
-                auto* ptr3 = data + reg_offset<PTform>(i_group * 4 + 3);
+                auto* ptr0 = data + avx::reg_offset<float, PTform>(i_group * 4);
+                auto* ptr1 = data + avx::reg_offset<float, PTform>(i_group * 4 + 1);
+                auto* ptr2 = data + avx::reg_offset<float, PTform>(i_group * 4 + 2);
+                auto* ptr3 = data + avx::reg_offset<float, PTform>(i_group * 4 + 3);
 
                 auto p2 = avx::cxload<PTform>(ptr2);
                 auto p3 = avx::cxload<PTform>(ptr3);
@@ -1238,10 +1336,13 @@ public:
 
             for (std::size_t i_group = 0; i_group < size / 4 / reg_size; ++i_group)
             {
-                auto* ptr0 = data + reg_offset<PTform>(i_group);
-                auto* ptr1 = data + reg_offset<PTform>(i_group + size / reg_size / 4);
-                auto* ptr2 = data + reg_offset<PTform>(i_group + size / reg_size / 2);
-                auto* ptr3 = data + reg_offset<PTform>(i_group + size / reg_size / 4 * 3);
+                auto* ptr0 = data + avx::reg_offset<float, PTform>(i_group);
+                auto* ptr1 =
+                    data + avx::reg_offset<float, PTform>(i_group + size / reg_size / 4);
+                auto* ptr2 =
+                    data + avx::reg_offset<float, PTform>(i_group + size / reg_size / 2);
+                auto* ptr3 = data + avx::reg_offset<float, PTform>(
+                                        i_group + size / reg_size / 4 * 3);
 
                 auto p2 = avx::cxload<PTform>(ptr2);
                 auto p3 = avx::cxload<PTform>(ptr3);
@@ -1317,17 +1418,6 @@ private:
                                         std::to_string(sub_size) +
                                         ") is not an integer power of two"));
         }
-    }
-
-    template<std::size_t TMPPackSize>
-    static constexpr auto reg_offset(std::size_t reg_idx) -> std::size_t
-    {
-        return reg_idx * reg_size + (reg_idx * reg_size / TMPPackSize) * TMPPackSize;
-    }
-    template<>
-    static constexpr auto reg_offset<reg_size>(std::size_t reg_idx) -> std::size_t
-    {
-        return reg_idx * reg_size * 2;
     }
 
     static constexpr auto log2i(std::size_t num) -> std::size_t
