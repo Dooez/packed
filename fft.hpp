@@ -94,13 +94,6 @@ public:
     };
 
     template<typename VAllocator>
-    void old(pcx::vector<T, VAllocator, PackSize>& vector)
-    {
-        assert(size() == vector.size());
-        old_fft_internal<PackSize>(vector.data());
-    };
-
-    template<typename VAllocator>
     void operator()(std::vector<std::complex<T>, VAllocator>& vector)
     {
         assert(size() == vector.size());
@@ -111,21 +104,19 @@ public:
     void unsorted(pcx::vector<T, VAllocator, PackSize>& vector)
     {
         assert(size() == vector.size());
-        subtransform_unsorted<PackSize, PackSize>(vector.data(),
-                                                  size(),
-                                                  m_twiddles_unsorted.data());
-        // subtransform_cached_unsorted(vector.data(), size(), m_twiddles_unsorted.data());
+        unsorted_subtransform_recursive<PackSize, PackSize>(vector.data(),
+                                                            size(),
+                                                            m_twiddles_unsorted.data());
     };
 
     template<typename VAllocator>
     void unsorted(std::vector<std::complex<T>, VAllocator>& vector)
     {
         assert(size() == vector.size());
-        subtransform_unsorted<1, 1>(reinterpret_cast<T*>(vector.data()),
-                                    size(),
-                                    m_twiddles_unsorted.data());
+        unsorted_subtransform_recursive<1, 1>(reinterpret_cast<T*>(vector.data()),
+                                              size(),
+                                              m_twiddles_unsorted.data());
     };
-
 
     template<typename VAllocator>
     void operator()(pcx::vector<T, VAllocator, PackSize>&       dest,
@@ -164,14 +155,14 @@ public:
     void fft_internal(float* data)
     {
         constexpr auto PTform = std::max(PData, reg_size);
-        dept3_and_sort<PTform, PData>(data);
+        depth3_and_sort<PTform, PData>(data);
         if (size() <= sub_size() || log2i(size() / sub_size()) % 2 == 0)
         {
-            subtransform<PData, PTform>(data, size());
+            subtransform_recursive<PData, PTform>(data, size());
         } else
         {
-            subtransform<PTform, PTform>(data, size() / 2);
-            auto twiddle_ptr = subtransform<PTform, PTform>(
+            subtransform_recursive<PTform, PTform>(data, size() / 2);
+            auto twiddle_ptr = subtransform_recursive<PTform, PTform>(
                 data + reg_offset<PTform>(size() / 2 / reg_size),
                 size() / 2);
             std::size_t n_groups = size() / reg_size / 2;
@@ -205,57 +196,18 @@ public:
         }
     }
 
-    template<std::size_t PData>
-    void old_fft_internal(float* data)
-    {
-        constexpr auto PTform = std::max(PData, reg_size);
-        old_dept3_and_sort<true, PData>(data);
-        if (size() <= sub_size() || log2i(size() / sub_size()) % 2 == 0)
-        {
-            old_subtransform<true>(data, size());
-        } else
-        {
-            old_subtransform<true>(data, size() / 2);
-            auto twiddle_ptr =
-                old_subtransform<true>(data + reg_offset<PData>(size() / 2 / reg_size),
-                                       size() / 2);
-            std::size_t n_groups = size() / reg_size / 2;
-
-            for (std::size_t i_group = 0; i_group < n_groups; ++i_group)
-            {
-                std::size_t offset = i_group * reg_size;
-
-                const auto tw0 = avx::cxload<reg_size>(twiddle_ptr);
-                twiddle_ptr += reg_size * 2;
-
-                auto* ptr0 = data + reg_offset<PData>(i_group);
-                auto* ptr1 = data + reg_offset<PData>(i_group + size() / 2 / reg_size);
-
-                auto p1 = avx::cxload<PData>(ptr1);
-                auto p0 = avx::cxload<PData>(ptr0);
-
-                auto p1tw = avx::mul(p1, tw0);
-
-                auto a0 = avx::add(p0, p1tw);
-                auto a1 = avx::sub(p0, p1tw);
-
-                cxstore<PData>(ptr0, a0);
-                cxstore<PData>(ptr1, a1);
-            }
-        }
-    }
     template<std::size_t PDest, std::size_t PSrc>
     void fft_internal(float* dest, const float* source)
     {
         constexpr auto PTform = std::max(PDest, reg_size);
-        dept3_and_sort<PTform, PSrc>(dest, source);
+        depth3_and_sort<PTform, PSrc>(dest, source);
         if (size() <= sub_size() || log2i(size() / sub_size()) % 2 == 0)
         {
-            subtransform<PDest, PTform>(dest, size());
+            subtransform_recursive<PDest, PTform>(dest, size());
         } else
         {
-            subtransform<PDest, PTform>(dest, size() / 2);
-            auto twiddle_ptr = subtransform<PDest, PTform>(
+            subtransform_recursive<PDest, PTform>(dest, size() / 2);
+            auto twiddle_ptr = subtransform_recursive<PDest, PTform>(
                 dest + reg_offset<PTform>(size() / 2 / reg_size),
                 size() / 2);
             std::size_t n_groups = size() / reg_size / 2;
@@ -289,450 +241,8 @@ public:
         }
     };
 
-    template<bool PackedSrc, std::size_t TMPPackSize = PackSize>
-    inline void old_dept3_and_sort(float* source)
-    {
-        const auto sq2   = wnk(8, 1);
-        auto       twsq2 = avx::broadcast(sq2.real());
-
-        const auto sh0 = 0;
-        const auto sh1 = reg_offset<TMPPackSize>(1 * size() / 64);
-        const auto sh2 = reg_offset<TMPPackSize>(2 * size() / 64);
-        const auto sh3 = reg_offset<TMPPackSize>(3 * size() / 64);
-        const auto sh4 = reg_offset<TMPPackSize>(4 * size() / 64);
-        const auto sh5 = reg_offset<TMPPackSize>(5 * size() / 64);
-        const auto sh6 = reg_offset<TMPPackSize>(6 * size() / 64);
-        const auto sh7 = reg_offset<TMPPackSize>(7 * size() / 64);
-
-        uint i = 0;
-
-        for (; i < n_reversals(size() / 64); i += 2)
-        {
-            using reg_t = avx::cx_reg<float>;
-
-            auto offset_first  = m_sort[i];
-            auto offset_second = m_sort[i + 1];
-
-            auto p1 = avx::cxload<TMPPackSize>(source + sh1 + offset_first);
-            auto p5 = avx::cxload<TMPPackSize>(source + sh5 + offset_first);
-            auto p3 = avx::cxload<TMPPackSize>(source + sh3 + offset_first);
-            auto p7 = avx::cxload<TMPPackSize>(source + sh7 + offset_first);
-
-            if constexpr (!PackedSrc)
-            {
-                std::tie(p1, p5, p3, p7) =
-                    avx::convert<T>::interleaved_to_packed(p1, p5, p3, p7);
-            }
-
-            auto [a1, a5] = avx::btfly(p1, p5);
-            auto [a3, a7] = avx::btfly(p3, p7);
-
-            reg_t b5 = {avx::add(a5.real, a7.imag), avx::sub(a5.imag, a7.real)};
-            reg_t b7 = {avx::sub(a5.real, a7.imag), avx::add(a5.imag, a7.real)};
-
-            reg_t b5_tw = {avx::add(b5.real, b5.imag), avx::sub(b5.imag, b5.real)};
-            reg_t b7_tw = {avx::sub(b7.real, b7.imag), avx::add(b7.real, b7.imag)};
-
-            auto [b1, b3] = avx::btfly(a1, a3);
-
-            b5_tw = avx::mul(b5_tw, twsq2);
-            b7_tw = avx::mul(b7_tw, twsq2);
-
-            auto p0 = avx::cxload<TMPPackSize>(source + sh0 + offset_first);
-            auto p4 = avx::cxload<TMPPackSize>(source + sh4 + offset_first);
-            auto p2 = avx::cxload<TMPPackSize>(source + sh2 + offset_first);
-            auto p6 = avx::cxload<TMPPackSize>(source + sh6 + offset_first);
-
-            if constexpr (!PackedSrc)
-            {
-                std::tie(p0, p4, p2, p6) =
-                    avx::convert<T>::interleaved_to_packed(p0, p4, p2, p6);
-            }
-
-            auto [a0, a4] = avx::btfly(p0, p4);
-            auto [a2, a6] = avx::btfly(p2, p6);
-
-            auto [b0, b2] = avx::btfly(a0, a2);
-            reg_t b4      = {avx::add(a4.real, a6.imag), avx::sub(a4.imag, a6.real)};
-            reg_t b6      = {avx::sub(a4.real, a6.imag), avx::add(a4.imag, a6.real)};
-
-            auto [c0, c1] = avx::btfly(b0, b1);
-            reg_t c2      = {avx::add(b2.real, b3.imag), avx::sub(b2.imag, b3.real)};
-            reg_t c3      = {avx::sub(b2.real, b3.imag), avx::add(b2.imag, b3.real)};
-
-            auto [c4, c5] = avx::btfly(b4, b5_tw);
-            auto [c7, c6] = avx::btfly(b6, b7_tw);
-
-            auto [sha0, sha4] = avx::unpack_ps(c0, c4);
-            auto [sha2, sha6] = avx::unpack_ps(c2, c6);
-            auto [sha1, sha5] = avx::unpack_ps(c1, c5);
-            auto [sha3, sha7] = avx::unpack_ps(c3, c7);
-
-            auto [shb0, shb2] = avx::unpack_pd(sha0, sha2);
-            auto [shb1, shb3] = avx::unpack_pd(sha1, sha3);
-
-            auto [shc0, shc1] = avx::unpack_128(shb0, shb1);
-            auto [shc2, shc3] = avx::unpack_128(shb2, shb3);
-
-            auto q0 = avx::cxload<TMPPackSize>(source + sh0 + offset_second);
-            avx::cxstore<TMPPackSize>(source + sh0 + offset_second, shc0);
-            auto q1 = avx::cxload<TMPPackSize>(source + sh1 + offset_second);
-            avx::cxstore<TMPPackSize>(source + sh1 + offset_second, shc1);
-            auto q4 = avx::cxload<TMPPackSize>(source + sh4 + offset_second);
-            avx::cxstore<TMPPackSize>(source + sh4 + offset_second, shc2);
-            auto q5 = avx::cxload<TMPPackSize>(source + sh5 + offset_second);
-            avx::cxstore<TMPPackSize>(source + sh5 + offset_second, shc3);
-
-            if constexpr (!PackedSrc)
-            {
-                std::tie(q0, q1, q4, q5) =
-                    avx::convert<T>::interleaved_to_packed(q0, q1, q4, q5);
-            }
-
-            auto [shb4, shb6] = avx::unpack_pd(sha4, sha6);
-            auto [shb5, shb7] = avx::unpack_pd(sha5, sha7);
-
-            auto [shc4, shc5] = avx::unpack_128(shb4, shb5);
-
-            auto q2 = avx::cxload<TMPPackSize>(source + sh2 + offset_second);
-            avx::cxstore<TMPPackSize>(source + sh2 + offset_second, shc4);
-            auto q3 = avx::cxload<TMPPackSize>(source + sh3 + offset_second);
-            avx::cxstore<TMPPackSize>(source + sh3 + offset_second, shc5);
-
-            auto [shc6, shc7] = avx::unpack_128(shb6, shb7);
-
-            auto q6 = avx::cxload<TMPPackSize>(source + sh6 + offset_second);
-            avx::cxstore<TMPPackSize>(source + sh6 + offset_second, shc6);
-            auto q7 = avx::cxload<TMPPackSize>(source + sh7 + offset_second);
-            avx::cxstore<TMPPackSize>(source + sh7 + offset_second, shc7);
-
-            if constexpr (!PackedSrc)
-            {
-                std::tie(q2, q3, q6, q7) =
-                    avx::convert<T>::interleaved_to_packed(q2, q3, q6, q7);
-            }
-
-            auto [x1, x5] = avx::btfly(q1, q5);
-            auto [x3, x7] = avx::btfly(q3, q7);
-
-            reg_t y5 = {avx::add(x5.real, x7.imag), avx::sub(x5.imag, x7.real)};
-            reg_t y7 = {avx::sub(x5.real, x7.imag), avx::add(x5.imag, x7.real)};
-
-            auto y1 = avx::add(x1, x3);
-
-            reg_t y5_tw = {avx::add(y5.real, y5.imag), avx::sub(y5.imag, y5.real)};
-            reg_t y7_tw = {avx::sub(y7.real, y7.imag), avx::add(y7.real, y7.imag)};
-
-            auto y3 = avx::sub(x1, x3);
-
-            y5_tw = avx::mul(y5_tw, twsq2);
-            y7_tw = avx::mul(y7_tw, twsq2);
-
-            auto [x0, x4] = avx::btfly(q0, q4);
-            auto [x2, x6] = avx::btfly(q2, q6);
-
-            auto [y0, y2] = avx::btfly(x0, x2);
-            reg_t y4      = {avx::add(x4.real, x6.imag), avx::sub(x4.imag, x6.real)};
-            reg_t y6      = {avx::sub(x4.real, x6.imag), avx::add(x4.imag, x6.real)};
-
-            auto [z0, z1] = avx::btfly(y0, y1);
-
-            reg_t z2 = {avx::add(y2.real, y3.imag), avx::sub(y2.imag, y3.real)};
-            reg_t z3 = {avx::sub(y2.real, y3.imag), avx::add(y2.imag, y3.real)};
-
-            auto [z4, z5] = avx::btfly(y4, y5_tw);
-            auto [z7, z6] = avx::btfly(y6, y7_tw);
-
-            auto [shx0, shx4] = avx::unpack_ps(z0, z4);
-            auto [shx1, shx5] = avx::unpack_ps(z1, z5);
-            auto [shx2, shx6] = avx::unpack_ps(z2, z6);
-            auto [shx3, shx7] = avx::unpack_ps(z3, z7);
-
-            auto [shy0, shy2] = avx::unpack_pd(shx0, shx2);
-            auto [shy1, shy3] = avx::unpack_pd(shx1, shx3);
-
-            auto [shz0, shz1] = avx::unpack_128(shy0, shy1);
-            auto [shz2, shz3] = avx::unpack_128(shy2, shy3);
-
-            avx::cxstore<TMPPackSize>(source + sh0 + offset_first, shz0);
-            avx::cxstore<TMPPackSize>(source + sh1 + offset_first, shz1);
-            avx::cxstore<TMPPackSize>(source + sh4 + offset_first, shz2);
-            avx::cxstore<TMPPackSize>(source + sh5 + offset_first, shz3);
-
-            auto [shy4, shy6] = avx::unpack_pd(shx4, shx6);
-            auto [shy5, shy7] = avx::unpack_pd(shx5, shx7);
-
-            auto [shz4, shz5] = avx::unpack_128(shy4, shy5);
-            auto [shz6, shz7] = avx::unpack_128(shy6, shy7);
-
-            avx::cxstore<TMPPackSize>(source + sh2 + offset_first, shz4);
-            avx::cxstore<TMPPackSize>(source + sh3 + offset_first, shz5);
-            avx::cxstore<TMPPackSize>(source + sh6 + offset_first, shz6);
-            avx::cxstore<TMPPackSize>(source + sh7 + offset_first, shz7);
-        };
-
-        for (; i < size() / 64; ++i)
-        {
-            using reg_t = avx::cx_reg<float>;
-            auto offset = m_sort[i];
-
-            auto p1 = avx::cxload<TMPPackSize>(source + sh1 + offset);
-            auto p3 = avx::cxload<TMPPackSize>(source + sh3 + offset);
-            auto p5 = avx::cxload<TMPPackSize>(source + sh5 + offset);
-            auto p7 = avx::cxload<TMPPackSize>(source + sh7 + offset);
-
-            if constexpr (!PackedSrc)
-            {
-                std::tie(p1, p3, p5, p7) =
-                    avx::convert<T>::interleaved_to_packed(p1, p3, p5, p7);
-            }
-
-            auto a5 = avx::sub(p1, p5);
-            auto a1 = avx::add(p1, p5);
-            auto a7 = avx::sub(p3, p7);
-            auto a3 = avx::add(p3, p7);
-
-            reg_t b5 = {avx::add(a5.real, a7.imag), avx::sub(a5.imag, a7.real)};
-            reg_t b7 = {avx::sub(a5.real, a7.imag), avx::add(a5.imag, a7.real)};
-
-            reg_t b5_tw = {avx::add(b5.real, b5.imag), avx::sub(b5.imag, b5.real)};
-            reg_t b7_tw = {avx::sub(b7.real, b7.imag), avx::add(b7.real, b7.imag)};
-
-            auto b1 = avx::add(a1, a3);
-            auto b3 = avx::sub(a1, a3);
-
-            b5_tw = avx::mul(b5_tw, twsq2);
-            b7_tw = avx::mul(b7_tw, twsq2);
-
-            auto p0 = avx::cxload<TMPPackSize>(source + sh0 + offset);
-            auto p2 = avx::cxload<TMPPackSize>(source + sh2 + offset);
-            auto p4 = avx::cxload<TMPPackSize>(source + sh4 + offset);
-            auto p6 = avx::cxload<TMPPackSize>(source + sh6 + offset);
-
-            if constexpr (!PackedSrc)
-            {
-                std::tie(p0, p4, p2, p6) =
-                    avx::convert<T>::interleaved_to_packed(p0, p4, p2, p6);
-            }
-
-            auto a0 = avx::add(p0, p4);
-            auto a4 = avx::sub(p0, p4);
-            auto a2 = avx::add(p2, p6);
-            auto a6 = avx::sub(p2, p6);
-
-
-            auto  b0 = avx::add(a0, a2);
-            auto  b2 = avx::sub(a0, a2);
-            reg_t b4 = {avx::add(a4.real, a6.imag), avx::sub(a4.imag, a6.real)};
-            reg_t b6 = {avx::sub(a4.real, a6.imag), avx::add(a4.imag, a6.real)};
-
-            auto  c0 = avx::add(b0, b1);
-            auto  c1 = avx::sub(b0, b1);
-            reg_t c2 = {avx::add(b2.real, b3.imag), avx::sub(b2.imag, b3.real)};
-            reg_t c3 = {avx::sub(b2.real, b3.imag), avx::add(b2.imag, b3.real)};
-
-            reg_t c4 = avx::add(b4, b5_tw);
-            reg_t c5 = avx::sub(b4, b5_tw);
-            reg_t c6 = avx::sub(b6, b7_tw);
-            reg_t c7 = avx::add(b6, b7_tw);
-
-            auto [sha0, sha4] = avx::unpack_ps(c0, c4);
-            auto [sha2, sha6] = avx::unpack_ps(c2, c6);
-            auto [sha1, sha5] = avx::unpack_ps(c1, c5);
-            auto [sha3, sha7] = avx::unpack_ps(c3, c7);
-
-            auto [shb0, shb2] = avx::unpack_pd(sha0, sha2);
-            auto [shb1, shb3] = avx::unpack_pd(sha1, sha3);
-
-            auto [shc0, shc1] = avx::unpack_128(shb0, shb1);
-            auto [shc2, shc3] = avx::unpack_128(shb2, shb3);
-
-            avx::cxstore<TMPPackSize>(source + sh0 + offset, shc0);
-            avx::cxstore<TMPPackSize>(source + sh1 + offset, shc1);
-            avx::cxstore<TMPPackSize>(source + sh4 + offset, shc2);
-            avx::cxstore<TMPPackSize>(source + sh5 + offset, shc3);
-
-            auto [shb4, shb6] = avx::unpack_pd(sha4, sha6);
-            auto [shb5, shb7] = avx::unpack_pd(sha5, sha7);
-
-            auto [shc4, shc5] = avx::unpack_128(shb4, shb5);
-            auto [shc6, shc7] = avx::unpack_128(shb6, shb7);
-
-            avx::cxstore<TMPPackSize>(source + sh2 + offset, shc4);
-            avx::cxstore<TMPPackSize>(source + sh3 + offset, shc5);
-            avx::cxstore<TMPPackSize>(source + sh6 + offset, shc6);
-            avx::cxstore<TMPPackSize>(source + sh7 + offset, shc7);
-        }
-    }
-
-    template<bool PackedDest, std::size_t TMPPackSize = PackSize>
-    inline auto old_subtransform_cached(float* data, std::size_t max_size) -> const float*
-    {
-        const auto* twiddle_ptr = m_twiddles.data();
-
-        std::size_t l_size     = reg_size * 2;
-        std::size_t group_size = max_size / reg_size / 4;
-        std::size_t n_groups   = 1;
-        std::size_t tw_offset  = 0;
-
-        while (l_size < max_size)
-        {
-            for (std::size_t i_group = 0; i_group < n_groups; ++i_group)
-            {
-                std::size_t offset = i_group * reg_size;
-
-                const auto tw0 = avx::cxload<reg_size>(twiddle_ptr);
-                const auto tw1 = avx::cxload<reg_size>(twiddle_ptr + reg_size * 2);
-                const auto tw2 = avx::cxload<reg_size>(twiddle_ptr + reg_size * 4);
-                twiddle_ptr += reg_size * 6;
-
-                for (std::size_t i = 0; i < group_size; ++i)
-                {
-                    auto* ptr0 = data + pidx<PackedDest>(offset);
-                    auto* ptr1 = data + pidx<PackedDest>(offset + l_size / 2);
-                    auto* ptr2 = data + pidx<PackedDest>(offset + l_size);
-                    auto* ptr3 = data + pidx<PackedDest>(offset + l_size / 2 * 3);
-
-                    auto p1 = avx::cxload<TMPPackSize>(ptr1);
-                    auto p3 = avx::cxload<TMPPackSize>(ptr3);
-                    auto p0 = avx::cxload<TMPPackSize>(ptr0);
-                    auto p2 = avx::cxload<TMPPackSize>(ptr2);
-
-                    auto [p1tw, p3tw] = avx::mul({p1, tw0}, {p3, tw0});
-
-                    auto [a2, a3] = avx::btfly(p2, p3tw);
-                    auto [a0, a1] = avx::btfly(p0, p1tw);
-
-                    auto [a2tw, a3tw] = avx::mul({a2, tw1}, {a3, tw2});
-
-                    auto [b0, b2] = avx::btfly(a0, a2tw);
-                    auto [b1, b3] = avx::btfly(a1, a3tw);
-
-                    if constexpr (!PackedDest)
-                    {
-                        if (l_size * 2 == max_size)
-                        {
-                            std::tie(b0, b1, b2, b3) =
-                                avx::convert<T>::packed_to_interleaved(b0, b1, b2, b3);
-                        }
-                    }
-
-                    cxstore<TMPPackSize>(ptr0, b0);
-                    cxstore<TMPPackSize>(ptr1, b1);
-                    cxstore<TMPPackSize>(ptr2, b2);
-                    cxstore<TMPPackSize>(ptr3, b3);
-
-                    offset += l_size * 2;
-                }
-            }
-
-            l_size *= 4;
-            n_groups *= 4;
-            group_size /= 4;
-        }
-
-        if (l_size == max_size)
-        {
-            for (std::size_t i_group = 0; i_group < n_groups; ++i_group)
-            {
-                std::size_t offset = i_group * reg_size;
-
-                const auto tw0 = avx::cxload<reg_size>(twiddle_ptr);
-                twiddle_ptr += reg_size * 2;
-
-                auto* ptr0 = data + pidx<PackedDest>(offset);
-                auto* ptr1 = data + pidx<PackedDest>(offset + l_size / 2);
-
-                auto p1 = avx::cxload<TMPPackSize>(ptr1);
-                auto p0 = avx::cxload<TMPPackSize>(ptr0);
-
-                auto p1tw = avx::mul(p1, tw0);
-
-                auto [a0, a1] = avx::btfly(p0, p1tw);
-
-                if constexpr (!PackedDest)
-                {
-                    std::tie(a0, a1) = avx::convert<T>::packed_to_interleaved(a0, a1);
-                }
-
-                cxstore<TMPPackSize>(ptr0, a0);
-                cxstore<TMPPackSize>(ptr1, a1);
-            }
-            l_size *= 2;
-            n_groups *= 2;
-            group_size /= 2;
-        }
-
-        return twiddle_ptr;
-    };
-
-    template<bool PackedDest, std::size_t TMPPackSize = PackSize>
-    inline auto old_subtransform(float* data, std::size_t size) -> const float*
-    {
-        if (size <= sub_size())
-        {
-            return old_subtransform_cached<PackedDest, TMPPackSize>(data, size);
-        } else
-        {
-            old_subtransform<true>(data, size / 4);
-            old_subtransform<true>(data + reg_offset<TMPPackSize>(size / 4 / reg_size),
-                                   size / 4);
-            old_subtransform<true>(data + reg_offset<TMPPackSize>(size / 2 / reg_size),
-                                   size / 4);
-            auto twiddle_ptr = old_subtransform<true>(
-                data + reg_offset<TMPPackSize>(size * 3 / 4 / reg_size),
-                size / 4);
-
-            std::size_t n_groups = size / reg_size / 4;
-
-            for (std::size_t i_group = 0; i_group < n_groups; ++i_group)
-            {
-                const auto tw0 = avx::cxload<reg_size>(twiddle_ptr);
-                const auto tw1 = avx::cxload<reg_size>(twiddle_ptr + reg_size * 2);
-                const auto tw2 = avx::cxload<reg_size>(twiddle_ptr + reg_size * 4);
-                twiddle_ptr += reg_size * 6;
-
-                auto* ptr0 = data + reg_offset<TMPPackSize>(i_group);
-                auto* ptr1 =
-                    data + reg_offset<TMPPackSize>(i_group + size / 4 / reg_size);
-                auto* ptr2 =
-                    data + reg_offset<TMPPackSize>(i_group + size / 2 / reg_size);
-                auto* ptr3 =
-                    data + reg_offset<TMPPackSize>(i_group + size * 3 / 4 / reg_size);
-
-                auto p1 = avx::cxload<TMPPackSize>(ptr1);
-                auto p3 = avx::cxload<TMPPackSize>(ptr3);
-                auto p0 = avx::cxload<TMPPackSize>(ptr0);
-                auto p2 = avx::cxload<TMPPackSize>(ptr2);
-
-                auto [p1tw, p3tw] = avx::mul({p1, tw0}, {p3, tw0});
-
-                auto [a2, a3] = avx::btfly(p2, p3tw);
-                auto [a0, a1] = avx::btfly(p0, p1tw);
-
-                auto [a2tw, a3tw] = avx::mul({a2, tw1}, {a3, tw2});
-
-                auto [b0, b2] = avx::btfly(a0, a2tw);
-                auto [b1, b3] = avx::btfly(a1, a3tw);
-
-                if constexpr (!PackedDest)
-                {
-                    std::tie(b0, b1, b2, b3) =
-                        avx::convert<T>::packed_to_interleaved(b0, b1, b2, b3);
-                }
-
-                cxstore<TMPPackSize>(ptr0, b0);
-                cxstore<TMPPackSize>(ptr1, b1);
-                cxstore<TMPPackSize>(ptr2, b2);
-                cxstore<TMPPackSize>(ptr3, b3);
-            }
-
-            return twiddle_ptr;
-        }
-    };
-
     template<std::size_t PTform, std::size_t PSrc>
-    inline void dept3_and_sort(float* data)
+    inline void depth3_and_sort(float* data)
     {
         const auto sq2   = wnk(8, 1);
         auto       twsq2 = avx::broadcast(sq2.real());
@@ -999,7 +509,7 @@ public:
     }
 
     template<std::size_t PTform, std::size_t PSrc>
-    inline void dept3_and_sort(float* dest, const float* source)
+    inline void depth3_and_sort(float* dest, const float* source)
     {
         constexpr auto PLoad = std::max(PSrc, reg_size);
 
@@ -1200,16 +710,16 @@ public:
     }
 
     /**
-         * @brief
-         *
-         * @tparam PDest Destination pack size.
-         * @tparam PTform Transform pack size. Must be equal to the maximum of PDest and reg_size.
-         * @param data
-         * @param max_size
-         * @return const float* twiddle pointer.
-         */
+     * @brief
+     *
+     * @tparam PDest Destination pack size.
+     * @tparam PTform Transform pack size. Must be equal to the maximum of PDest and reg_size.
+     * @param data
+     * @param max_size
+     * @return const float* twiddle pointer.
+     */
     template<std::size_t PDest, std::size_t PTform>
-    inline auto subtransform_cached(float* data, std::size_t max_size) -> const float*
+    inline auto subtransform(float* data, std::size_t max_size) -> const float*
     {
         const auto* twiddle_ptr = m_twiddles.data();
 
@@ -1317,19 +827,21 @@ public:
     };
 
     template<std::size_t PDest, std::size_t PTform>
-    inline auto subtransform(float* data, std::size_t size) -> const float*
+    inline auto subtransform_recursive(float* data, std::size_t size) -> const float*
     {
         if (size <= sub_size())
         {
-            return subtransform_cached<PDest, PTform>(data, size);
+            return subtransform<PDest, PTform>(data, size);
         } else
         {
-            subtransform<PTform, PTform>(data, size / 4);
-            subtransform<PTform, PTform>(data + reg_offset<PTform>(size / 4 / reg_size),
-                                        size / 4);
-            subtransform<PTform, PTform>(data + reg_offset<PTform>(size / 2 / reg_size),
-                                        size / 4);
-            auto twiddle_ptr = subtransform<PTform, PTform>(
+            subtransform_recursive<PTform, PTform>(data, size / 4);
+            subtransform_recursive<PTform, PTform>(
+                data + reg_offset<PTform>(size / 4 / reg_size),
+                size / 4);
+            subtransform_recursive<PTform, PTform>(
+                data + reg_offset<PTform>(size / 2 / reg_size),
+                size / 4);
+            auto twiddle_ptr = subtransform_recursive<PTform, PTform>(
                 data + reg_offset<PTform>(size * 3 / 4 / reg_size),
                 size / 4);
 
@@ -1379,9 +891,9 @@ public:
     };
 
     template<std::size_t PDest, std::size_t PSrc>
-    inline auto subtransform_cached_unsorted(float*       data,
-                                             std::size_t  size,
-                                             const float* twiddle_ptr) -> const float*
+    inline auto unsorted_subtransform(float*       data,
+                                      std::size_t  size,
+                                      const float* twiddle_ptr) -> const float*
     {
         constexpr auto PTform = std::max(PSrc, reg_size);
 
@@ -1668,13 +1180,13 @@ public:
     }
 
     template<std::size_t PDest, std::size_t PSrc>
-    inline auto subtransform_unsorted(float*       data,
-                                      std::size_t  size,
-                                      const float* twiddle_ptr) -> const float*
+    inline auto unsorted_subtransform_recursive(float*       data,
+                                                std::size_t  size,
+                                                const float* twiddle_ptr) -> const float*
     {
         if (size <= sub_size())
         {
-            return subtransform_cached_unsorted<PDest, PSrc>(data, size, twiddle_ptr);
+            return unsorted_subtransform<PDest, PSrc>(data, size, twiddle_ptr);
         } else
         {
             constexpr auto PTform = std::max(PSrc, reg_size);
@@ -1706,11 +1218,12 @@ public:
                 cxstore<PTform>(ptr1, a1);
             }
 
-            twiddle_ptr =
-                subtransform_unsorted<PDest, PTform>(data, size / 2, twiddle_ptr);
-            return subtransform_unsorted<PDest, PTform>(data + (size / 2) * 2,
-                                                        size / 2,
-                                                        twiddle_ptr);
+            twiddle_ptr = unsorted_subtransform_recursive<PDest, PTform>(data,
+                                                                         size / 2,
+                                                                         twiddle_ptr);
+            return unsorted_subtransform_recursive<PDest, PTform>(data + (size / 2) * 2,
+                                                                  size / 2,
+                                                                  twiddle_ptr);
         }
     };
 

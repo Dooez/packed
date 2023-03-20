@@ -6,6 +6,7 @@
 #include <cstring>
 #include <immintrin.h>
 #include <tuple>
+#include <algorithm>
 
 namespace pcx {
 
