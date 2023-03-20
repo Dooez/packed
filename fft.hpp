@@ -10,15 +10,13 @@
 namespace pcx {
 
 template<typename T,
-         std::size_t Size     = pcx::dynamic_size,
-         std::size_t SubSize  = pcx::default_pack_size<T>,
-         typename Allocator   = std::allocator<T>,
-         std::size_t PackSize = pcx::default_pack_size<T>>
+         std::size_t Size    = pcx::dynamic_size,
+         std::size_t SubSize = pcx::default_pack_size<T>,
+         typename Allocator  = std::allocator<T>>
     requires(std::same_as<T, float> || std::same_as<T, double>) &&
             (pcx::power_of_two<Size> || (Size == pcx::dynamic_size)) &&
             (pcx::power_of_two<SubSize> && SubSize >= pcx::default_pack_size<T> ||
-             (SubSize == pcx::dynamic_size)) &&
-            pcx::power_of_two<PackSize> && (PackSize >= pcx::default_pack_size<T>)
+             (SubSize == pcx::dynamic_size))
 class fft_unit
 {
 public:
@@ -86,11 +84,11 @@ public:
         }
     }
 
-    template<typename VAllocator>
-    void operator()(pcx::vector<T, VAllocator, PackSize>& vector)
+    template<typename VAllocator, std::size_t VPackSize>
+    void operator()(pcx::vector<T, VAllocator, VPackSize>& vector)
     {
         assert(size() == vector.size());
-        fft_internal<PackSize>(vector.data());
+        fft_internal<VPackSize>(vector.data());
     };
 
     template<typename VAllocator>
@@ -100,13 +98,13 @@ public:
         fft_internal<1>(reinterpret_cast<T*>(vector.data()));
     };
 
-    template<typename VAllocator>
-    void unsorted(pcx::vector<T, VAllocator, PackSize>& vector)
+    template<typename VAllocator, std::size_t VPackSize>
+    void unsorted(pcx::vector<T, VAllocator, VPackSize>& vector)
     {
         assert(size() == vector.size());
-        unsorted_subtransform_recursive<PackSize, PackSize>(vector.data(),
-                                                            size(),
-                                                            m_twiddles_unsorted.data());
+        unsorted_subtransform_recursive<VPackSize, VPackSize>(vector.data(),
+                                                              size(),
+                                                              m_twiddles_unsorted.data());
     };
 
     template<typename VAllocator>
@@ -118,17 +116,17 @@ public:
                                               m_twiddles_unsorted.data());
     };
 
-    template<typename VAllocator>
-    void operator()(pcx::vector<T, VAllocator, PackSize>&       dest,
-                    const pcx::vector<T, VAllocator, PackSize>& source)
+    template<typename VAllocator, std::size_t VPackSize>
+    void operator()(pcx::vector<T, VAllocator, VPackSize>&       dest,
+                    const pcx::vector<T, VAllocator, VPackSize>& source)
     {
         assert(size() == dest.size() && size() == source.size());
         if (&dest == &source)
         {
-            fft_internal<PackSize>(dest.data());
+            fft_internal<VPackSize>(dest.data());
         } else
         {
-            fft_internal<PackSize, PackSize>(dest.data(), source.data());
+            fft_internal<VPackSize, VPackSize>(dest.data(), source.data());
         }
     };
 
@@ -262,8 +260,8 @@ public:
         {
             using reg_t = avx::cx_reg<float>;
 
-            auto offset_first  = m_sort[i];
-            auto offset_second = m_sort[i + 1];
+            auto offset_first  = reg_offset<PTform>(m_sort[i]);
+            auto offset_second = reg_offset<PTform>(m_sort[i + 1]);
 
             auto p1 = avx::cxload<PTform>(data + sh1 + offset_first);
             auto p5 = avx::cxload<PTform>(data + sh5 + offset_first);
@@ -418,7 +416,7 @@ public:
         for (; i < size() / 64; ++i)
         {
             using reg_t = avx::cx_reg<float>;
-            auto offset = m_sort[i];
+            auto offset = reg_offset<PTform>(m_sort[i]);
 
             auto p1 = avx::cxload<PTform>(data + sh1 + offset);
             auto p3 = avx::cxload<PTform>(data + sh3 + offset);
@@ -539,8 +537,8 @@ public:
         {
             using reg_t = avx::cx_reg<float>;
 
-            auto offset_src  = m_sort[i];
-            auto offset_dest = m_sort[i + 1];
+            auto offset_src  = reg_offset<PLoad>(m_sort[i]);
+            auto offset_dest = reg_offset<PTform>(m_sort[i + 1]);
 
             for (uint k = 0; k < 2; ++k)
             {
@@ -619,7 +617,8 @@ public:
                 avx::cxstore<PTform>(dest + shd6 + offset_dest, shc6);
                 avx::cxstore<PTform>(dest + shd7 + offset_dest, shc7);
 
-                std::swap(offset_src, offset_dest);
+                offset_src  = reg_offset<PLoad>(m_sort[i + 1]);
+                offset_dest = reg_offset<PTform>(m_sort[i]);
             }
         };
 
@@ -627,8 +626,8 @@ public:
         {
             using reg_t = avx::cx_reg<float>;
 
-            auto offset_src  = m_sort[i];
-            auto offset_dest = m_sort[i];
+            auto offset_src  = reg_offset<PLoad>(m_sort[i]);
+            auto offset_dest = reg_offset<PTform>(m_sort[i]);
 
             auto p1 = avx::cxload<PLoad>(source + shs1 + offset_src);
             auto p5 = avx::cxload<PLoad>(source + shs5 + offset_src);
@@ -795,13 +794,11 @@ public:
         {
             for (std::size_t i_group = 0; i_group < n_groups; ++i_group)
             {
-                std::size_t offset = i_group * reg_size;
-
                 const auto tw0 = avx::cxload<reg_size>(twiddle_ptr);
                 twiddle_ptr += reg_size * 2;
 
-                auto* ptr0 = data + pidx<PTform>(offset);
-                auto* ptr1 = data + pidx<PTform>(offset + l_size / 2);
+                auto* ptr0 = data + reg_offset<PTform>(i_group);
+                auto* ptr1 = data + reg_offset<PTform>(i_group + l_size / reg_size / 2);
 
                 auto p1 = avx::cxload<PTform>(ptr1);
                 auto p0 = avx::cxload<PTform>(ptr0);
@@ -1197,10 +1194,10 @@ public:
                 avx::broadcast(twiddle_ptr++),
             };
 
-            for (std::size_t offset = 0; offset < size / 2; offset += reg_size)
+            for (std::size_t i_group = 0; i_group < size / 2 / reg_size; ++i_group)
             {
-                auto* ptr0 = data + pidx<PTform>(offset);
-                auto* ptr1 = data + pidx<PTform>(offset + size / 2);
+                auto* ptr0 = data + reg_offset<PTform>(i_group);
+                auto* ptr1 = data + reg_offset<PTform>(i_group + size / 2 / reg_size);
 
                 auto p1 = avx::cxload<PTform>(ptr1);
                 auto p0 = avx::cxload<PTform>(ptr0);
@@ -1324,14 +1321,14 @@ private:
             {
                 continue;
             }
-            sort.push_back(pidx<PackSize>(i * reg_size));
-            sort.push_back(pidx<PackSize>(reverse_bit_order(i, order) * reg_size));
+            sort.push_back(i);
+            sort.push_back(reverse_bit_order(i, order));
         }
         for (uint i = 0; i < packed_sort_size; ++i)
         {
             if (i == reverse_bit_order(i, order))
             {
-                sort.push_back(pidx<PackSize>(i * reg_size));
+                sort.push_back(i);
             }
         }
         return sort;

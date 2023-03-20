@@ -53,19 +53,20 @@ inline auto wnk(std::size_t n, std::size_t k) -> std::complex<T>
     return exp(
         std::complex<T>(0, -2 * pi * static_cast<double>(k) / static_cast<double>(n)));
 }
-template<typename T>
-auto fft(const pcx::vector<T>& vector)
+template<typename T, typename Allocator, std::size_t PackSize>
+auto fft(const pcx::vector<T, Allocator, PackSize>& vector)
 {
+    using vector_t = pcx::vector<T, Allocator, PackSize>;
     auto fft_size = vector.size();
-    auto res      = pcx::vector<T>(fft_size);
+    auto res      = vector_t(fft_size);
     if (fft_size == 1)
     {
         res = vector;
         return res;
     }
 
-    auto even = pcx::vector<T>(fft_size / 2);
-    auto odd  = pcx::vector<T>(fft_size / 2);
+    auto even = vector_t(fft_size / 2);
+    auto odd  = vector_t(fft_size / 2);
 
     for (uint i = 0; i < fft_size / 2; ++i)
     {
@@ -92,8 +93,8 @@ auto fft(const pcx::vector<T>& vector)
 }
 
 
-template<typename T>
-auto fftu(const pcx::vector<T>& vector)
+template<typename T, typename Allocator, std::size_t PackSize>
+auto fftu(const pcx::vector<T, Allocator, PackSize>& vector)
 {
     auto        size       = vector.size();
     auto        u          = vector;
@@ -130,6 +131,7 @@ auto fftu(const pcx::vector<T>& vector)
     return u;
 }
 
+template<std::size_t PackSize = 8>
 int test_fft_float(std::size_t size)
 {
     constexpr float  pi  = 3.14159265358979323846;
@@ -137,8 +139,8 @@ int test_fft_float(std::size_t size)
 
     auto depth = log2i(size);
 
-    auto vec      = pcx::vector<float>(size);
-    auto vec_out  = pcx::vector<float>(size);
+    auto vec      = pcx::vector<float, std::allocator<float>, PackSize>(size);
+    auto vec_out  = pcx::vector<float, std::allocator<float>, PackSize>(size);
     auto svec_out = std::vector<std::complex<float>>(size);
     for (uint i = 0; i < size; ++i)
     {
@@ -199,14 +201,15 @@ int test_fft_float(std::size_t size)
     return 0;
 }
 
+template<std::size_t PackSize = 8>
 int test_fftu_float(std::size_t size)
 {
     constexpr float pi = 3.14159265358979323846;
 
     auto depth = log2i(size);
 
-    auto vec      = pcx::vector<float>(size);
-    auto vec_out  = pcx::vector<float>(size);
+    auto vec      = pcx::vector<float, std::allocator<float>, PackSize>(size);
+    auto vec_out  = pcx::vector<float, std::allocator<float>, PackSize>(size);
     auto svec_out = std::vector<std::complex<float>>(size);
     for (uint i = 0; i < size; ++i)
     {
@@ -256,7 +259,9 @@ int main()
         std::cout << (1U << i) << "\n";
         // ret += test_fft_float4(1U << i);
         ret += test_fft_float(1U << i);
+        ret += test_fft_float<32>(1U << i);
         ret += test_fftu_float(1U << i);
+        ret += test_fftu_float<32>(1U << i);
         if (ret > 0)
         {
             return ret;
