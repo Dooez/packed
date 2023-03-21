@@ -377,16 +377,17 @@ int main()
     //                                                 std::tuple<int>,
     //                                                 std::tuple<int>>);
 
-//     bool value = pcx::internal::is_appliable_for_each_<
-//         decltype(foo),
-//         decltype(pcx::internal::zip_tuples(std::declval<std::tuple<int>>(),
-//                                            std::declval<std::tuple<int>>())),
-//         std::make_index_sequence<std::tuple_size_v<decltype(pcx::internal::zip_tuples(
-//             std::declval<std::tuple<int>>(),
-//             std::declval<std::tuple<int>>()))>>>::value;
-//
-//     static_assert(pcx::internal::appliable<decltype(foo), std::tuple<int, int>>);
+    //     bool value = pcx::internal::is_appliable_for_each_<
+    //         decltype(foo),
+    //         decltype(pcx::internal::zip_tuples(std::declval<std::tuple<int>>(),
+    //                                            std::declval<std::tuple<int>>())),
+    //         std::make_index_sequence<std::tuple_size_v<decltype(pcx::internal::zip_tuples(
+    //             std::declval<std::tuple<int>>(),
+    //             std::declval<std::tuple<int>>()))>>>::value;
+    //
+    //     static_assert(pcx::internal::appliable<decltype(foo), std::tuple<int, int>>);
 
-
+    auto vec_align_check = pcx::vector<float>(1024);
+    std::cout << vec_align_check.data() << "\n";
     return res;
 }

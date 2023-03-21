@@ -17,7 +17,7 @@ namespace pcx {
  * @tparam Allocator
  */
 template<typename T,
-         typename Allocator   = std::allocator<T>,
+         typename Allocator   = pcx::aligned_allocator<T,std::align_val_t(32)>,
          std::size_t PackSize = pcx::default_pack_size<T>>
     requires packed_floating_point<T, PackSize>
 class vector
