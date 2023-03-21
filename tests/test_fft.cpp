@@ -163,8 +163,23 @@ int test_fft_float(std::size_t size)
             auto val = std::complex<float>(ff[i].value());
             if (!equal_eps(val, vec_out[i].value(), 1U << (depth)))
             {
-                std::cout << size << " #" << i << ": " << abs(val - vec_out[i].value())
-                          << "  " << val << vec_out[i].value() << "\n";
+                std::cout << "vec  " << size << ":" << sub_size << " #" << i << ": "
+                          << abs(val - vec_out[i].value()) << "  " << val
+                          << vec_out[i].value() << "\n";
+                return 1;
+            }
+        }
+
+        vec_out = vec;
+        unit.end(vec_out);
+        for (uint i = 0; i < size; ++i)
+        {
+            auto val = std::complex<float>(ff[i].value());
+            if (!equal_eps(val, vec_out[i].value(), 1U << (depth)))
+            {
+                std::cout << "vec e " << size << ":" << sub_size << " #" << i << ": "
+                          << abs(val - vec_out[i].value()) << "  " << val
+                          << vec_out[i].value() << "\n";
                 return 1;
             }
         }
@@ -176,8 +191,9 @@ int test_fft_float(std::size_t size)
             auto val = std::complex<float>(ff[i].value());
             if (!equal_eps(val, vec_out[i].value(), 1U << (depth)))
             {
-                std::cout << size << " #" << i << ": " << abs(val - vec_out[i].value())
-                          << "  " << val << vec_out[i].value() << "\n";
+                std::cout << "veco " << size << ":" << sub_size << " #" << i << ": "
+                          << abs(val - vec_out[i].value()) << "  " << val
+                          << vec_out[i].value() << "\n";
                 return 1;
             }
         }
@@ -192,8 +208,8 @@ int test_fft_float(std::size_t size)
             auto val = std::complex<float>(ff[i].value());
             if (!equal_eps(val, svec_out[i], 1U << (depth)))
             {
-                std::cout << "svec" << size << " #" << i << ": " << abs(val - svec_out[i])
-                          << "  " << val << svec_out[i] << "\n";
+                std::cout << "svec " << size << ":" << sub_size << " #" << i << ": "
+                          << abs(val - svec_out[i]) << "  " << val << svec_out[i] << "\n";
                 return 1;
             }
         }

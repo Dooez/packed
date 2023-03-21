@@ -91,8 +91,23 @@ public:
         fft_internal<VPackSize>(vector.data());
     };
 
+    template<typename VAllocator, std::size_t VPackSize>
+    void end(pcx::vector<T, VAllocator, VPackSize>& vector)
+    {
+        assert(size() == vector.size());
+        fft_internal<VPackSize>(vector.data());
+    };
+
+
     template<typename VAllocator>
     void operator()(std::vector<std::complex<T>, VAllocator>& vector)
+    {
+        assert(size() == vector.size());
+        fft_internal<1>(reinterpret_cast<T*>(vector.data()));
+    };
+
+    template<typename VAllocator>
+    void end(std::vector<std::complex<T>, VAllocator>& vector)
     {
         assert(size() == vector.size());
         fft_internal<1>(reinterpret_cast<T*>(vector.data()));
@@ -146,95 +161,19 @@ private:
 
 public:
     template<std::size_t PData>
-    void fft_internal(float* data)
+    inline void fft_internal(float* data)
     {
         constexpr auto PTform = std::max(PData, reg_size);
         depth3_and_sort<PTform, PData>(data);
-        if (size() <= sub_size() || log2i(size() / sub_size()) % 2 == 0)
-        {
-            subtransform_recursive<PData, PTform>(data, size());
-        } else
-        {
-            subtransform_recursive<PTform, PTform>(data, size() / 2);
-            auto twiddle_ptr = subtransform_recursive<PTform, PTform>(
-                data + avx::reg_offset<float, PTform>(size() / 2 / reg_size),
-                size() / 2);
-            std::size_t n_groups = size() / reg_size / 2;
-
-            for (std::size_t i_group = 0; i_group < n_groups; ++i_group)
-            {
-                std::size_t offset = i_group * reg_size;
-
-                const auto tw0 = avx::cxload<reg_size>(twiddle_ptr);
-                twiddle_ptr += reg_size * 2;
-
-                auto* ptr0 = data + avx::reg_offset<float, PTform>(i_group);
-                auto* ptr1 = data + avx::reg_offset<float, PTform>(i_group +
-                                                                   size() / 2 / reg_size);
-
-                auto p1 = avx::cxload<PTform>(ptr1);
-                auto p0 = avx::cxload<PTform>(ptr0);
-
-                auto p1tw = avx::mul(p1, tw0);
-
-                auto a0 = avx::add(p0, p1tw);
-                auto a1 = avx::sub(p0, p1tw);
-
-                if constexpr (PData < PTform)
-                {
-                    std::tie(a0, a1) = avx::convert<float>::repack<PTform, PData>(a0, a1);
-                }
-
-                cxstore<PTform>(ptr0, a0);
-                cxstore<PTform>(ptr1, a1);
-            }
-        }
+        subtransform_recursive<PData, PTform>(data, size());
     }
 
     template<std::size_t PDest, std::size_t PSrc>
-    void fft_internal(float* dest, const float* source)
+    inline void fft_internal(float* dest, const float* source)
     {
         constexpr auto PTform = std::max(PDest, reg_size);
         depth3_and_sort<PTform, PSrc>(dest, source);
-        if (size() <= sub_size() || log2i(size() / sub_size()) % 2 == 0)
-        {
-            subtransform_recursive<PDest, PTform>(dest, size());
-        } else
-        {
-            subtransform_recursive<PDest, PTform>(dest, size() / 2);
-            auto twiddle_ptr = subtransform_recursive<PDest, PTform>(
-                dest + avx::reg_offset<float, PTform>(size() / 2 / reg_size),
-                size() / 2);
-            std::size_t n_groups = size() / reg_size / 2;
-
-            for (std::size_t i_group = 0; i_group < n_groups; ++i_group)
-            {
-                std::size_t offset = i_group * reg_size;
-
-                const auto tw0 = avx::cxload<reg_size>(twiddle_ptr);
-                twiddle_ptr += reg_size * 2;
-
-                auto* ptr0 = dest + avx::reg_offset<float, PTform>(i_group);
-                auto* ptr1 = dest + avx::reg_offset<float, PTform>(i_group +
-                                                                   size() / 2 / reg_size);
-
-                auto p1 = avx::cxload<PTform>(ptr1);
-                auto p0 = avx::cxload<PTform>(ptr0);
-
-                auto p1tw = avx::mul(p1, tw0);
-
-                auto a0 = avx::add(p0, p1tw);
-                auto a1 = avx::sub(p0, p1tw);
-
-                if constexpr (PDest < PTform)
-                {
-                    std::tie(a0, a1) = avx::convert<float>::repack<PDest, PTform>(a0, a1);
-                }
-
-                cxstore<PTform>(ptr0, a0);
-                cxstore<PTform>(ptr1, a1);
-            }
-        }
+        subtransform_recursive<PDest, PTform>(dest, size());
     };
 
     template<std::size_t PData>
@@ -929,41 +868,41 @@ public:
         if (size <= sub_size())
         {
             return subtransform<PDest, PTform>(data, size);
+        } else if (size == sub_size() * 2)
+        {
+            subtransform<PTform, PTform>(data, size / 2);
+            auto* twiddle_ptr = subtransform<PTform, PTform>(
+                data + avx::reg_offset<float, PTform>(size / 2 / reg_size),
+                size / 2);
+
+            std::size_t n_groups = size / reg_size / 2;
+
+            for (std::size_t i_group = 0; i_group < n_groups; ++i_group)
+            {
+                const auto tw0 = avx::cxload<reg_size>(twiddle_ptr);
+                twiddle_ptr += reg_size * 2;
+
+                auto* ptr0 = data + avx::reg_offset<float, PTform>(i_group);
+                auto* ptr1 =
+                    data + avx::reg_offset<float, PTform>(i_group + size / 2 / reg_size);
+
+                auto p1 = avx::cxload<PTform>(ptr1);
+                auto p0 = avx::cxload<PTform>(ptr0);
+
+                auto p1tw = avx::mul(p1, tw0);
+
+                auto [a0, a1] = avx::btfly(p0, p1tw);
+
+                if constexpr (PDest < PTform)
+                {
+                    std::tie(a0, a1) = avx::convert<float>::repack<PTform, PDest>(a0, a1);
+                }
+
+                cxstore<PTform>(ptr0, a0);
+                cxstore<PTform>(ptr1, a1);
+            }
+            return twiddle_ptr;
         } else
-//  if (size == sub_size() * 2)
-// 
-//         {
-//             std::size_t n_groups = size() / reg_size / 2;
-// 
-//             for (std::size_t i_group = 0; i_group < n_groups; ++i_group)
-//             {
-//                 std::size_t offset = i_group * reg_size;
-// 
-//                 const auto tw0 = avx::cxload<reg_size>(twiddle_ptr);
-//                 twiddle_ptr += reg_size * 2;
-// 
-//                 auto* ptr0 = data + avx::reg_offset<float, PTform>(i_group);
-//                 auto* ptr1 = data + avx::reg_offset<float, PTform>(i_group +
-//                                                                    size() / 2 / reg_size);
-// 
-//                 auto p1 = avx::cxload<PTform>(ptr1);
-//                 auto p0 = avx::cxload<PTform>(ptr0);
-// 
-//                 auto p1tw = avx::mul(p1, tw0);
-// 
-//                 auto a0 = avx::add(p0, p1tw);
-//                 auto a1 = avx::sub(p0, p1tw);
-// 
-//                 if constexpr (PData < PTform)
-//                 {
-//                     std::tie(a0, a1) = avx::convert<float>::repack<PTform, PData>(a0, a1);
-//                 }
-// 
-//                 cxstore<PTform>(ptr0, a0);
-//                 cxstore<PTform>(ptr1, a1);
-//             }
-// 
-//         } else
         {
             subtransform_recursive<PTform, PTform>(data, size / 4);
             subtransform_recursive<PTform, PTform>(
@@ -1023,6 +962,7 @@ public:
             return twiddle_ptr;
         }
     };
+
 
     template<std::size_t PDest, std::size_t PSrc>
     inline auto unsorted_subtransform(float*       data,
@@ -1540,6 +1480,19 @@ private:
             n_groups *= 2;
         };
 
+        if (fft_size > sub_size_ && log2i(fft_size / sub_size_) % 2 != 0)
+        {
+            for (std::size_t i_group = 0; i_group < n_groups; ++i_group)
+            {
+                for (uint k = 0; k < reg_size; ++k)
+                {
+                    *(tw_it++) = wnk(l_size, k + i_group * reg_size);
+                }
+            }
+            l_size *= 2;
+            n_groups *= 2;
+        }
+
         while (l_size < fft_size)
         {
             for (std::size_t i_group = 0; i_group < n_groups; ++i_group)
@@ -1575,6 +1528,7 @@ private:
         };
         return twiddles;
     }
+
 
     static auto get_twiddles_unsorted(std::size_t    fft_size,
                                       std::size_t    sub_size,
