@@ -6,6 +6,7 @@
 #include <complex>
 #include <cstring>
 #include <immintrin.h>
+#include <new>
 #include <tuple>
 
 namespace pcx {
@@ -41,6 +42,36 @@ constexpr auto pidx(std::size_t idx) -> std::size_t
 {
     return idx + idx / PackSize * PackSize;
 }
+
+template<typename T, std::align_val_t Alignment>
+class aligned_allocator
+{
+public:
+    using value_type = T;
+
+    aligned_allocator() = default;
+
+    aligned_allocator(const aligned_allocator&)     = default;
+    aligned_allocator(aligned_allocator&&) noexcept = default;
+
+    ~aligned_allocator() = default;
+
+    aligned_allocator& operator=(const aligned_allocator&)     = default;
+    aligned_allocator& operator=(aligned_allocator&&) noexcept = default;
+
+    [[nodiscard]] value_type* allocate(std::size_t n)
+    {
+        return reinterpret_cast<value_type*>(::operator new[](n * sizeof(value_type),
+                                                               Alignment));
+    }
+
+    void deallocate(value_type* p, std::size_t n)
+    {
+        ::operator delete[](reinterpret_cast<void*>(p), Alignment);
+    }
+
+private:
+};
 
 
 namespace internal {
