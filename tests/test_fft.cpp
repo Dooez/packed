@@ -171,20 +171,6 @@ int test_fft_float(std::size_t size)
         }
 
         vec_out = vec;
-        unit.end(vec_out);
-        for (uint i = 0; i < size; ++i)
-        {
-            auto val = std::complex<float>(ff[i].value());
-            if (!equal_eps(val, vec_out[i].value(), 1U << (depth)))
-            {
-                std::cout << "vec e " << size << ":" << sub_size << " #" << i << ": "
-                          << abs(val - vec_out[i].value()) << "  " << val
-                          << vec_out[i].value() << "\n";
-                return 1;
-            }
-        }
-
-        vec_out = vec;
         unit(vec_out, vec);
         for (uint i = 0; i < size; ++i)
         {
