@@ -524,6 +524,35 @@ namespace avx {
                 }
             }
         };
+
+        template<std::size_t PackFrom>
+        static inline auto split(auto... args)
+        {
+            auto tup = std::make_tuple(args...);
+            if constexpr (PackFrom == 1)
+            {
+                auto split = [](cx_reg<float> reg) {
+                    auto real = _mm256_shuffle_ps(reg.real, reg.imag, 0b10001000);
+                    auto imag = _mm256_shuffle_ps(reg.real, reg.imag, 0b11011101);
+                    return cx_reg<float>({real, imag});
+                };
+                return internal::apply_for_each(split, tup);
+            } else if constexpr (PackFrom == 2)
+            {
+                auto split = [](cx_reg<float> reg) {
+                    auto real = unpacklo_pd(reg.real, reg.imag);
+                    auto imag = unpackhi_pd(reg.real, reg.imag);
+                    return cx_reg<float>({real, imag});
+                };
+                return internal::apply_for_each(split, tup);
+            } else if constexpr (PackFrom == 4)
+            {
+                return internal::apply_for_each(swap_48, tup);
+            } else
+            {
+                return tup;
+            }
+        }
     };
 }    // namespace avx
 

@@ -233,11 +233,6 @@ public:
             auto offset_first  = avx::reg_offset<float, PTform>(m_sort[i]);
             auto offset_second = avx::reg_offset<float, PTform>(m_sort[i + 1]);
 
-            auto p0 = avx::cxload<PTform>(data + sh0 + offset_first);
-            auto p4 = avx::cxload<PTform>(data + sh4 + offset_first);
-            auto p2 = avx::cxload<PTform>(data + sh2 + offset_first);
-            auto p6 = avx::cxload<PTform>(data + sh6 + offset_first);
-
             auto p1 = avx::cxload<PTform>(data + sh1 + offset_first);
             auto p5 = avx::cxload<PTform>(data + sh5 + offset_first);
             auto p3 = avx::cxload<PTform>(data + sh3 + offset_first);
@@ -245,31 +240,41 @@ public:
 
             if constexpr (PSrc < PTform)
             {
-                std::tie(p0, p4, p2, p6) =
-                    avx::convert<float>::repack<PSrc, PTform>(p0, p4, p2, p6);
                 std::tie(p1, p5, p3, p7) =
-                    avx::convert<float>::repack<PSrc, PTform>(p1, p5, p3, p7);
+                    avx::convert<float>::split<PSrc>(p1, p5, p3, p7);
             }
 
             auto [a1, a5] = avx::btfly(p1, p5);
             auto [a3, a7] = avx::btfly(p3, p7);
-            auto [a0, a4] = avx::btfly(p0, p4);
-            auto [a2, a6] = avx::btfly(p2, p6);
 
             reg_t b5 = {avx::add(a5.real, a7.imag), avx::sub(a5.imag, a7.real)};
             reg_t b7 = {avx::sub(a5.real, a7.imag), avx::add(a5.imag, a7.real)};
 
-            auto [b0, b2] = avx::btfly(a0, a2);
-            auto [b1, b3] = avx::btfly(a1, a3);
-
             reg_t b5_tw = {avx::add(b5.real, b5.imag), avx::sub(b5.imag, b5.real)};
             reg_t b7_tw = {avx::sub(b7.real, b7.imag), avx::add(b7.real, b7.imag)};
 
-            reg_t b4 = {avx::add(a4.real, a6.imag), avx::sub(a4.imag, a6.real)};
-            reg_t b6 = {avx::sub(a4.real, a6.imag), avx::add(a4.imag, a6.real)};
+            auto [b1, b3] = avx::btfly(a1, a3);
 
             b5_tw = avx::mul(b5_tw, twsq2);
             b7_tw = avx::mul(b7_tw, twsq2);
+
+            auto p0 = avx::cxload<PTform>(data + sh0 + offset_first);
+            auto p4 = avx::cxload<PTform>(data + sh4 + offset_first);
+            auto p2 = avx::cxload<PTform>(data + sh2 + offset_first);
+            auto p6 = avx::cxload<PTform>(data + sh6 + offset_first);
+
+            if constexpr (PSrc < PTform)
+            {
+                std::tie(p0, p4, p2, p6) =
+                    avx::convert<float>::split<PSrc>(p0, p4, p2, p6);
+            }
+
+            auto [a0, a4] = avx::btfly(p0, p4);
+            auto [a2, a6] = avx::btfly(p2, p6);
+
+            auto [b0, b2] = avx::btfly(a0, a2);
+            reg_t b4      = {avx::add(a4.real, a6.imag), avx::sub(a4.imag, a6.real)};
+            reg_t b6      = {avx::sub(a4.real, a6.imag), avx::add(a4.imag, a6.real)};
 
             auto [c0, c1] = avx::btfly(b0, b1);
             reg_t c2      = {avx::add(b2.real, b3.imag), avx::sub(b2.imag, b3.real)};
@@ -285,52 +290,91 @@ public:
 
             auto [shb0, shb2] = avx::unpack_pd(sha0, sha2);
             auto [shb1, shb3] = avx::unpack_pd(sha1, sha3);
-            auto [shb4, shb6] = avx::unpack_pd(sha4, sha6);
-            auto [shb5, shb7] = avx::unpack_pd(sha5, sha7);
 
             auto [shc0, shc1] = avx::unpack_128(shb0, shb1);
             auto [shc2, shc3] = avx::unpack_128(shb2, shb3);
-            auto [shc4, shc5] = avx::unpack_128(shb4, shb5);
-            auto [shc6, shc7] = avx::unpack_128(shb6, shb7);
 
-            auto q0 = cxloadstore<PTform>(data + sh0 + offset_second, shc0);
-            auto q1 = cxloadstore<PTform>(data + sh1 + offset_second, shc1);
-            auto q4 = cxloadstore<PTform>(data + sh4 + offset_second, shc2);
-            auto q5 = cxloadstore<PTform>(data + sh5 + offset_second, shc3);
-            auto q2 = cxloadstore<PTform>(data + sh2 + offset_second, shc4);
-            auto q3 = cxloadstore<PTform>(data + sh3 + offset_second, shc5);
-            auto q6 = cxloadstore<PTform>(data + sh6 + offset_second, shc6);
-            auto q7 = cxloadstore<PTform>(data + sh7 + offset_second, shc7);
+            reg_t q0, q1, q2, q3, q4, q5, q6, q7;
+
+            q0 = cxloadstore<PTform>(data + sh0 + offset_second, shc0);
+            q4 = cxloadstore<PTform>(data + sh4 + offset_second, shc2);
+
+            if constexpr (PSrc < 4)
+            {
+                q2 = cxloadstore<PTform>(data + sh2 + offset_second, shc1);
+                q6 = cxloadstore<PTform>(data + sh6 + offset_second, shc3);
+            } else
+            {
+                q1 = cxloadstore<PTform>(data + sh1 + offset_second, shc1);
+                q5 = cxloadstore<PTform>(data + sh5 + offset_second, shc3);
+            }
 
             if constexpr (PSrc < PTform)
             {
-                std::tie(q0, q1, q4, q5) =
-                    avx::convert<float>::repack<PSrc,
-                                                PTform>(q0, q1, q4, q5);
-                std::tie(q2, q3, q6, q7) =
-                    avx::convert<float>::repack<PSrc,
-                                                PTform>(q2, q3, q6, q7);
+                if constexpr (PSrc < 4)
+                {
+                    std::tie(q0, q4, q2, q6) =
+                        avx::convert<float>::split<PSrc>(q0, q4, q2, q6);
+                } else
+                {
+                    std::tie(q0, q4, q1, q5) =
+                        avx::convert<float>::split<PSrc>(q0, q4, q1, q5);
+                }
+            }
+
+            auto [shb4, shb6] = avx::unpack_pd(sha4, sha6);
+            auto [shb5, shb7] = avx::unpack_pd(sha5, sha7);
+
+            auto [shc4, shc5] = avx::unpack_128(shb4, shb5);
+            auto [shc6, shc7] = avx::unpack_128(shb6, shb7);
+
+            if constexpr (PSrc < 4)
+            {
+                q1 = cxloadstore<PTform>(data + sh1 + offset_second, shc4);
+                q5 = cxloadstore<PTform>(data + sh5 + offset_second, shc6);
+            } else
+            {
+                q2 = cxloadstore<PTform>(data + sh2 + offset_second, shc4);
+                q6 = cxloadstore<PTform>(data + sh6 + offset_second, shc6);
+            }
+            q3 = cxloadstore<PTform>(data + sh3 + offset_second, shc5);
+            q7 = cxloadstore<PTform>(data + sh7 + offset_second, shc7);
+
+            if constexpr (PSrc < PTform)
+            {
+                if constexpr (PSrc < 4)
+                {
+                    std::tie(q1, q5, q3, q7) =
+                        avx::convert<float>::split<PSrc>(q1, q5, q3, q7);
+                } else
+                {
+                    std::tie(q2, q6, q3, q7) =
+                        avx::convert<float>::split<PSrc>(q2, q6, q3, q7);
+                }
             }
 
             auto [x1, x5] = avx::btfly(q1, q5);
-            auto [x0, x4] = avx::btfly(q0, q4);
             auto [x3, x7] = avx::btfly(q3, q7);
-            auto [x2, x6] = avx::btfly(q2, q6);
 
             reg_t y5 = {avx::add(x5.real, x7.imag), avx::sub(x5.imag, x7.real)};
             reg_t y7 = {avx::sub(x5.real, x7.imag), avx::add(x5.imag, x7.real)};
 
             auto [y1, y3] = avx::btfly(x1, x3);
-            auto [y0, y2] = avx::btfly(x0, x2);
 
             reg_t y5_tw = {avx::add(y5.real, y5.imag), avx::sub(y5.imag, y5.real)};
             reg_t y7_tw = {avx::sub(y7.real, y7.imag), avx::add(y7.real, y7.imag)};
 
-            reg_t y4 = {avx::add(x4.real, x6.imag), avx::sub(x4.imag, x6.real)};
-            reg_t y6 = {avx::sub(x4.real, x6.imag), avx::add(x4.imag, x6.real)};
+            auto [x0, x4] = avx::btfly(q0, q4);
 
             y5_tw = avx::mul(y5_tw, twsq2);
             y7_tw = avx::mul(y7_tw, twsq2);
+
+            auto [x2, x6] = avx::btfly(q2, q6);
+
+            auto [y0, y2] = avx::btfly(x0, x2);
+
+            reg_t y4 = {avx::add(x4.real, x6.imag), avx::sub(x4.imag, x6.real)};
+            reg_t y6 = {avx::sub(x4.real, x6.imag), avx::add(x4.imag, x6.real)};
 
             auto [z0, z1] = avx::btfly(y0, y1);
 
@@ -347,33 +391,68 @@ public:
 
             auto [shy0, shy2] = avx::unpack_pd(shx0, shx2);
             auto [shy1, shy3] = avx::unpack_pd(shx1, shx3);
-            auto [shy4, shy6] = avx::unpack_pd(shx4, shx6);
-            auto [shy5, shy7] = avx::unpack_pd(shx5, shx7);
 
             auto [shz0, shz1] = avx::unpack_128(shy0, shy1);
             auto [shz2, shz3] = avx::unpack_128(shy2, shy3);
+
+            avx::cxstore<PTform>(data + sh0 + offset_first, shz0);
+            avx::cxstore<PTform>(data + sh4 + offset_first, shz2);
+// 
+//                         auto [shy4, shy6] = avx::unpack_pd(shx4, shx6);
+//                         auto [shy5, shy7] = avx::unpack_pd(shx5, shx7);
+//             
+//                         auto [shz4, shz5] = avx::unpack_128(shy4, shy5);
+//                         auto [shz6, shz7] = avx::unpack_128(shy6, shy7);
+//             
+//                         if constexpr (PSrc < 4)
+//                         {
+//                             std::swap(shz1, shz4);
+//                             std::swap(shz3, shz6);
+//                         }
+//             
+//                         avx::cxstore<PTform>(data + sh1 + offset_first, shz1);
+//                         avx::cxstore<PTform>(data + sh5 + offset_first, shz3);
+//                         avx::cxstore<PTform>(data + sh2 + offset_first, shz4);
+//                         avx::cxstore<PTform>(data + sh3 + offset_first, shz5);
+//                         avx::cxstore<PTform>(data + sh6 + offset_first, shz6);
+//                         avx::cxstore<PTform>(data + sh7 + offset_first, shz7);
+
+            
+            if constexpr (PSrc < 4)
+            {
+                avx::cxstore<PTform>(data + sh2 + offset_first, shz1);
+                avx::cxstore<PTform>(data + sh6 + offset_first, shz3);
+            } else
+            {
+                avx::cxstore<PTform>(data + sh1 + offset_first, shz1);
+                avx::cxstore<PTform>(data + sh5 + offset_first, shz3);
+            }
+
+            auto [shy4, shy6] = avx::unpack_pd(shx4, shx6);
+            auto [shy5, shy7] = avx::unpack_pd(shx5, shx7);
+
             auto [shz4, shz5] = avx::unpack_128(shy4, shy5);
             auto [shz6, shz7] = avx::unpack_128(shy6, shy7);
 
-            avx::cxstore<PTform>(data + sh0 + offset_first, shz0);
-            avx::cxstore<PTform>(data + sh1 + offset_first, shz1);
-            avx::cxstore<PTform>(data + sh4 + offset_first, shz2);
-            avx::cxstore<PTform>(data + sh5 + offset_first, shz3);
-            avx::cxstore<PTform>(data + sh2 + offset_first, shz4);
-            avx::cxstore<PTform>(data + sh3 + offset_first, shz5);
-            avx::cxstore<PTform>(data + sh6 + offset_first, shz6);
+
+            if constexpr (PSrc < 4)
+            {
+                avx::cxstore<PTform>(data + sh1 + offset_first, shz4);
+                avx::cxstore<PTform>(data + sh5 + offset_first, shz6);
+            } else
+            {
+                avx::cxstore<PTform>(data + sh2 + offset_first, shz4);
+                avx::cxstore<PTform>(data + sh6 + offset_first, shz6);
+            }
+                        avx::cxstore<PTform>(data + sh3 + offset_first, shz5);
             avx::cxstore<PTform>(data + sh7 + offset_first, shz7);
+
         };
 
         for (; i < size() / 64; ++i)
         {
             using reg_t = avx::cx_reg<float>;
             auto offset = avx::reg_offset<float, PTform>(m_sort[i]);
-
-            auto p0 = avx::cxload<PTform>(data + sh0 + offset);
-            auto p2 = avx::cxload<PTform>(data + sh2 + offset);
-            auto p4 = avx::cxload<PTform>(data + sh4 + offset);
-            auto p6 = avx::cxload<PTform>(data + sh6 + offset);
 
             auto p1 = avx::cxload<PTform>(data + sh1 + offset);
             auto p3 = avx::cxload<PTform>(data + sh3 + offset);
@@ -382,38 +461,52 @@ public:
 
             if constexpr (PSrc < PTform)
             {
-                std::tie(p0, p4, p2, p6) =
-                    avx::convert<float>::repack<PSrc, PTform>(p0, p4, p2, p6);
                 std::tie(p1, p5, p3, p7) =
-                    avx::convert<float>::repack<PSrc, PTform>(p1, p5, p3, p7);
+                    avx::convert<float>::split<PSrc>(p1, p5, p3, p7);
             }
 
             auto [a1, a5] = avx::btfly(p1, p5);
             auto [a3, a7] = avx::btfly(p3, p7);
-            auto [a0, a4] = avx::btfly(p0, p4);
-            auto [a2, a6] = avx::btfly(p2, p6);
 
             reg_t b5 = {avx::add(a5.real, a7.imag), avx::sub(a5.imag, a7.real)};
             reg_t b7 = {avx::sub(a5.real, a7.imag), avx::add(a5.imag, a7.real)};
 
-            auto [b0, b2] = avx::btfly(a0, a2);
             auto [b1, b3] = avx::btfly(a1, a3);
 
             reg_t b5_tw = {avx::add(b5.real, b5.imag), avx::sub(b5.imag, b5.real)};
             reg_t b7_tw = {avx::sub(b7.real, b7.imag), avx::add(b7.real, b7.imag)};
 
-            reg_t b4 = {avx::add(a4.real, a6.imag), avx::sub(a4.imag, a6.real)};
-            reg_t b6 = {avx::sub(a4.real, a6.imag), avx::add(a4.imag, a6.real)};
-
             b5_tw = avx::mul(b5_tw, twsq2);
             b7_tw = avx::mul(b7_tw, twsq2);
 
+            auto p0 = avx::cxload<PTform>(data + sh0 + offset);
+            auto p2 = avx::cxload<PTform>(data + sh2 + offset);
+            auto p4 = avx::cxload<PTform>(data + sh4 + offset);
+            auto p6 = avx::cxload<PTform>(data + sh6 + offset);
+
+            if constexpr (PSrc < PTform)
+            {
+                std::tie(p0, p4, p2, p6) =
+                    avx::convert<float>::split<PSrc>(p0, p4, p2, p6);
+            }
+
+            auto [a0, a4] = avx::btfly(p0, p4);
+            auto [a2, a6] = avx::btfly(p2, p6);
+
+            auto [b0, b2] = avx::btfly(a0, a2);
+
+            reg_t b4 = {avx::add(a4.real, a6.imag), avx::sub(a4.imag, a6.real)};
+            reg_t b6 = {avx::sub(a4.real, a6.imag), avx::add(a4.imag, a6.real)};
+
             auto [c0, c1] = avx::btfly(b0, b1);
-            reg_t c2      = {avx::add(b2.real, b3.imag), avx::sub(b2.imag, b3.real)};
-            reg_t c3      = {avx::sub(b2.real, b3.imag), avx::add(b2.imag, b3.real)};
+
+            reg_t c2 = {avx::add(b2.real, b3.imag), avx::sub(b2.imag, b3.real)};
+            reg_t c3 = {avx::sub(b2.real, b3.imag), avx::add(b2.imag, b3.real)};
 
             auto [c4, c5] = avx::btfly(b4, b5_tw);
-            auto [c7, c6] = avx::btfly(b6, b7_tw);
+
+            reg_t c6 = avx::sub(b6, b7_tw);
+            reg_t c7 = avx::add(b6, b7_tw);
 
             auto [sha0, sha4] = avx::unpack_ps(c0, c4);
             auto [sha2, sha6] = avx::unpack_ps(c2, c6);
@@ -422,21 +515,40 @@ public:
 
             auto [shb0, shb2] = avx::unpack_pd(sha0, sha2);
             auto [shb1, shb3] = avx::unpack_pd(sha1, sha3);
-            auto [shb4, shb6] = avx::unpack_pd(sha4, sha6);
-            auto [shb5, shb7] = avx::unpack_pd(sha5, sha7);
 
             auto [shc0, shc1] = avx::unpack_128(shb0, shb1);
             auto [shc2, shc3] = avx::unpack_128(shb2, shb3);
+
+            avx::cxstore<PTform>(data + sh0 + offset, shc0);
+            avx::cxstore<PTform>(data + sh4 + offset, shc2);
+
+            if constexpr (PSrc < 4)
+            {
+                avx::cxstore<PTform>(data + sh2 + offset, shc1);
+                avx::cxstore<PTform>(data + sh6 + offset, shc3);
+            } else
+            {
+                avx::cxstore<PTform>(data + sh1 + offset, shc1);
+                avx::cxstore<PTform>(data + sh5 + offset, shc3);
+            }
+
+            auto [shb4, shb6] = avx::unpack_pd(sha4, sha6);
+            auto [shb5, shb7] = avx::unpack_pd(sha5, sha7);
+
             auto [shc4, shc5] = avx::unpack_128(shb4, shb5);
             auto [shc6, shc7] = avx::unpack_128(shb6, shb7);
 
-            avx::cxstore<PTform>(data + sh0 + offset, shc0);
-            avx::cxstore<PTform>(data + sh1 + offset, shc1);
-            avx::cxstore<PTform>(data + sh4 + offset, shc2);
-            avx::cxstore<PTform>(data + sh5 + offset, shc3);
-            avx::cxstore<PTform>(data + sh2 + offset, shc4);
+            if constexpr (PSrc < 4)
+            {
+                avx::cxstore<PTform>(data + sh1 + offset, shc4);
+                avx::cxstore<PTform>(data + sh5 + offset, shc6);
+            } else
+            {
+                avx::cxstore<PTform>(data + sh2 + offset, shc4);
+                avx::cxstore<PTform>(data + sh6 + offset, shc6);
+            }
+
             avx::cxstore<PTform>(data + sh3 + offset, shc5);
-            avx::cxstore<PTform>(data + sh6 + offset, shc6);
             avx::cxstore<PTform>(data + sh7 + offset, shc7);
         }
     }
@@ -1456,10 +1568,10 @@ private:
         return twiddles;
     }
 
-    static void insert_tw_unsorted(std::size_t             fft_size,
-                                   std::size_t             l_size,
-                                   std::size_t             sub_size,
-                                   std::size_t             i_group,
+    static void insert_tw_unsorted(std::size_t                             fft_size,
+                                   std::size_t                             l_size,
+                                   std::size_t                             sub_size,
+                                   std::size_t                             i_group,
                                    std::vector<real_type, allocator_type>& twiddles)
     {
         if ((fft_size / l_size) < sub_size)
