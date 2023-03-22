@@ -12,7 +12,7 @@ namespace pcx {
 template<typename T,
          std::size_t Size    = pcx::dynamic_size,
          std::size_t SubSize = pcx::default_pack_size<T>,
-         typename Allocator  = std::allocator<T>>
+         typename Allocator  = pcx::aligned_allocator<T, std::align_val_t(32)>>
     requires(std::same_as<T, float> || std::same_as<T, double>) &&
             (pcx::power_of_two<Size> || (Size == pcx::dynamic_size)) &&
             (pcx::power_of_two<SubSize> && SubSize >= pcx::default_pack_size<T> ||
@@ -1460,7 +1460,7 @@ private:
                                    std::size_t             l_size,
                                    std::size_t             sub_size,
                                    std::size_t             i_group,
-                                   std::vector<real_type>& twiddles)
+                                   std::vector<real_type, allocator_type>& twiddles)
     {
         if ((fft_size / l_size) < sub_size)
         {
