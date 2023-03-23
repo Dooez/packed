@@ -444,16 +444,16 @@ namespace avx {
         };
 
         template<std::size_t PackFrom, std::size_t PackTo>
-            requires(PackFrom <= 8) && (PackFrom > 0) && (PackTo <= 8) && (PackTo > 0)
+            requires(PackFrom > 0) && (PackTo > 0)
         static inline auto repack(auto... args)
         {
             auto tup = std::make_tuple(args...);
-            if constexpr (PackFrom == PackTo)
+            if constexpr (PackFrom == PackTo || (PackFrom > 8 && PackTo > 8))
             {
                 return tup;
             } else if constexpr (PackFrom == 1)
             {
-                if constexpr (PackTo == 8)
+                if constexpr (PackTo >= 8)
                 {
                     auto pack_1 = [](cx_reg<float> reg) {
                         auto real = _mm256_shuffle_ps(reg.real, reg.imag, 0b10001000);
@@ -474,7 +474,7 @@ namespace avx {
                 }
             } else if constexpr (PackFrom == 2)
             {
-                if constexpr (PackTo == 8)
+                if constexpr (PackTo >= 8)
                 {
                     auto pack_1 = [](cx_reg<float> reg) {
                         auto real = unpacklo_pd(reg.real, reg.imag);
@@ -492,7 +492,7 @@ namespace avx {
                 }
             } else if constexpr (PackFrom == 4)
             {
-                if constexpr (PackTo == 8)
+                if constexpr (PackTo >= 8)
                 {
                     return internal::apply_for_each(swap_48, tup);
                 } else if constexpr (PackTo == 2)
@@ -503,7 +503,7 @@ namespace avx {
                     auto tmp = internal::apply_for_each(swap_24, tup);
                     return internal::apply_for_each(swap_12, tmp);
                 }
-            } else if constexpr (PackFrom == 8)
+            } else if constexpr (PackFrom >= 8)
             {
                 if constexpr (PackTo == 4)
                 {

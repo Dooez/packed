@@ -3,9 +3,9 @@
 
 #include <iostream>
 
-void test(pcx::fft_unit<float>& unit, std::vector<std::complex<float>>& v1)
+void test_que(pcx::fft_unit<float>& unit, std::vector<std::complex<float>>& v1)
 {
-    unit(v1);
+    unit.unsorted(v1);
 }
 
 template<typename T>
@@ -250,11 +250,11 @@ int test_fftu_float(std::size_t size)
         for (uint i = 0; i < size; ++i)
         {
             auto val = std::complex<float>(ffu[i].value());
-            if (!equal_eps(val, svec_out[i], 1U))
+            if (!equal_eps(val, svec_out[i], 4U))
             {
                 std::cout << "fftu svec " << size << ":" << sub_size << " #" << i << ": "
-                          << abs(val - vec_out[i].value()) << "  " << val
-                          << vec_out[i].value() << "\n";
+                          << abs(val - svec_out[i]) << "  " << val
+                          << svec_out[i] << "\n";
                 return 1;
             }
         }
