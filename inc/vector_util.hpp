@@ -206,6 +206,31 @@ namespace internal {
  *
  */
 namespace avx {
+    /**
+     * @brief Register aligned adress 
+     * 
+     * @tparam PackSize 
+     * @tparam T 
+     * @param data Base address. Must be aligned by avx register size. 
+     * @param offset New address offset. Must be a multiple of avx register size.
+     * If data in-pack index I is non-zero, offset must be less then PackSize - I;
+     * @return T* 
+     */
+    template<std::size_t PackSize, typename T>
+    constexpr auto ra_addr(T* data, std::size_t offset) -> T*
+    {
+        return data + offset + (offset / PackSize) * PackSize;
+    }
+    template<>
+    constexpr auto ra_addr<8>(float* data, std::size_t offset) -> float*
+    {
+        return data + offset * 2;
+    }
+    template<>
+    constexpr auto ra_addr<4>(double* data, std::size_t offset) -> double*
+    {
+        return data + offset * 2;
+    }
 
     template<typename T, std::size_t PackSize>
     constexpr auto reg_offset(std::size_t reg_idx) -> std::size_t

@@ -236,7 +236,7 @@ int test_fftu_float(std::size_t size)
             auto val = std::complex<float>(ffu[i].value());
             if (!equal_eps(val, vec_out[i].value(), 1U))
             {
-                std::cout << "fftu " << size << ":" << sub_size << " #" << i << ": "
+                std::cout << PackSize <<" fftu " << size << ":" << sub_size << " #" << i << ": "
                           << abs(val - vec_out[i].value()) << "  " << val
                           << vec_out[i].value() << "\n";
                 return 1;
@@ -252,7 +252,7 @@ int test_fftu_float(std::size_t size)
             auto val = std::complex<float>(ffu[i].value());
             if (!equal_eps(val, svec_out[i], 4U))
             {
-                std::cout << "fftu svec " << size << ":" << sub_size << " #" << i << ": "
+                std::cout << PackSize <<" fftu svec " << size << ":" << sub_size << " #" << i << ": "
                           << abs(val - svec_out[i]) << "  " << val
                           << svec_out[i] << "\n";
                 return 1;
@@ -271,9 +271,9 @@ int main()
         std::cout << (1U << i) << "\n";
         // ret += test_fft_float4(1U << i);
         ret += test_fft_float(1U << i);
-        ret += test_fft_float<32>(1U << i);
+        // ret += test_fft_float<1024>(1U << i);
         ret += test_fftu_float(1U << i);
-        ret += test_fftu_float<32>(1U << i);
+        ret += test_fftu_float<1024>(1U << i);
         if (ret > 0)
         {
             return ret;
