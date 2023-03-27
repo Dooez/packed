@@ -583,15 +583,15 @@ public:
         {
             using reg_t = avx::cx_reg<float>;
 
-            auto offset_src  = avx::reg_offset<float, PLoad>(m_sort[i]);
-            auto offset_dest = avx::reg_offset<float, PTform>(m_sort[i + 1]);
+            auto offset_src  = m_sort[i] * reg_size;
+            auto offset_dest = m_sort[i + 1] * reg_size;
 
             for (uint k = 0; k < 2; ++k)
             {
-                auto p1 = avx::cxload<PLoad>(src1 + offset_src);
-                auto p5 = avx::cxload<PLoad>(src5 + offset_src);
-                auto p3 = avx::cxload<PLoad>(src3 + offset_src);
-                auto p7 = avx::cxload<PLoad>(src7 + offset_src);
+                auto p1 = avx::cxload<PLoad>(avx::ra_addr<PLoad>(src1, offset_src));
+                auto p5 = avx::cxload<PLoad>(avx::ra_addr<PLoad>(src5, offset_src));
+                auto p3 = avx::cxload<PLoad>(avx::ra_addr<PLoad>(src3, offset_src));
+                auto p7 = avx::cxload<PLoad>(avx::ra_addr<PLoad>(src7, offset_src));
 
                 if constexpr (PSrc < PLoad)
                 {
@@ -613,10 +613,10 @@ public:
                 b5_tw = avx::mul(b5_tw, twsq2);
                 b7_tw = avx::mul(b7_tw, twsq2);
 
-                auto p0 = avx::cxload<PLoad>(src0 + offset_src);
-                auto p4 = avx::cxload<PLoad>(src4 + offset_src);
-                auto p2 = avx::cxload<PLoad>(src2 + offset_src);
-                auto p6 = avx::cxload<PLoad>(src6 + offset_src);
+                auto p0 = avx::cxload<PLoad>(avx::ra_addr<PLoad>(src0, offset_src));
+                auto p4 = avx::cxload<PLoad>(avx::ra_addr<PLoad>(src4, offset_src));
+                auto p2 = avx::cxload<PLoad>(avx::ra_addr<PLoad>(src2, offset_src));
+                auto p6 = avx::cxload<PLoad>(avx::ra_addr<PLoad>(src6, offset_src));
 
                 if constexpr (PSrc < PLoad)
                 {
@@ -648,23 +648,23 @@ public:
                 auto [shc0, shc1] = avx::unpack_128(shb0, shb1);
                 auto [shc2, shc3] = avx::unpack_128(shb2, shb3);
 
-                avx::cxstore<PTform>(dst0 + offset_dest, shc0);
-                avx::cxstore<PTform>(dst4 + offset_dest, shc2);
-                avx::cxstore<PTform>(dst5 + offset_dest, shc3);
-                avx::cxstore<PTform>(dst1 + offset_dest, shc1);
+                avx::cxstore<PTform>(avx::ra_addr<PTform>(dst0, offset_dest), shc0);
+                avx::cxstore<PTform>(avx::ra_addr<PTform>(dst4, offset_dest), shc2);
+                avx::cxstore<PTform>(avx::ra_addr<PTform>(dst5, offset_dest), shc3);
+                avx::cxstore<PTform>(avx::ra_addr<PTform>(dst1, offset_dest), shc1);
 
                 auto [shb4, shb6] = avx::unpack_pd(sha4, sha6);
                 auto [shb5, shb7] = avx::unpack_pd(sha5, sha7);
                 auto [shc4, shc5] = avx::unpack_128(shb4, shb5);
                 auto [shc6, shc7] = avx::unpack_128(shb6, shb7);
 
-                avx::cxstore<PTform>(dst2 + offset_dest, shc4);
-                avx::cxstore<PTform>(dst3 + offset_dest, shc5);
-                avx::cxstore<PTform>(dst6 + offset_dest, shc6);
-                avx::cxstore<PTform>(dst7 + offset_dest, shc7);
+                avx::cxstore<PTform>(avx::ra_addr<PTform>(dst2, offset_dest), shc4);
+                avx::cxstore<PTform>(avx::ra_addr<PTform>(dst3, offset_dest), shc5);
+                avx::cxstore<PTform>(avx::ra_addr<PTform>(dst6, offset_dest), shc6);
+                avx::cxstore<PTform>(avx::ra_addr<PTform>(dst7, offset_dest), shc7);
 
-                offset_src  = avx::reg_offset<float, PLoad>(m_sort[i + 1]);
-                offset_dest = avx::reg_offset<float, PTform>(m_sort[i]);
+                offset_src  = m_sort[i + 1]*reg_size;
+                offset_dest = m_sort[i]*reg_size;
             }
         };
 
@@ -672,13 +672,13 @@ public:
         {
             using reg_t = avx::cx_reg<float>;
 
-            auto offset_src  = avx::reg_offset<float, PLoad>(m_sort[i]);
-            auto offset_dest = avx::reg_offset<float, PTform>(m_sort[i]);
+            auto offset_src  = m_sort[i] * reg_size;
+            auto offset_dest = m_sort[i] * reg_size;
 
-            auto p1 = avx::cxload<PLoad>(src1 + offset_src);
-            auto p5 = avx::cxload<PLoad>(src5 + offset_src);
-            auto p3 = avx::cxload<PLoad>(src3 + offset_src);
-            auto p7 = avx::cxload<PLoad>(src7 + offset_src);
+            auto p1 = avx::cxload<PLoad>(avx::ra_addr<PLoad>(src1, offset_src));
+            auto p5 = avx::cxload<PLoad>(avx::ra_addr<PLoad>(src5, offset_src));
+            auto p3 = avx::cxload<PLoad>(avx::ra_addr<PLoad>(src3, offset_src));
+            auto p7 = avx::cxload<PLoad>(avx::ra_addr<PLoad>(src7, offset_src));
 
             if constexpr (PSrc < PLoad)
             {
@@ -700,10 +700,10 @@ public:
             b5_tw = avx::mul(b5_tw, twsq2);
             b7_tw = avx::mul(b7_tw, twsq2);
 
-            auto p0 = avx::cxload<PLoad>(src0 + offset_src);
-            auto p2 = avx::cxload<PLoad>(src2 + offset_src);
-            auto p4 = avx::cxload<PLoad>(src4 + offset_src);
-            auto p6 = avx::cxload<PLoad>(src6 + offset_src);
+            auto p0 = avx::cxload<PLoad>(avx::ra_addr<PLoad>(src0, offset_src));
+            auto p2 = avx::cxload<PLoad>(avx::ra_addr<PLoad>(src2, offset_src));
+            auto p4 = avx::cxload<PLoad>(avx::ra_addr<PLoad>(src4, offset_src));
+            auto p6 = avx::cxload<PLoad>(avx::ra_addr<PLoad>(src6, offset_src));
 
             if constexpr (PSrc < PLoad)
             {
@@ -736,10 +736,10 @@ public:
             auto [shc0, shc1] = avx::unpack_128(shb0, shb1);
             auto [shc2, shc3] = avx::unpack_128(shb2, shb3);
 
-            avx::cxstore<PTform>(dst0 + offset_dest, shc0);
-            avx::cxstore<PTform>(dst1 + offset_dest, shc1);
-            avx::cxstore<PTform>(dst4 + offset_dest, shc2);
-            avx::cxstore<PTform>(dst5 + offset_dest, shc3);
+            avx::cxstore<PTform>(avx::ra_addr<PTform>(dst0, offset_dest), shc0);
+            avx::cxstore<PTform>(avx::ra_addr<PTform>(dst1, offset_dest), shc1);
+            avx::cxstore<PTform>(avx::ra_addr<PTform>(dst4, offset_dest), shc2);
+            avx::cxstore<PTform>(avx::ra_addr<PTform>(dst5, offset_dest), shc3);
 
             auto [shb4, shb6] = avx::unpack_pd(sha4, sha6);
             auto [shb5, shb7] = avx::unpack_pd(sha5, sha7);
@@ -747,10 +747,10 @@ public:
             auto [shc4, shc5] = avx::unpack_128(shb4, shb5);
             auto [shc6, shc7] = avx::unpack_128(shb6, shb7);
 
-            avx::cxstore<PTform>(dst2 + offset_dest, shc4);
-            avx::cxstore<PTform>(dst3 + offset_dest, shc5);
-            avx::cxstore<PTform>(dst6 + offset_dest, shc6);
-            avx::cxstore<PTform>(dst7 + offset_dest, shc7);
+            avx::cxstore<PTform>(avx::ra_addr<PTform>(dst2, offset_dest), shc4);
+            avx::cxstore<PTform>(avx::ra_addr<PTform>(dst3, offset_dest), shc5);
+            avx::cxstore<PTform>(avx::ra_addr<PTform>(dst6, offset_dest), shc6);
+            avx::cxstore<PTform>(avx::ra_addr<PTform>(dst7, offset_dest), shc7);
         }
     }
 

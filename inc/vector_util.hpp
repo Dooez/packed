@@ -232,23 +232,6 @@ namespace avx {
         return data + offset * 2;
     }
 
-    template<typename T, std::size_t PackSize>
-    constexpr auto reg_offset(std::size_t reg_idx) -> std::size_t
-    {
-        auto reg_size = 32 / sizeof(T);
-        return reg_idx * reg_size + (reg_idx * reg_size / PackSize) * PackSize;
-    }
-    template<>
-    constexpr auto reg_offset<float, 8>(std::size_t reg_idx) -> std::size_t
-    {
-        return reg_idx * 16;
-    }
-    template<>
-    constexpr auto reg_offset<double, 4>(std::size_t reg_idx) -> std::size_t
-    {
-        return reg_idx * 8;
-    }
-
     template<typename T>
     struct reg;
     template<>
