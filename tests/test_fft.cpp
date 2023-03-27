@@ -188,7 +188,26 @@ int test_fft_float(std::size_t size)
         {
             svec_out[i] = vec[i];
         }
+
         unit(svec_out);
+        for (uint i = 0; i < size; ++i)
+        {
+            auto val = std::complex<float>(ff[i].value());
+            if (!equal_eps(val, svec_out[i], 1U << (depth)))
+            {
+                std::cout << "svec " << size << ":" << sub_size << " #" << i << ": "
+                          << abs(val - svec_out[i]) << "  " << val << svec_out[i] << "\n";
+                return 1;
+            }
+        }
+
+
+        for (uint i = 0; i < size; ++i)
+        {
+            svec_out[i] = vec[i];
+        }
+        auto svec2 = svec_out;
+        unit(svec_out, svec2);
         for (uint i = 0; i < size; ++i)
         {
             auto val = std::complex<float>(ff[i].value());
@@ -236,8 +255,8 @@ int test_fftu_float(std::size_t size)
             auto val = std::complex<float>(ffu[i].value());
             if (!equal_eps(val, vec_out[i].value(), 1U))
             {
-                std::cout << PackSize <<" fftu " << size << ":" << sub_size << " #" << i << ": "
-                          << abs(val - vec_out[i].value()) << "  " << val
+                std::cout << PackSize << " fftu " << size << ":" << sub_size << " #" << i
+                          << ": " << abs(val - vec_out[i].value()) << "  " << val
                           << vec_out[i].value() << "\n";
                 return 1;
             }
@@ -252,8 +271,8 @@ int test_fftu_float(std::size_t size)
             auto val = std::complex<float>(ffu[i].value());
             if (!equal_eps(val, svec_out[i], 4U))
             {
-                std::cout << PackSize <<" fftu svec " << size << ":" << sub_size << " #" << i << ": "
-                          << abs(val - svec_out[i]) << "  " << val
+                std::cout << PackSize << " fftu svec " << size << ":" << sub_size << " #"
+                          << i << ": " << abs(val - svec_out[i]) << "  " << val
                           << svec_out[i] << "\n";
                 return 1;
             }
