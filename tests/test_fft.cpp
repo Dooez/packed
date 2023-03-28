@@ -90,7 +90,6 @@ auto fftu(const pcx::vector<T, Allocator, PackSize>& vector) {
     std::size_t group_size = size / 2;
     std::size_t l_size     = 2;
 
-    // while (l_size <= 8)
     while (l_size <= size) {
         for (uint i_group = 0; i_group < n_groups; ++i_group) {
             auto group_offset = i_group * group_size * 2;
@@ -112,6 +111,42 @@ auto fftu(const pcx::vector<T, Allocator, PackSize>& vector) {
         l_size *= 2;
         n_groups *= 2;
         group_size /= 2;
+    }
+    return u;
+}
+
+template<typename T, typename Allocator, std::size_t PackSize>
+auto ifftu(const pcx::vector<T, Allocator, PackSize>& vector) {
+    auto        size       = vector.size();
+    auto        u          = vector;
+    std::size_t n_groups   = size / 2;
+    std::size_t group_size = 1;
+    std::size_t l_size     = size;
+
+    while (l_size >= 2) {
+        for (uint i_group = 0; i_group < n_groups; ++i_group) {
+            auto group_offset = i_group * group_size * 2;
+            auto w            = std::conj(wnk<T>(l_size, reverse_bit_order(i_group, log2i(l_size / 2))));
+            // w                 = {1, 0};
+            for (uint i = 0; i < group_size; ++i) {
+                auto p0 = u[i + group_offset].value();
+                auto p1 = u[i + group_offset + group_size].value();
+                
+                auto a1tw = p0-p1;
+                auto a0 = p0+p1;
+
+                auto a1 = fmul(a1tw, w);
+
+                u[i + group_offset]              = a0;
+                u[i + group_offset + group_size] = a1;
+            }
+        }
+        l_size /= 2;
+        n_groups /= 2;
+        group_size *= 2;
+    }
+    for (auto a: u) {
+        a = a.value() / float(size);
     }
     return u;
 }
@@ -261,7 +296,7 @@ int test_fftu_float(std::size_t size) {
 int main() {
     int ret = 0;
 
-    for (uint i = 6; i < 16; ++i) {
+    for (uint i = 6; i < 6; ++i) {
         std::cout << (1U << i) << "\n";
         // ret += test_fft_float4(1U << i);
         ret += test_fft_float(1U << i);
@@ -276,17 +311,24 @@ int main() {
     // ret += test_fft_float4(64*2);
 
     //
-    //     constexpr std::size_t size = 64 * 16;
-    //     //     constexpr float       pi   = 3.14159265358979323846;
-    //     //
-    //     //     auto vec  = pcx::vector<float>(size);
-    //     //     auto vec2 = pcx::vector<float>(size);
-    //     //     for (uint i = 0; i < size; ++i)
-    //     //     {
-    //     //         vec[i] = std::exp(std::complex(0.F, 2 * pi * i / size * 1.F));
-    //     //     }
-    //     //
-    auto unit = pcx::fft_unit<float, pcx::dynamic_size, 64>(64);
+    constexpr std::size_t size = 64;
+    constexpr float       pi   = 3.14159265358979323846;
+
+    auto vec  = pcx::vector<float>(size);
+    auto vec2 = pcx::vector<float>(size);
+    for (uint i = 0; i < size; ++i) {
+        vec[i] = std::exp(std::complex(0.F, 2 * pi * i / size * 1.F));
+    }
+    vec2 = vec;
+
+    auto v3 = fftu(vec);
+    auto v4 = ifftu(v3);
+    for (uint i = 0; i < size; ++i) {
+        std::cout << abs(v4[i].value() - vec[i].value()) << " " << v4[i].value() << "  " << vec[i].value()
+                  << "\n";
+    }
+
+
     //     //
     //     //     auto vec3 = fft(vec);
     //     //     unit.binary4(vec);
