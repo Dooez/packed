@@ -223,7 +223,6 @@ public:
         auto* src7 = avx::ra_addr<PTform>(data, 7 * size() / 8);
 
         uint i = 0;
-
         for (; i < n_reversals(size() / 64); i += 2) {
             using reg_t = avx::cx_reg<float>;
 
