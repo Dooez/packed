@@ -30,7 +30,7 @@ BraceWrapping:
   AfterNamespace: "false"
   AfterStruct: false
   AfterUnion: false
-  BeforeElse: true
+  BeforeElse: false
 BreakBeforeTernaryOperators: "true"
 BreakConstructorInitializers: BeforeComma
 BreakInheritanceList: BeforeComma
