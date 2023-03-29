@@ -293,7 +293,7 @@ inline auto unpackhi_128(reg<double>::type a, reg<double>::type b) -> reg<double
     return _mm256_permute2f128_pd(a, b, 0b00110001);
 };
 
-inline auto unpack_ps(cx_reg<float> a, cx_reg<float> b) -> std::array<cx_reg<float>, 2> {
+inline auto unpack_ps(cx_reg<float> a, cx_reg<float> b) -> std::tuple<cx_reg<float>, cx_reg<float>>  {
     auto real_lo = unpacklo_ps(a.real, b.real);
     auto real_hi = unpackhi_ps(a.real, b.real);
     auto imag_lo = unpacklo_ps(a.imag, b.imag);
@@ -303,7 +303,7 @@ inline auto unpack_ps(cx_reg<float> a, cx_reg<float> b) -> std::array<cx_reg<flo
 };
 
 template<typename T>
-inline auto unpack_pd(cx_reg<T> a, cx_reg<T> b) -> std::array<cx_reg<T>, 2> {
+inline auto unpack_pd(cx_reg<T> a, cx_reg<T> b) -> std::tuple<cx_reg<T>, cx_reg<T>>  {
     auto real_lo = unpacklo_pd(a.real, b.real);
     auto real_hi = unpackhi_pd(a.real, b.real);
     auto imag_lo = unpacklo_pd(a.imag, b.imag);
@@ -313,7 +313,7 @@ inline auto unpack_pd(cx_reg<T> a, cx_reg<T> b) -> std::array<cx_reg<T>, 2> {
 };
 
 template<typename T>
-inline auto unpack_128(cx_reg<T> a, cx_reg<T> b) -> std::array<cx_reg<T>, 2> {
+inline auto unpack_128(cx_reg<T> a, cx_reg<T> b) -> std::tuple<cx_reg<T>, cx_reg<T>> {
     auto real_lo = unpacklo_128(a.real, b.real);
     auto real_hi = unpackhi_128(a.real, b.real);
     auto imag_lo = unpacklo_128(a.imag, b.imag);
@@ -388,8 +388,7 @@ struct convert<float> {
         auto tup = std::make_tuple(args...);
         if constexpr (PackFrom == PackTo || (PackFrom > 8 && PackTo > 8)) {
             return tup;
-        }
-        else if constexpr (PackFrom == 1) {
+        } else if constexpr (PackFrom == 1) {
             if constexpr (PackTo >= 8) {
                 auto pack_1 = [](cx_reg<float> reg) {
                     auto real = _mm256_shuffle_ps(reg.real, reg.imag, 0b10001000);
@@ -399,16 +398,13 @@ struct convert<float> {
 
                 auto tmp = internal::apply_for_each(swap_48, tup);
                 return internal::apply_for_each(pack_1, tmp);
-            }
-            else if constexpr (PackTo == 4) {
+            } else if constexpr (PackTo == 4) {
                 auto tmp = internal::apply_for_each(swap_12, tup);
                 return internal::apply_for_each(swap_24, tmp);
-            }
-            else if constexpr (PackTo == 2) {
+            } else if constexpr (PackTo == 2) {
                 return internal::apply_for_each(swap_12, tup);
             }
-        }
-        else if constexpr (PackFrom == 2) {
+        } else if constexpr (PackFrom == 2) {
             if constexpr (PackTo >= 8) {
                 auto pack_1 = [](cx_reg<float> reg) {
                     auto real = unpacklo_pd(reg.real, reg.imag);
@@ -417,35 +413,27 @@ struct convert<float> {
                 };
                 auto tmp = internal::apply_for_each(swap_48, tup);
                 return internal::apply_for_each(pack_1, tmp);
-            }
-            else if constexpr (PackTo == 4) {
+            } else if constexpr (PackTo == 4) {
                 return internal::apply_for_each(swap_24, tup);
-            }
-            else if constexpr (PackTo == 1) {
+            } else if constexpr (PackTo == 1) {
                 return internal::apply_for_each(swap_12, tup);
             }
-        }
-        else if constexpr (PackFrom == 4) {
+        } else if constexpr (PackFrom == 4) {
             if constexpr (PackTo >= 8) {
                 return internal::apply_for_each(swap_48, tup);
-            }
-            else if constexpr (PackTo == 2) {
+            } else if constexpr (PackTo == 2) {
                 return internal::apply_for_each(swap_24, tup);
-            }
-            else if constexpr (PackTo == 1) {
+            } else if constexpr (PackTo == 1) {
                 auto tmp = internal::apply_for_each(swap_24, tup);
                 return internal::apply_for_each(swap_12, tmp);
             }
-        }
-        else if constexpr (PackFrom >= 8) {
+        } else if constexpr (PackFrom >= 8) {
             if constexpr (PackTo == 4) {
                 return internal::apply_for_each(swap_48, tup);
-            }
-            else if constexpr (PackTo == 2) {
+            } else if constexpr (PackTo == 2) {
                 auto tmp = internal::apply_for_each(swap_48, tup);
                 return internal::apply_for_each(swap_24, tmp);
-            }
-            else if constexpr (PackTo == 1) {
+            } else if constexpr (PackTo == 1) {
                 auto pack_0 = [](cx_reg<float> reg) {
                     auto real = unpacklo_ps(reg.real, reg.imag);
                     auto imag = unpackhi_ps(reg.real, reg.imag);
@@ -467,19 +455,40 @@ struct convert<float> {
                 return cx_reg<float>({real, imag});
             };
             return internal::apply_for_each(split, tup);
-        }
-        else if constexpr (PackFrom == 2) {
+        } else if constexpr (PackFrom == 2) {
             auto split = [](cx_reg<float> reg) {
                 auto real = unpacklo_pd(reg.real, reg.imag);
                 auto imag = unpackhi_pd(reg.real, reg.imag);
                 return cx_reg<float>({real, imag});
             };
             return internal::apply_for_each(split, tup);
-        }
-        else if constexpr (PackFrom == 4) {
+        } else if constexpr (PackFrom == 4) {
             return internal::apply_for_each(swap_48, tup);
+        } else {
+            return tup;
         }
-        else {
+    }
+
+    template<std::size_t PackTo>
+    static inline auto combine(auto... args) {
+        auto tup = std::make_tuple(args...);
+        if constexpr (PackTo == 1) {
+            auto combine = [](cx_reg<float> reg) {
+                auto real = unpacklo_ps(reg.real, reg.imag);
+                auto imag = unpackhi_ps(reg.real, reg.imag);
+                return cx_reg<float>({real, imag});
+            };
+            return internal::apply_for_each(combine, tup);
+        } else if constexpr (PackTo == 2) {
+            auto combine = [](cx_reg<float> reg) {
+                auto real = unpacklo_pd(reg.real, reg.imag);
+                auto imag = unpackhi_pd(reg.real, reg.imag);
+                return cx_reg<float>({real, imag});
+            };
+            return internal::apply_for_each(combine, tup);
+        } else if constexpr (PackTo == 4) {
+            return internal::apply_for_each(swap_48, tup);
+        } else {
             return tup;
         }
     }
@@ -493,8 +502,7 @@ struct convert<float> {
                 return reg_t{reg.imag, reg.real};
             };
             return internal::apply_for_each(inverse, tup);
-        }
-        else {
+        } else {
             return tup;
         }
     };

@@ -918,15 +918,14 @@ public:
 
                 reg_t tw3_1 = {avx::broadcast(twiddle_ptr++), avx::broadcast(twiddle_ptr++)};
                 reg_t tw3_2 = {avx::broadcast(twiddle_ptr++), avx::broadcast(twiddle_ptr++)};
-                reg_t tw3   = {avx::unpacklo_128(tw3_1.real, tw3_2.real),
-                               avx::unpacklo_128(tw3_1.imag, tw3_2.imag)};
+                reg_t tw3   = {
+                    _mm256_set_m128(_mm256_castps256_ps128(tw3_2.real), _mm256_castps256_ps128(tw3_1.real)),
+                    _mm256_set_m128(_mm256_castps256_ps128(tw3_2.imag), _mm256_castps256_ps128(tw3_1.imag))};
                 reg_t tw4_1 = {avx::broadcast(twiddle_ptr++), avx::broadcast(twiddle_ptr++)};
                 reg_t tw4_2 = {avx::broadcast(twiddle_ptr++), avx::broadcast(twiddle_ptr++)};
-                reg_t tw4   = {avx::unpacklo_128(tw4_1.real, tw4_2.real),
-                               avx::unpacklo_128(tw4_1.imag, tw4_2.imag)};
-                auto  tw56  = avx::cxload<reg_size>(twiddle_ptr);
-                twiddle_ptr += reg_size * 2;
-                auto [tw5, tw6] = avx::unpack_ps(tw56, tw56);
+                reg_t tw4   = {
+                    _mm256_set_m128(_mm256_castps256_ps128(tw4_2.real), _mm256_castps256_ps128(tw4_1.real)),
+                    _mm256_set_m128(_mm256_castps256_ps128(tw4_2.imag), _mm256_castps256_ps128(tw4_1.imag))};
 
                 auto [b0, b1] = avx::btfly(a0, a1tw);
                 auto [b2, b3] = avx::btfly(a2, a3tw);
@@ -935,6 +934,10 @@ public:
                 auto [shb2, shb3] = avx::unpack_128(b2, b3);
 
                 auto [shb1tw, shb3tw] = avx::mul({shb1, tw3}, {shb3, tw4});
+
+                auto tw56 = avx::cxload<reg_size>(twiddle_ptr);
+                twiddle_ptr += reg_size * 2;
+                auto [tw5, tw6] = avx::unpack_ps(tw56, tw56);
 
                 auto [c0, c1] = avx::btfly(shb0, shb1tw);
                 auto [c2, c3] = avx::btfly(shb2, shb3tw);
@@ -962,15 +965,39 @@ public:
                 auto [e0, e1] = avx::btfly(shd0, shd1tw);
                 auto [e2, e3] = avx::btfly(shd2, shd3tw);
 
-                auto [she0s, she1s] = avx::unpack_ps(e0, e1);
-                auto [she2s, she3s] = avx::unpack_ps(e2, e3);
-                auto [she0, she1]   = avx::unpack_128(she0s, she1s);
-                auto [she2, she3]   = avx::unpack_128(she2s, she3s);
+                reg_t she0, she1, she2, she3;
 
-                if constexpr (PDest < PTform) {
-                    std::tie(she0, she1, she2, she3) =
-                        avx::convert<float>::repack<PTform, PDest>(she0, she1, she2, she3);
+                if constexpr (PDest < 4) {
+
+                    auto shuf = [](reg_t r1){
+                        auto re = _mm256_shuffle_ps(r1.real, r1.imag, 0b10001000);
+                        auto im = _mm256_shuffle_ps(r1.real, r1.imag, 0b11011101);
+                        return reg_t{re,im};
+                    };                  
+                    
+                    auto un128 = [](reg_t r1){
+                        auto re = avx::unpacklo_128(r1.real, r1.imag);
+                        auto im = avx::unpackhi_128(r1.real, r1.imag);
+                        return reg_t{re,im};
+                    };
+                    std::tie(e0,e1,e2,e3)  = internal::apply_for_each(shuf, std::tie(e0,e1,e2,e3));
+
+                    auto [she0s, she1s]  = avx::unpack_ps(e0, e1);
+                    auto [she2s, she3s]  = avx::unpack_ps(e2, e3);
+
+                    std::tie(she0,she1,she2,she3)  = internal::apply_for_each(un128, std::tie(she0s,she1s,she2s,she3s));
+                    std::swap(she0.imag, she1.real);
+                    std::swap(she2.imag, she3.real);
+                    
+                } else {
+                    auto [she0s, she1s]  = avx::unpack_ps(e0, e1);
+                    auto [she2s, she3s]  = avx::unpack_ps(e2, e3);
+                    std::tie(she0, she1) = avx::unpack_128(she0s, she1s);
+                    std::tie(she2, she3) = avx::unpack_128(she2s, she3s);
                 }
+
+                std::tie(she0, she1, she2, she3) =
+                    avx::convert<float>::combine<PDest>(she0, she1, she2, she3);
 
                 cxstore<PTform>(ptr0, she0);
                 cxstore<PTform>(ptr1, she1);
@@ -1054,14 +1081,14 @@ public:
              std::size_t PSrc    = PDest,
              bool        Inverse = false,
              bool        IScale  = false,
-             typename ScaleT     = uint>
+             typename ScaleT     = decltype([] {})>
     inline void node4_dit(float*             data,
                           std::size_t        l_size,
                           std::size_t        offset,
                           avx::cx_reg<float> tw0,
                           avx::cx_reg<float> tw1,
                           avx::cx_reg<float> tw2,
-                          ScaleT             scaling = 0) {
+                          ScaleT             scaling = ScaleT{}) {
         constexpr auto PLoad  = std::max(PSrc, reg_size);
         constexpr auto PStore = std::max(PDest, reg_size);
 

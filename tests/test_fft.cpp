@@ -4,7 +4,7 @@
 #include <iostream>
 
 void test_que(pcx::fft_unit<float>& unit, std::vector<std::complex<float>>& v1) {
-    unit.ifft(v1);
+    unit.unsorted(v1);
 }
 
 template<typename T>
@@ -131,9 +131,9 @@ auto ifftu(const pcx::vector<T, Allocator, PackSize>& vector) {
             for (uint i = 0; i < group_size; ++i) {
                 auto p0 = u[i + group_offset].value();
                 auto p1 = u[i + group_offset + group_size].value();
-                
-                auto a1tw = p0-p1;
-                auto a0 = p0+p1;
+
+                auto a1tw = p0 - p1;
+                auto a0   = p0 + p1;
 
                 auto a1 = fmul(a1tw, w);
 
@@ -296,13 +296,13 @@ int test_fftu_float(std::size_t size) {
 int main() {
     int ret = 0;
 
-    for (uint i = 6; i < 6; ++i) {
+    for (uint i = 6; i < 16; ++i) {
         std::cout << (1U << i) << "\n";
         // ret += test_fft_float4(1U << i);
         ret += test_fft_float(1U << i);
         // ret += test_fft_float<1024>(1U << i);
         ret += test_fftu_float(1U << i);
-        ret += test_fftu_float<1024>(1U << i);
+        // ret += test_fftu_float<1024>(1U << i);
         if (ret > 0) {
             return ret;
         }
@@ -323,10 +323,10 @@ int main() {
 
     auto v3 = fftu(vec);
     auto v4 = ifftu(v3);
-    for (uint i = 0; i < size; ++i) {
-        std::cout << abs(v4[i].value() - vec[i].value()) << " " << v4[i].value() << "  " << vec[i].value()
-                  << "\n";
-    }
+    // for (uint i = 0; i < size; ++i) {
+    //     std::cout << abs(v4[i].value() - vec[i].value()) << " " << v4[i].value() << "  " << vec[i].value()
+    //               << "\n";
+    // }
 
 
     //     //
