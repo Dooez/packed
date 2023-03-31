@@ -2,6 +2,7 @@
 #define FFT_HPP
 
 #include "vector.hpp"
+#include "vector_util.hpp"
 
 #include <iostream>
 #include <memory>
@@ -94,6 +95,11 @@ public:
         fftu_internal<VPackSize>(vector.data());
     };
 
+    template<typename VAllocator, std::size_t VPackSize>
+    void unsorted_re(pcx::vector<T, VAllocator, VPackSize>& vector) {
+        assert(size() == vector.size());
+        fftu_internal_re<VPackSize>(vector.data());
+    };
     template<typename VAllocator>
     void unsorted(std::vector<std::complex<T>, VAllocator>& vector) {
         assert(size() == vector.size());
@@ -139,6 +145,8 @@ private:
     const std::vector<std::size_t, sort_allocator_type>    m_sort;
     const pcx::vector<real_type, allocator_type, reg_size> m_twiddles;
     const std::vector<real_type, allocator_type>           m_twiddles_unsorted;
+    const std::vector<real_type, allocator_type>           m_twiddles_unsorted_re =
+        get_twiddles_unsorted_re(size(), sub_size(), allocator_type());
 
     [[nodiscard]] constexpr auto sub_size() const -> std::size_t {
         if constexpr (SubSize == pcx::dynamic_size) {
@@ -204,6 +212,44 @@ public:
             }
             twiddle_ptr = unsorted_subtransform_recursive<PData, PTform>(data, size() / 2, twiddle_ptr);
             unsorted_subtransform_recursive<PData, PTform>(
+                avx::ra_addr<PTform>(data, size() / 2), size() / 2, twiddle_ptr);
+        }
+    }
+
+    template<std::size_t PData>
+    void fftu_internal_re(float* data) {
+        auto* twiddle_ptr = m_twiddles_unsorted_re.data();
+        if (log2i(size() / sub_size()) % 2 == 0) {
+            unsorted_subtransform_recursive_re<PData, PData>(data, size(), twiddle_ptr);
+        } else {
+            constexpr auto PTform = std::max(PData, reg_size);
+
+            using reg_t = avx::cx_reg<float>;
+            reg_t tw0   = {
+                avx::broadcast(twiddle_ptr++),
+                avx::broadcast(twiddle_ptr++),
+            };
+
+            for (std::size_t i_group = 0; i_group < size() / 2 / reg_size; ++i_group) {
+                auto* ptr0 = avx::ra_addr<PTform>(data, i_group * reg_size);
+                auto* ptr1 = avx::ra_addr<PTform>(data, i_group * reg_size + size() / 2);
+
+                auto p1 = avx::cxload<PTform>(ptr1);
+                auto p0 = avx::cxload<PTform>(ptr0);
+
+                if constexpr (PData < PTform) {
+                    std::tie(p1, p0) = avx::convert<float>::repack<PData, PTform>(p1, p0);
+                }
+
+                auto p1tw = avx::mul(p1, tw0);
+
+                auto [a0, a1] = avx::btfly(p0, p1tw);
+
+                cxstore<PTform>(ptr0, a0);
+                cxstore<PTform>(ptr1, a1);
+            }
+            twiddle_ptr = unsorted_subtransform_recursive_re<PData, PTform>(data, size() / 2, twiddle_ptr);
+            unsorted_subtransform_recursive_re<PData, PTform>(
                 avx::ra_addr<PTform>(data, size() / 2), size() / 2, twiddle_ptr);
         }
     }
@@ -1010,6 +1056,39 @@ public:
     }
 
     template<std::size_t PDest, std::size_t PSrc>
+    inline auto unsorted_subtransform_recursive(float* data, std::size_t size, const float* twiddle_ptr)
+        -> const float* {
+        if (size <= sub_size()) {
+            return unsorted_subtransform<PDest, PSrc>(data, size, twiddle_ptr);
+        } else {
+            constexpr auto PTform = std::max(PSrc, reg_size);
+
+            using reg_t = avx::cx_reg<float>;
+
+            reg_t tw0 = {avx::broadcast(twiddle_ptr++), avx::broadcast(twiddle_ptr++)};
+            reg_t tw1 = {avx::broadcast(twiddle_ptr++), avx::broadcast(twiddle_ptr++)};
+            reg_t tw2 = {avx::broadcast(twiddle_ptr++), avx::broadcast(twiddle_ptr++)};
+
+            for (std::size_t i_group = 0; i_group < size / 4 / reg_size; ++i_group) {
+                auto offset = i_group * reg_size;
+                node4_dif<PTform, PSrc>(data, size, offset, tw0, tw1, tw2);
+            }
+
+            twiddle_ptr = unsorted_subtransform_recursive<PDest, PTform>(    //
+                data,
+                size / 4,
+                twiddle_ptr);
+            twiddle_ptr = unsorted_subtransform_recursive<PDest, PTform>(
+                avx::ra_addr<PTform>(data, size / 4), size / 4, twiddle_ptr);
+            twiddle_ptr = unsorted_subtransform_recursive<PDest, PTform>(
+                avx::ra_addr<PTform>(data, size / 2), size / 4, twiddle_ptr);
+            twiddle_ptr = unsorted_subtransform_recursive<PDest, PTform>(
+                avx::ra_addr<PTform>(data, size / 4 * 3), size / 4, twiddle_ptr);
+            return twiddle_ptr;
+        }
+    };
+
+    template<std::size_t PDest, std::size_t PSrc>
     inline auto unsorted_subtransform_re(float* data, std::size_t size, const float* twiddle_ptr) -> const
         float* {
         constexpr auto PTform = std::max(PSrc, reg_size);
@@ -1081,97 +1160,32 @@ public:
         }
 
         if (l_size == reg_size * 4) {
-            for (std::size_t i_group = 0; i_group < size / reg_size / 8; ++i_group) {
-                auto l_size_ = size / l_size;
+            for (std::size_t i_group = 0; i_group < size / reg_size / 4; ++i_group) {
+                reg_t tw0 = {avx::broadcast(twiddle_ptr++), avx::broadcast(twiddle_ptr++)};
 
+                reg_t tw1 = {avx::broadcast(twiddle_ptr++), avx::broadcast(twiddle_ptr++)};
+                reg_t tw2 = {avx::broadcast(twiddle_ptr++), avx::broadcast(twiddle_ptr++)};
 
-                auto tw00_ = wnk(l_size_,    //
-                                 reverse_bit_order(i_group * 2, log2i(l_size_ / 2)));
-                auto tw01_ = wnk(l_size_,    //
-                                 reverse_bit_order(i_group * 2 + 1, log2i(l_size_ / 2)));
+                auto* ptr0 = avx::ra_addr<PTform>(data, reg_size * (i_group * 4));
+                auto* ptr1 = avx::ra_addr<PTform>(data, reg_size * (i_group * 4 + 1));
+                auto* ptr2 = avx::ra_addr<PTform>(data, reg_size * (i_group * 4 + 2));
+                auto* ptr3 = avx::ra_addr<PTform>(data, reg_size * (i_group * 4 + 3));
 
-                auto tw10_ = wnk(l_size_ * 2,    //
-                                 reverse_bit_order(i_group * 4, log2i(l_size_)));
-                auto tw11_ = wnk(l_size_ * 2,    //
-                                 reverse_bit_order(i_group * 4 + 1, log2i(l_size_)));
-                auto tw12_ = wnk(l_size_ * 2,    //
-                                 reverse_bit_order(i_group * 4 + 2, log2i(l_size_)));
-                auto tw13_ = wnk(l_size_ * 2,    //
-                                 reverse_bit_order(i_group * 4 + 3, log2i(l_size_)));
-
-                auto* ptr0 = avx::ra_addr<PTform>(data, reg_size * (i_group * 8));
-                auto* ptr1 = avx::ra_addr<PTform>(data, reg_size * (i_group * 8 + 1));
-                auto* ptr2 = avx::ra_addr<PTform>(data, reg_size * (i_group * 8 + 2));
-                auto* ptr3 = avx::ra_addr<PTform>(data, reg_size * (i_group * 8 + 3));
-                auto* ptr4 = avx::ra_addr<PTform>(data, reg_size * (i_group * 8 + 4));
-                auto* ptr5 = avx::ra_addr<PTform>(data, reg_size * (i_group * 8 + 5));
-                auto* ptr6 = avx::ra_addr<PTform>(data, reg_size * (i_group * 8 + 6));
-                auto* ptr7 = avx::ra_addr<PTform>(data, reg_size * (i_group * 8 + 7));
-
-                auto p0 = avx::cxload<PTform>(ptr0);
-                auto p1 = avx::cxload<PTform>(ptr1);
                 auto p2 = avx::cxload<PTform>(ptr2);
                 auto p3 = avx::cxload<PTform>(ptr3);
-                auto p4 = avx::cxload<PTform>(ptr4);
-                auto p5 = avx::cxload<PTform>(ptr5);
-                auto p6 = avx::cxload<PTform>(ptr6);
-                auto p7 = avx::cxload<PTform>(ptr7);
+                auto p0 = avx::cxload<PTform>(ptr0);
+                auto p1 = avx::cxload<PTform>(ptr1);
 
-                auto tw00 = avx::broadcast(tw00_);
-                auto tw01 = avx::broadcast(tw01_);
+                auto [p2tw, p3tw] = avx::mul({p2, tw0}, {p3, tw0});
 
-                auto [p2tw, p3tw, p6tw, p7tw] = avx::mul({p2, tw00}, {p3, tw00}, {p6, tw01}, {p7, tw01});
-
-                auto [a0, a2] = avx::btfly(p0, p2tw);
                 auto [a1, a3] = avx::btfly(p1, p3tw);
-                auto [a4, a6] = avx::btfly(p4, p6tw);
-                auto [a5, a7] = avx::btfly(p5, p7tw);
+                auto [a0, a2] = avx::btfly(p0, p2tw);
 
-                auto tw10 = avx::broadcast(tw10_);
-                auto tw11 = avx::broadcast(tw11_);
-                auto tw12 = avx::broadcast(tw12_);
-                auto tw13 = avx::broadcast(tw13_);
+                auto [a1tw, a3tw] = avx::mul({a1, tw1}, {a3, tw2});
 
-                auto [a1tw, a3tw, a5tw, a7tw] = avx::mul({a1, tw10}, {a3, tw11}, {a5, tw12}, {a7, tw13});
-
-                auto [b0, b1] = avx::btfly(a0, a1tw);
-                auto [b2, b3] = avx::btfly(a2, a3tw);
-                auto [b4, b5] = avx::btfly(a4, a5tw);
-                auto [b6, b7] = avx::btfly(a6, a7tw);
-
-                auto [shb0, shb4] = avx::unpack_128(b0, b4);
-                auto [shb1, shb5] = avx::unpack_128(b1, b5);
-                auto [shb2, shb6] = avx::unpack_128(b2, b6);
-                auto [shb3, shb7] = avx::unpack_128(b3, b7);
-
-                auto [shc0, shc2] = avx::unpack_ps(shb0, shb2);
-                auto [shc1, shc3] = avx::unpack_ps(shb1, shb3);
-                auto [shc4, shc6] = avx::unpack_ps(shb4, shb6);
-                auto [shc5, shc7] = avx::unpack_ps(shb5, shb7);
-
-                auto [shd0, shd1] = avx::unpack_ps(shc0, shc1);
-                auto [shd2, shd3] = avx::unpack_ps(shc2, shc3);
-                auto [shd4, shd5] = avx::unpack_ps(shc4, shc5);
-                auto [shd6, shd7] = avx::unpack_ps(shc6, shc7);
-
-
-                auto tw20_ = wnk(l_size_ * 4,    //
-                                 reverse_bit_order(i_group * 8, log2i(l_size_ * 2)));
-                auto tw21_ = wnk(l_size_ * 4,    //
-                                 reverse_bit_order(i_group * 8 + 1, log2i(l_size_ * 2)));
-                auto tw22_ = wnk(l_size_ * 4,    //
-                                 reverse_bit_order(i_group * 8 + 2, log2i(l_size_ * 2)));
-                auto tw23_ = wnk(l_size_ * 4,    //
-                                 reverse_bit_order(i_group * 8 + 3, log2i(l_size_ * 2)));
-                auto tw24_ = wnk(l_size_ * 4,    //
-                                 reverse_bit_order(i_group * 8 + 4, log2i(l_size_ * 2)));
-                auto tw25_ = wnk(l_size_ * 4,    //
-                                 reverse_bit_order(i_group * 8 + 5, log2i(l_size_ * 2)));
-                auto tw26_ = wnk(l_size_ * 4,    //
-                                 reverse_bit_order(i_group * 8 + 6, log2i(l_size_ * 2)));
-                auto tw27_ = wnk(l_size_ * 4,    //
-                                 reverse_bit_order(i_group * 8 + 7, log2i(l_size_ * 2)));
-
+                auto tw3 = avx::cxload<reg_size>(twiddle_ptr);
+                auto tw4 = avx::cxload<reg_size>(twiddle_ptr + reg_size * 2);
+                twiddle_ptr += reg_size * 4;
 
                 auto [b0, b1] = avx::btfly(a0, a1tw);
                 auto [b2, b3] = avx::btfly(a2, a3tw);
@@ -1181,9 +1195,9 @@ public:
 
                 auto [shb1tw, shb3tw] = avx::mul({shb1, tw3}, {shb3, tw4});
 
-                auto tw56 = avx::cxload<reg_size>(twiddle_ptr);
-                twiddle_ptr += reg_size * 2;
-                auto [tw5, tw6] = avx::unpack_ps(tw56, tw56);
+                auto tw5 = avx::cxload<reg_size>(twiddle_ptr);
+                auto tw6 = avx::cxload<reg_size>(twiddle_ptr + reg_size * 2);
+                twiddle_ptr += reg_size * 4;
 
                 auto [c0, c1] = avx::btfly(shb0, shb1tw);
                 auto [c2, c3] = avx::btfly(shb2, shb3tw);
@@ -1194,9 +1208,8 @@ public:
                 auto [shc1tw, shc3tw] = avx::mul({shc1, tw5}, {shc3, tw6});
 
                 auto tw7 = avx::cxload<reg_size>(twiddle_ptr);
-                twiddle_ptr += reg_size * 2;
-                auto tw8 = avx::cxload<reg_size>(twiddle_ptr);
-                twiddle_ptr += reg_size * 2;
+                auto tw8 = avx::cxload<reg_size>(twiddle_ptr + reg_size * 2);
+                twiddle_ptr += reg_size * 4;
 
                 auto [d0, d1] = avx::btfly(shc0, shc1tw);
                 auto [d2, d3] = avx::btfly(shc2, shc3tw);
@@ -1256,10 +1269,10 @@ public:
     }
 
     template<std::size_t PDest, std::size_t PSrc>
-    inline auto unsorted_subtransform_recursive(float* data, std::size_t size, const float* twiddle_ptr)
+    inline auto unsorted_subtransform_recursive_re(float* data, std::size_t size, const float* twiddle_ptr)
         -> const float* {
         if (size <= sub_size()) {
-            return unsorted_subtransform<PDest, PSrc>(data, size, twiddle_ptr);
+            return unsorted_subtransform_re<PDest, PSrc>(data, size, twiddle_ptr);
         } else {
             constexpr auto PTform = std::max(PSrc, reg_size);
 
@@ -1274,15 +1287,15 @@ public:
                 node4_dif<PTform, PSrc>(data, size, offset, tw0, tw1, tw2);
             }
 
-            twiddle_ptr = unsorted_subtransform_recursive<PDest, PTform>(    //
+            twiddle_ptr = unsorted_subtransform_recursive_re<PDest, PTform>(    //
                 data,
                 size / 4,
                 twiddle_ptr);
-            twiddle_ptr = unsorted_subtransform_recursive<PDest, PTform>(
+            twiddle_ptr = unsorted_subtransform_recursive_re<PDest, PTform>(
                 avx::ra_addr<PTform>(data, size / 4), size / 4, twiddle_ptr);
-            twiddle_ptr = unsorted_subtransform_recursive<PDest, PTform>(
+            twiddle_ptr = unsorted_subtransform_recursive_re<PDest, PTform>(
                 avx::ra_addr<PTform>(data, size / 2), size / 4, twiddle_ptr);
-            twiddle_ptr = unsorted_subtransform_recursive<PDest, PTform>(
+            twiddle_ptr = unsorted_subtransform_recursive_re<PDest, PTform>(
                 avx::ra_addr<PTform>(data, size / 4 * 3), size / 4, twiddle_ptr);
             return twiddle_ptr;
         }
@@ -1568,7 +1581,6 @@ private:
         return twiddles;
     }
 
-
     static auto get_twiddles_unsorted(std::size_t fft_size, std::size_t sub_size, allocator_type allocator)
         -> std::vector<T, allocator_type> {
         auto twiddles = std::vector<T, allocator_type>(allocator);
@@ -1749,6 +1761,200 @@ private:
             insert_tw_unsorted(fft_size, l_size, sub_size, i_group + 1, twiddles);
             insert_tw_unsorted(fft_size, l_size, sub_size, i_group + 2, twiddles);
             insert_tw_unsorted(fft_size, l_size, sub_size, i_group + 3, twiddles);
+        }
+    }
+
+    static auto get_twiddles_unsorted_re(std::size_t fft_size, std::size_t sub_size, allocator_type allocator)
+        -> std::vector<T, allocator_type> {
+        auto twiddles = std::vector<T, allocator_type>(allocator);
+
+        std::size_t l_size = 2;
+        if (log2i(fft_size / sub_size) % 2 == 0) {
+            insert_tw_unsorted_re(fft_size, l_size, sub_size, 0, twiddles);
+        } else {
+            auto tw0 = wnk(l_size, reverse_bit_order(0, log2i(l_size / 2)));
+
+            twiddles.push_back(tw0.real());
+            twiddles.push_back(tw0.imag());
+
+            insert_tw_unsorted_re(fft_size, l_size * 2, sub_size, 0, twiddles);
+            insert_tw_unsorted_re(fft_size, l_size * 2, sub_size, 1, twiddles);
+        }
+        return twiddles;
+    }
+
+    static void insert_tw_unsorted_re(std::size_t                             fft_size,
+                                      std::size_t                             l_size,
+                                      std::size_t                             sub_size,
+                                      std::size_t                             i_group,
+                                      std::vector<real_type, allocator_type>& twiddles) {
+        if ((fft_size / l_size) < sub_size) {
+            std::size_t start_size       = twiddles.size();
+            std::size_t single_load_size = fft_size / (reg_size * 2);
+            std::size_t group_size       = 1;
+
+            while (l_size < single_load_size / 2) {
+                std::size_t start = group_size * i_group;
+                for (uint i = 0; i < group_size; ++i) {
+                    auto tw0 = wnk(l_size,    //
+                                   reverse_bit_order((start + i), log2i(l_size / 2)));
+                    auto tw1 = wnk(l_size * 2,    //
+                                   reverse_bit_order((start + i) * 2, log2i(l_size)));
+                    auto tw2 = wnk(l_size * 2,    //
+                                   reverse_bit_order((start + i) * 2 + 1, log2i(l_size)));
+
+                    twiddles.push_back(tw0.real());
+                    twiddles.push_back(tw0.imag());
+                    twiddles.push_back(tw1.real());
+                    twiddles.push_back(tw1.imag());
+                    twiddles.push_back(tw2.real());
+                    twiddles.push_back(tw2.imag());
+                }
+                l_size *= 4;
+                group_size *= 4;
+            }
+
+            if (l_size == single_load_size / 2) {
+                std::size_t start = group_size * i_group;
+
+                for (uint i = 0; i < group_size; ++i) {
+                    auto tw0 = wnk(l_size,    //
+                                   reverse_bit_order(start + i, log2i(l_size / 2)));
+
+                    twiddles.push_back(tw0.real());
+                    twiddles.push_back(tw0.imag());
+                }
+                l_size *= 2;
+                group_size *= 2;
+            }
+
+            if (l_size == single_load_size) {
+                for (uint i = 0; i < group_size; ++i) {
+                    std::size_t start = group_size * i_group + i;
+
+                    auto tw0 = wnk(l_size,    //
+                                   reverse_bit_order(start, log2i(l_size / 2)));
+
+                    twiddles.push_back(tw0.real());
+                    twiddles.push_back(tw0.imag());
+
+                    auto tw1 = wnk(l_size * 2,    //
+                                   reverse_bit_order(start * 2, log2i(l_size)));
+                    auto tw2 = wnk(l_size * 2,    //
+                                   reverse_bit_order(start * 2 + 1, log2i(l_size)));
+
+                    twiddles.push_back(tw1.real());
+                    twiddles.push_back(tw1.imag());
+                    twiddles.push_back(tw2.real());
+                    twiddles.push_back(tw2.imag());
+
+                    auto tw3_1 = wnk(l_size * 4,    //
+                                     reverse_bit_order(start * 4, log2i(l_size * 2)));
+                    auto tw3_2 = wnk(l_size * 4,    //
+                                     reverse_bit_order(start * 4 + 1, log2i(l_size * 2)));
+                    auto tw4_1 = wnk(l_size * 4,    //
+                                     reverse_bit_order(start * 4 + 2, log2i(l_size * 2)));
+                    auto tw4_2 = wnk(l_size * 4,    //
+                                     reverse_bit_order(start * 4 + 3, log2i(l_size * 2)));
+
+                    auto ins4 = [&twiddles](float tw) {
+                        for (uint i = 0; i < 4; ++i) {
+                            twiddles.push_back(tw);
+                        }
+                    };
+                    ins4(tw3_1.real());
+                    ins4(tw3_2.real());
+                    ins4(tw3_1.imag());
+                    ins4(tw3_2.imag());
+                    ins4(tw4_1.real());
+                    ins4(tw4_2.real());
+                    ins4(tw4_1.imag());
+                    ins4(tw4_2.imag());
+
+
+                    auto tw7  = wnk(l_size * 8,    //
+                                   reverse_bit_order(start * 8, log2i(l_size * 4)));
+                    auto tw8  = wnk(l_size * 8,    //
+                                   reverse_bit_order(start * 8 + 1, log2i(l_size * 4)));
+                    auto tw9  = wnk(l_size * 8,    //
+                                   reverse_bit_order(start * 8 + 2, log2i(l_size * 4)));
+                    auto tw10 = wnk(l_size * 8,    //
+                                    reverse_bit_order(start * 8 + 3, log2i(l_size * 4)));
+                    auto tw11 = wnk(l_size * 8,    //
+                                    reverse_bit_order(start * 8 + 4, log2i(l_size * 4)));
+                    auto tw12 = wnk(l_size * 8,    //
+                                    reverse_bit_order(start * 8 + 5, log2i(l_size * 4)));
+                    auto tw13 = wnk(l_size * 8,    //
+                                    reverse_bit_order(start * 8 + 6, log2i(l_size * 4)));
+                    auto tw14 = wnk(l_size * 8,    //
+                                    reverse_bit_order(start * 8 + 7, log2i(l_size * 4)));
+
+                    auto ins2 = [&twiddles](float tw) {
+                        twiddles.push_back(tw);
+                        twiddles.push_back(tw);
+                    };
+
+
+                    ins2(tw7.real());
+                    ins2(tw8.real());
+                    ins2(tw9.real());
+                    ins2(tw10.real());
+                    ins2(tw7.imag());
+                    ins2(tw8.imag());
+                    ins2(tw9.imag());
+                    ins2(tw10.imag());
+
+                    ins2(tw11.real());
+                    ins2(tw12.real());
+                    ins2(tw13.real());
+                    ins2(tw14.real());
+                    ins2(tw11.imag());
+                    ins2(tw12.imag());
+                    ins2(tw13.imag());
+                    ins2(tw14.imag());
+
+                    for (uint k = 0; k < 8; ++k) {
+                        auto tw = wnk(l_size * 16,    //
+                                      reverse_bit_order(start * 16 + k, log2i(l_size * 8)));
+                        twiddles.push_back(tw.real());
+                    }
+                    for (uint k = 0; k < 8; ++k) {
+                        auto tw = wnk(l_size * 16,    //
+                                      reverse_bit_order(start * 16 + k, log2i(l_size * 8)));
+                        twiddles.push_back(tw.imag());
+                    }
+
+                    for (uint k = 8; k < 16; ++k) {
+                        auto tw = wnk(l_size * 16,    //
+                                      reverse_bit_order(start * 16 + k, log2i(l_size * 8)));
+                        twiddles.push_back(tw.real());
+                    }
+                    for (uint k = 8; k < 16; ++k) {
+                        auto tw = wnk(l_size * 16,    //
+                                      reverse_bit_order(start * 16 + k, log2i(l_size * 8)));
+                        twiddles.push_back(tw.imag());
+                    }
+                }
+            }
+        } else {
+            auto tw0 = wnk(l_size, reverse_bit_order(i_group, log2i(l_size / 2)));
+            auto tw1 = wnk(l_size * 2, reverse_bit_order(i_group * 2, log2i(l_size)));
+            auto tw2 = wnk(l_size * 2, reverse_bit_order(i_group * 2 + 1, log2i(l_size)));
+
+            twiddles.push_back(tw0.real());
+            twiddles.push_back(tw0.imag());
+            twiddles.push_back(tw1.real());
+            twiddles.push_back(tw1.imag());
+            twiddles.push_back(tw2.real());
+            twiddles.push_back(tw2.imag());
+
+            l_size *= 4;
+            i_group *= 4;
+
+            insert_tw_unsorted_re(fft_size, l_size, sub_size, i_group + 0, twiddles);
+            insert_tw_unsorted_re(fft_size, l_size, sub_size, i_group + 1, twiddles);
+            insert_tw_unsorted_re(fft_size, l_size, sub_size, i_group + 2, twiddles);
+            insert_tw_unsorted_re(fft_size, l_size, sub_size, i_group + 3, twiddles);
         }
     }
 };

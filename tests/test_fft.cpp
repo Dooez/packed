@@ -260,7 +260,7 @@ int test_fftu_float(std::size_t size) {
         svec_out[i] = vec[i];
     }
 
-    for (std::size_t sub_size = 64; sub_size <= size * 2; sub_size *= 2) {
+    for (std::size_t sub_size = 64; sub_size <= size; sub_size *= 2) {
         vec_out = vec;
 
         auto unit = pcx::fft_unit<float, pcx::dynamic_size, pcx::dynamic_size>(size, sub_size);
@@ -277,6 +277,18 @@ int test_fftu_float(std::size_t size) {
                 return 1;
             }
         }
+
+        vec_out = vec;
+        unit.unsorted_re(vec_out);
+        for (uint i = 0; i < size; ++i) {
+            auto val = std::complex<float>(ffu[i].value());
+            if (!equal_eps(val, vec_out[i].value(), 1U)) {
+                std::cout << PackSize << " fftu re " << size << ":" << sub_size << " #" << i << ": "
+                          << abs(val - vec_out[i].value()) << "  " << val << vec_out[i].value() << "\n";
+                return 1;
+            }
+        }
+
         for (uint i = 0; i < size; ++i) {
             svec_out[i] = vec[i];
         }
