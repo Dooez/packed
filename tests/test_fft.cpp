@@ -2,9 +2,14 @@
 #include "test_pcx.hpp"
 
 #include <iostream>
+#include <utility>
 
-void test_que(pcx::fft_unit<float>& unit, std::vector<std::complex<float>>& v1) {
-    unit.unsorted(v1);
+// void test_que(pcx::fft_unit<float>& unit, std::vector<std::complex<float>>& v1) {
+//     unit.unsorted(v1);
+// }
+
+void test_que(pcx::fft_unit<float, 8192, 512>& unit, pcx::vector<float>& v1) {
+    unit.unsorted_fi(v1);
 }
 
 template<typename T>
@@ -321,6 +326,41 @@ int test_fftu_float(std::size_t size) {
     return 0;
 }
 
+template<std::size_t PackSize = 8, std::size_t Pow>
+int test_fftu_float_fixed() {
+    constexpr float pi   = 3.14159265358979323846;
+    constexpr auto  size = 1U << (6 + Pow);
+
+    std::cout << "fixed " << size << "\n";
+    auto vec      = pcx::vector<float, std::allocator<float>, PackSize>(size);
+    auto vec_out  = pcx::vector<float, std::allocator<float>, PackSize>(size);
+    auto svec_out = std::vector<std::complex<float>>(size);
+    for (uint i = 0; i < size; ++i) {
+        vec[i]      = std::exp(std::complex(0.F, 2 * pi * i / size * 13.37F));
+        svec_out[i] = vec[i];
+    }
+
+    auto unit = pcx::fft_unit<float, size, size>();
+    auto ffu  = fftu(vec);
+
+    auto eps_u = size;
+    vec_out    = vec;
+    unit.unsorted_fi(vec_out);
+    for (uint i = 0; i < size; ++i) {
+        auto val = std::complex<float>(ffu[i].value());
+        if (!equal_eps(val, vec_out[i].value(), eps_u)) {
+            std::cout << PackSize << " fftu " << size << ":" << size << " #" << i << ": "
+                      << abs(val - vec_out[i].value()) << "  " << val << vec_out[i].value() << "\n";
+            return 1;
+        }
+    }
+    return 0;
+}
+template<std::size_t PackSize = 8, std::size_t... N>
+int test_fftu_float_fixed(std::index_sequence<N...>) {
+    return (test_fftu_float_fixed<PackSize, N>() + ...);
+}
+
 int main() {
     int ret = 0;
 
@@ -334,6 +374,12 @@ int main() {
         if (ret > 0) {
             return ret;
         }
+    }
+
+    auto p = std::make_index_sequence<8>{};
+    test_fftu_float_fixed(p);
+    if (ret > 0) {
+        return ret;
     }
 
     // ret += test_fft_float4(64*2);
