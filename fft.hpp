@@ -1672,13 +1672,9 @@ public:
         cxstore<PStore>(ptr3, b3);
     }
 
-    template<std::size_t PDest, std::size_t PSrc = PDest>
-    inline void node4_dif(float*             data,
-                          std::size_t        l_size,
-                          std::size_t        offset,
-                          avx::cx_reg<float> tw0,
-                          avx::cx_reg<float> tw1,
-                          avx::cx_reg<float> tw2) {
+    template<std::size_t PDest, std::size_t PSrc = PDest, typename... TWs>
+        requires(std::same_as<TWs, avx::cx_reg<T>> && ...) && (sizeof...(TWs) == 0 || sizeof...(TWs) == 3)
+    inline void node4_dif(T* data, std::size_t l_size, std::size_t offset, TWs... tws) {
         constexpr auto PLoad  = std::max(PSrc, reg_size);
         constexpr auto PStore = std::max(PDest, reg_size);
 
@@ -1692,57 +1688,39 @@ public:
         auto p0 = avx::cxload<PLoad>(ptr0);
         auto p1 = avx::cxload<PLoad>(ptr1);
 
-        std::tie(p2, p3, p0, p1) = avx::convert<float>::repack<PSrc, PLoad>(p2, p3, p0, p1);
+        std::tie(p2, p3, p0, p1) = avx::convert<T>::template repack<PSrc, PLoad>(p2, p3, p0, p1);
 
-        auto [p2tw, p3tw] = avx::mul({p2, tw0}, {p3, tw0});
+        // NOLINTNEXTLINE(*-declaration)
+        avx::cx_reg<T> b0{}, b1{}, b2{}, b3{};
 
-        auto [a0, a2] = avx::btfly(p0, p2tw);
-        auto [a1, a3] = avx::btfly(p1, p3tw);
+        if constexpr (sizeof...(TWs) == 3) {
+            auto tw = std::make_tuple(tws...);
 
-        auto [a1tw, a3tw] = avx::mul({a1, tw1}, {a3, tw2});
+            auto [p2tw, p3tw] = avx::mul({p2, std::get<0>(tw)}, {p3, std::get<0>(tw)});
 
-        auto [b0, b1] = avx::btfly(a0, a1tw);
-        auto [b2, b3] = avx::btfly(a2, a3tw);
+            auto [a0, a2] = avx::btfly(p0, p2tw);
+            auto [a1, a3] = avx::btfly(p1, p3tw);
 
-        std::tie(b0, b1, b2, b3) = avx::convert<float>::repack<PStore, PDest>(b0, b1, b2, b3);
+            auto [a1tw, a3tw] = avx::mul({a1, std::get<1>(tw)}, {a3, std::get<2>(tw)});
 
-        cxstore<PStore>(ptr0, b0);
-        cxstore<PStore>(ptr1, b1);
-        cxstore<PStore>(ptr2, b2);
-        cxstore<PStore>(ptr3, b3);
-    };
+            std::tie(b0, b1) = avx::btfly(a0, a1tw);
+            std::tie(b2, b3) = avx::btfly(a2, a3tw);
+        } else {
+            auto [a0, a2] = avx::btfly(p0, p2);
+            auto [a1, a3] = avx::btfly(p1, p3);
 
-    template<std::size_t PDest, std::size_t PSrc = PDest>
-    inline void node4_dif(float* data, std::size_t l_size, std::size_t offset) {
-        constexpr auto PLoad  = std::max(PSrc, reg_size);
-        constexpr auto PStore = std::max(PDest, reg_size);
+            std::tie(b0, b1) = avx::btfly(a0, a1);
 
-        auto* ptr0 = avx::ra_addr<PLoad>(data, offset);
-        auto* ptr1 = avx::ra_addr<PLoad>(data, offset + l_size / 4);
-        auto* ptr2 = avx::ra_addr<PLoad>(data, offset + l_size / 2);
-        auto* ptr3 = avx::ra_addr<PLoad>(data, offset + l_size / 4 * 3);
+            auto b2_re = avx::add(a2.real, a3.imag);
+            auto b3_re = avx::sub(a2.real, a3.imag);
+            auto b2_im = avx::sub(a2.imag, a3.real);
+            auto b3_im = avx::add(a2.imag, a3.real);
 
-        auto p2 = avx::cxload<PLoad>(ptr2);
-        auto p3 = avx::cxload<PLoad>(ptr3);
-        auto p0 = avx::cxload<PLoad>(ptr0);
-        auto p1 = avx::cxload<PLoad>(ptr1);
+            b2 = avx::cx_reg<T>{b2_re, b2_im};
+            b3 = avx::cx_reg<T>{b3_re, b3_im};
+        }
 
-        std::tie(p2, p3, p0, p1) = avx::convert<float>::repack<PSrc, PLoad>(p2, p3, p0, p1);
-
-        auto [a0, a2] = avx::btfly(p0, p2);
-        auto [a1, a3] = avx::btfly(p1, p3);
-
-        auto [b0, b1] = avx::btfly(a0, a1);
-
-        auto b2_re = avx::add(a2.real, a3.imag);
-        auto b3_re = avx::sub(a2.real, a3.imag);
-        auto b2_im = avx::sub(a2.imag, a3.real);
-        auto b3_im = avx::add(a2.imag, a3.real);
-
-        auto b2 = avx::cx_reg<float>{b2_re, b2_im};
-        auto b3 = avx::cx_reg<float>{b3_re, b3_im};
-
-        std::tie(b0, b1, b2, b3) = avx::convert<float>::repack<PStore, PDest>(b0, b1, b2, b3);
+        std::tie(b0, b1, b2, b3) = avx::convert<T>::template repack<PStore, PDest>(b0, b1, b2, b3);
 
         cxstore<PStore>(ptr0, b0);
         cxstore<PStore>(ptr1, b1);
