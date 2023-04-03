@@ -1133,7 +1133,7 @@ public:
                 }
                 l_size /= 4;
                 n_groups *= 4;
-            } else if constexpr (l_size == reg_size * 8) {
+            } else if constexpr (TSize == reg_size * 8) {
                 reg_t tw0 = {avx::broadcast(twiddle_ptr++), avx::broadcast(twiddle_ptr++)};
                 for (std::size_t i = 0; i < l_size / reg_size / 2; ++i) {
                     std::size_t offset = i * reg_size;
