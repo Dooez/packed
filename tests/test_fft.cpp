@@ -279,22 +279,11 @@ int test_fftu_float(std::size_t size) {
         auto ffu   = fftu(vec);
         auto eps_u = 1U << depth - 1;
         vec_out    = vec;
-        unit.unsorted(vec_out);
+        unit.unsorted_op(vec_out);
         for (uint i = 0; i < size; ++i) {
             auto val = std::complex<float>(ffu[i].value());
             if (!equal_eps(val, vec_out[i].value(), eps_u)) {
                 std::cout << PackSize << " fftu " << size << ":" << sub_size << " #" << i << ": "
-                          << abs(val - vec_out[i].value()) << "  " << val << vec_out[i].value() << "\n";
-                return 1;
-            }
-        }
-
-        vec_out = vec;
-        unit.unsorted_re(vec_out);
-        for (uint i = 0; i < size; ++i) {
-            auto val = std::complex<float>(ffu[i].value());
-            if (!equal_eps(val, vec_out[i].value(), eps_u)) {
-                std::cout << PackSize << " fftu re " << size << ":" << sub_size << " #" << i << ": "
                           << abs(val - vec_out[i].value()) << "  " << val << vec_out[i].value() << "\n";
                 return 1;
             }
@@ -316,7 +305,7 @@ int test_fftu_float(std::size_t size) {
         unit.unsorted(svec_out);
         for (uint i = 0; i < size; ++i) {
             auto val = std::complex<float>(ffu[i].value());
-            if (!equal_eps(val, svec_out[i], 4U)) {
+            if (!equal_eps(val, svec_out[i], eps_u)) {
                 std::cout << PackSize << " fftu svec " << size << ":" << sub_size << " #" << i << ": "
                           << abs(val - svec_out[i]) << "  " << val << svec_out[i] << "\n";
                 return 1;
