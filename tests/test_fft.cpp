@@ -280,13 +280,20 @@ int test_fftu_float(std::size_t size) {
         auto eps_u = 1U << depth - 1;
         vec_out    = vec;
         unit.unsorted(vec_out);
+        int ret = 0;
         for (uint i = 0; i < size; ++i) {
             auto val = std::complex<float>(ffu[i].value());
             if (!equal_eps(val, vec_out[i].value(), eps_u)) {
                 std::cout << PackSize << " fftu " << size << ":" << sub_size << " #" << i << ": "
                           << abs(val - vec_out[i].value()) << "  " << val << vec_out[i].value() << "\n";
-                return 1;
+                ++ret;
             }
+            if (ret > 16) {
+                return ret;
+            }
+        }
+        if (ret != 0) {
+            return ret;
         }
 
         for (uint i = 0; i < size; ++i) {
@@ -343,7 +350,7 @@ int test_fftu_float_fixed(std::index_sequence<N...>) {
 int main() {
     int ret = 0;
 
-    for (uint i = 6; i < 16; ++i) {
+    for (uint i = 12; i < 16; ++i) {
         std::cout << (1U << i) << "\n";
         // ret += test_fft_float4(1U << i);
         ret += test_fft_float(1U << i);

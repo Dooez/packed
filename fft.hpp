@@ -186,8 +186,28 @@ public:
     template<std::size_t PData>
     void fftu_internal(float* data) {
         auto* twiddle_ptr = m_twiddles_unsorted.data();
-        if (log2i(size() / sub_size()) % 2 == 0) {
+        if (log2i(size() / sub_size()) % 2 == 1) {
             unsorted_subtransform_recursive<PData, PData, true>(data, size(), twiddle_ptr);
+        } else if ( size() / sub_size() > 8) {
+            constexpr auto PTform = std::max(PData, reg_size);
+            for (std::size_t i_group = 0; i_group < size() / 8 / reg_size; ++i_group) {
+                node6_dif<PTform, PData>(data, size(), i_group * reg_size);
+            }
+            twiddle_ptr = unsorted_subtransform_recursive<PData, PTform, true>(data, size() / 8, twiddle_ptr);
+            twiddle_ptr = unsorted_subtransform_recursive<PData, PTform>(
+                avx::ra_addr<PTform>(data, size() / 8 * 1), size() / 8, twiddle_ptr);
+            twiddle_ptr = unsorted_subtransform_recursive<PData, PTform>(
+                avx::ra_addr<PTform>(data, size() / 8 * 2), size() / 8, twiddle_ptr);
+            twiddle_ptr = unsorted_subtransform_recursive<PData, PTform>(
+                avx::ra_addr<PTform>(data, size() / 8 * 3), size() / 8, twiddle_ptr);
+            twiddle_ptr = unsorted_subtransform_recursive<PData, PTform>(
+                avx::ra_addr<PTform>(data, size() / 8 * 4), size() / 8, twiddle_ptr);
+            twiddle_ptr = unsorted_subtransform_recursive<PData, PTform>(
+                avx::ra_addr<PTform>(data, size() / 8 * 5), size() / 8, twiddle_ptr);
+            twiddle_ptr = unsorted_subtransform_recursive<PData, PTform>(
+                avx::ra_addr<PTform>(data, size() / 8 * 6), size() / 8, twiddle_ptr);
+            twiddle_ptr = unsorted_subtransform_recursive<PData, PTform>(
+                avx::ra_addr<PTform>(data, size() / 8 * 7), size() / 8, twiddle_ptr);
         } else {
             constexpr auto PTform = std::max(PData, reg_size);
 
@@ -1477,13 +1497,13 @@ public:
         auto p5 = avx::cxload<PLoad>(ptr5);
         auto p7 = avx::cxload<PLoad>(ptr7);
 
-        std::tie(p1, p5, p3, p7) = avx::convert<T>::template repack<PSrc, PLoad>(p1, p5, p3, p7);
+        std::tie(p1, p3, p5, p7) = avx::convert<T>::template repack<PSrc, PLoad>(p1, p3, p5, p7);
 
         auto [a1, a5] = avx::btfly(p1, p5);
         auto [a3, a7] = avx::btfly(p3, p7);
 
-        auto [b5, b7] = avx::btfly<3>(a5, a7);
         auto [b1, b3] = avx::btfly(a1, a3);
+        auto [b5, b7] = avx::btfly<3>(a5, a7);
 
         reg_t b5_tw = {avx::add(b5.real, b5.imag), avx::sub(b5.imag, b5.real)};
         reg_t b7_tw = {avx::sub(b7.real, b7.imag), avx::add(b7.real, b7.imag)};
@@ -1504,11 +1524,9 @@ public:
         auto [a2, a6] = avx::btfly(p2, p6);
 
         auto [b0, b2] = avx::btfly(a0, a2);
-        auto [b4, b6] = avx::btfly<3>(a4, a6);
 
         auto [c0, c1] = avx::btfly(b0, b1);
         auto [c2, c3] = avx::btfly<3>(b2, b3);
-
 
         std::tie(c0, c1, c2, c3) = avx::convert<T>::template repack<PStore, PDest>(c0, c1, c2, c3);
 
@@ -1516,6 +1534,8 @@ public:
         cxstore<PStore>(ptr1, c1);
         cxstore<PStore>(ptr2, c2);
         cxstore<PStore>(ptr3, c3);
+        
+        auto [b4, b6] = avx::btfly<3>(a4, a6);
 
         auto [c4, c5] = avx::btfly(b4, b5_tw);
         auto [c6, c7] = avx::btfly<2>(b6, b7_tw);
@@ -1690,8 +1710,17 @@ private:
         auto twiddles = std::vector<T, allocator_type>(allocator);
 
         std::size_t l_size = 2;
-        if (log2i(fft_size / sub_size) % 2 == 0) {
+        if (log2i(fft_size / sub_size) % 2 == 1) {
             insert_tw_unsorted(fft_size, l_size, sub_size, 0, twiddles);
+        } else if (fft_size / sub_size > 8) {
+            insert_tw_unsorted(fft_size, l_size * 8, sub_size, 0, twiddles);
+            insert_tw_unsorted(fft_size, l_size * 8, sub_size, 1, twiddles);
+            insert_tw_unsorted(fft_size, l_size * 8, sub_size, 2, twiddles);
+            insert_tw_unsorted(fft_size, l_size * 8, sub_size, 3, twiddles);
+            insert_tw_unsorted(fft_size, l_size * 8, sub_size, 4, twiddles);
+            insert_tw_unsorted(fft_size, l_size * 8, sub_size, 5, twiddles);
+            insert_tw_unsorted(fft_size, l_size * 8, sub_size, 6, twiddles);
+            insert_tw_unsorted(fft_size, l_size * 8, sub_size, 7, twiddles);
         } else {
             auto tw0 = wnk(l_size, reverse_bit_order(0, log2i(l_size / 2)));
 
