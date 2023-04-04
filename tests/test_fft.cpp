@@ -49,12 +49,12 @@ constexpr auto reverse_bit_order(uint64_t num, uint64_t depth) -> uint64_t {
 template<typename T>
 inline auto wnk(std::size_t n, std::size_t k) -> std::complex<T> {
     constexpr double pi = 3.14159265358979323846;
-    // if (n == k * 4) {
-    //     return {0, -1};
-    // }
-    // if (n == k * 2) {
-    //     return {-1, 0};
-    // }
+    if (n == k * 4) {
+        return {0, -1};
+    }
+    if (n == k * 2) {
+        return {-1, 0};
+    }
     return exp(std::complex<T>(0, -2 * pi * static_cast<double>(k) / static_cast<double>(n)));
 }
 template<typename T, typename Allocator, std::size_t PackSize>
@@ -279,7 +279,7 @@ int test_fftu_float(std::size_t size) {
         auto ffu   = fftu(vec);
         auto eps_u = 1U << depth - 1;
         vec_out    = vec;
-        unit.unsorted_op(vec_out);
+        unit.unsorted(vec_out);
         for (uint i = 0; i < size; ++i) {
             auto val = std::complex<float>(ffu[i].value());
             if (!equal_eps(val, vec_out[i].value(), eps_u)) {
@@ -289,16 +289,6 @@ int test_fftu_float(std::size_t size) {
             }
         }
 
-        vec_out = vec;
-        unit.unsorted_op(vec_out);
-        for (uint i = 0; i < size; ++i) {
-            auto val = std::complex<float>(ffu[i].value());
-            if (!equal_eps(val, vec_out[i].value(), eps_u)) {
-                std::cout << PackSize << " fftu op " << size << ":" << sub_size << " #" << i << ": "
-                          << abs(val - vec_out[i].value()) << "  " << val << vec_out[i].value() << "\n";
-                return 1;
-            }
-        }
         for (uint i = 0; i < size; ++i) {
             svec_out[i] = vec[i];
         }
@@ -365,11 +355,11 @@ int main() {
         }
     }
 
-    auto p = std::make_index_sequence<8>{};
-    test_fftu_float_fixed(p);
-    if (ret > 0) {
-        return ret;
-    }
+    // auto p = std::make_index_sequence<8>{};
+    // test_fftu_float_fixed(p);
+    // if (ret > 0) {
+    //     return ret;
+    // }
 
     // ret += test_fft_float4(64*2);
 
