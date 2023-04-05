@@ -10,6 +10,7 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <xmmintrin.h>
 
 namespace pcx {
 
@@ -188,7 +189,7 @@ public:
         auto* twiddle_ptr = m_twiddles_unsorted.data();
         if (log2i(size() / sub_size()) % 2 == 1) {
             unsorted_subtransform_recursive<PData, PData, true>(data, size(), twiddle_ptr);
-        } else if ( size() / sub_size() > 8) {
+        } else if (false && size() / sub_size() > 8) {
             constexpr auto PTform = std::max(PData, reg_size);
             for (std::size_t i_group = 0; i_group < size() / 8 / reg_size; ++i_group) {
                 node6_dif<PTform, PData>(data, size(), i_group * reg_size);
@@ -890,8 +891,7 @@ public:
                 if constexpr (First) {
                     twiddle_ptr += 6;
                     for (std::size_t i = 0; i < l_size / reg_size / 4; ++i) {
-                        auto offset = i * reg_size;
-                        node4_dif<PTform, PSrc>(data, l_size, offset);
+                        node4_dif<PTform, PSrc>(data, l_size, i * reg_size);
                     }
                 } else {
                     reg_t tw0 = {avx::broadcast(twiddle_ptr++), avx::broadcast(twiddle_ptr++)};
@@ -900,8 +900,7 @@ public:
                     reg_t tw2 = {avx::broadcast(twiddle_ptr++), avx::broadcast(twiddle_ptr++)};
 
                     for (std::size_t i = 0; i < l_size / reg_size / 4; ++i) {
-                        auto offset = i * reg_size;
-                        node4_dif<PTform, PSrc>(data, l_size, offset, tw0, tw1, tw2);
+                        node4_dif<PTform, PSrc>(data, l_size, i * reg_size, tw0, tw1, tw2);
                     }
                 }
                 l_size /= 4;
@@ -909,8 +908,7 @@ public:
             } else if (l_size == reg_size * 8) {
                 reg_t tw0 = {avx::broadcast(twiddle_ptr++), avx::broadcast(twiddle_ptr++)};
                 for (std::size_t i = 0; i < l_size / reg_size / 2; ++i) {
-                    std::size_t offset = i * reg_size;
-                    node2<PTform, PSrc>(data, l_size, offset, tw0);
+                    node2<PTform, PSrc>(data, l_size, i * reg_size, tw0);
                 }
 
                 l_size /= 2;
@@ -923,8 +921,7 @@ public:
             if constexpr (First) {
                 twiddle_ptr += 6;
                 for (std::size_t i = 0; i < l_size / reg_size / 4; ++i) {
-                    auto offset = i * reg_size;
-                    node4_dif<PTform, PTform>(data, l_size, offset);
+                    node4_dif<PTform, PTform>(data, l_size, i * reg_size);
                 }
                 ++i_group;
             }
@@ -937,8 +934,7 @@ public:
                 auto* group_ptr = avx::ra_addr<PTform>(data, i_group * l_size);
 
                 for (std::size_t i = 0; i < l_size / reg_size / 4; ++i) {
-                    auto offset = i * reg_size;
-                    node4_dif<PTform, PTform>(group_ptr, l_size, offset, tw0, tw1, tw2);
+                    node4_dif<PTform, PTform>(group_ptr, l_size, i * reg_size, tw0, tw1, tw2);
                 }
             }
             l_size /= 4;
@@ -952,8 +948,7 @@ public:
                 auto* group_ptr = avx::ra_addr<PTform>(data, i_group * l_size);
 
                 for (std::size_t i = 0; i < l_size / reg_size / 2; ++i) {
-                    std::size_t offset = i * reg_size;
-                    node2<PTform>(group_ptr, l_size, offset, tw0);
+                    node2<PTform>(group_ptr, l_size, i * reg_size, tw0);
                 }
             }
             l_size /= 2;
@@ -1534,7 +1529,7 @@ public:
         cxstore<PStore>(ptr1, c1);
         cxstore<PStore>(ptr2, c2);
         cxstore<PStore>(ptr3, c3);
-        
+
         auto [b4, b6] = avx::btfly<3>(a4, a6);
 
         auto [c4, c5] = avx::btfly(b4, b5_tw);
@@ -1712,7 +1707,7 @@ private:
         std::size_t l_size = 2;
         if (log2i(fft_size / sub_size) % 2 == 1) {
             insert_tw_unsorted(fft_size, l_size, sub_size, 0, twiddles);
-        } else if (fft_size / sub_size > 8) {
+        } else if (false && fft_size / sub_size > 8) {
             insert_tw_unsorted(fft_size, l_size * 8, sub_size, 0, twiddles);
             insert_tw_unsorted(fft_size, l_size * 8, sub_size, 1, twiddles);
             insert_tw_unsorted(fft_size, l_size * 8, sub_size, 2, twiddles);
