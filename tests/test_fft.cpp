@@ -8,10 +8,23 @@
 //     unit.unsorted(v1);
 // }
 
-void test_que(pcx::fft_unit<float, 8192, 512>& unit, pcx::vector<float>& v1) {
-    unit.unsorted_fi(v1);
-}
+// void test_que(pcx::fft_unit<float, 8192, 512>& unit, pcx::vector<float>& v1) {
+//     unit.unsorted_fi(v1);
+// }
 
+void test_que(pcx::fft_unit<float, 8192, 512>& unit,
+              float*                           data,
+              std::size_t                      l_size,
+              std::size_t                      offset,
+              pcx::avx::cx_reg<float>          tw0,
+              pcx::avx::cx_reg<float>          tw1,
+              pcx::avx::cx_reg<float>          tw2,
+              pcx::avx::cx_reg<float>          tw3,
+              pcx::avx::cx_reg<float>          tw4,
+              pcx::avx::cx_reg<float>          tw5,
+              pcx::avx::cx_reg<float>          tw6) {
+    unit.node6_dit<8>(data, l_size, offset, tw0, tw1, tw2, tw3, tw4, tw5, tw6);
+}
 template<typename T>
 auto fmul(std::complex<T> lhs, std::complex<T> rhs) -> std::complex<T> {
     auto lhsv = pcx::avx::broadcast(lhs);
@@ -350,7 +363,7 @@ int test_fftu_float_fixed(std::index_sequence<N...>) {
 int main() {
     int ret = 0;
 
-    for (uint i = 12; i < 16; ++i) {
+    for (uint i = 6; i < 16; ++i) {
         std::cout << (1U << i) << "\n";
         // ret += test_fft_float4(1U << i);
         ret += test_fft_float(1U << i);
