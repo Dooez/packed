@@ -815,6 +815,50 @@ public:
             max_size_ = max_size_ / 2;
         }
 
+        if (log2i(max_size / (reg_size * 2)) % 2 == 0) {
+            std::size_t offset = 0;
+
+            auto scaling = std::conditional_t<Scale, typename avx::reg<float>::type, decltype([] {})>{};
+            if constexpr (Scale) {
+                scaling = avx::broadcast(static_cast<float>(1 / static_cast<double>(max_size)));
+            }
+
+            const auto tw0 = avx::cxload<reg_size>(twiddle_ptr);
+            const auto tw1 = avx::cxload<reg_size>(twiddle_ptr + reg_size * 2);
+            const auto tw2 = avx::cxload<reg_size>(twiddle_ptr + reg_size * 4);
+            const auto tw3 = avx::cxload<reg_size>(twiddle_ptr + reg_size * 6);
+            const auto tw4 = avx::cxload<reg_size>(twiddle_ptr + reg_size * 8);
+            const auto tw5 = avx::cxload<reg_size>(twiddle_ptr + reg_size * 10);
+            const auto tw6 = avx::cxload<reg_size>(twiddle_ptr + reg_size * 12);
+            twiddle_ptr += reg_size * 14;
+            group_size /= 2;
+
+            if constexpr (Scale) {
+                if (max_size / (reg_size * 2) == 8) {
+                    for (std::size_t i = 0; i < group_size; ++i) {
+                        node6_dit<PTform, PTform, Inverse, Scale>(
+                            data, l_size, offset, tw0, tw1, tw2, tw3, tw4, tw5, tw6, scaling);
+                        offset += l_size * 4;
+                    }
+                } else {
+                    for (std::size_t i = 0; i < group_size; ++i) {
+                        node6_dit<PTform, PTform, Inverse>(
+                            data, l_size, offset, tw0, tw1, tw2, tw3, tw4, tw5, tw6);
+                        offset += l_size * 4;
+                    }
+                }
+            } else {
+                for (std::size_t i = 0; i < group_size; ++i) {
+                    node6_dit<PTform, PTform, Inverse>(
+                        data, l_size, offset, tw0, tw1, tw2, tw3, tw4, tw5, tw6);
+                    offset += l_size * 4;
+                }
+            }
+            l_size *= 8;
+            n_groups *= 8;
+            group_size /= 4;
+        }
+
         while (l_size < max_size_) {
             for (std::size_t i_group = 0; i_group < n_groups; ++i_group) {
                 std::size_t offset = i_group * reg_size;
@@ -829,7 +873,6 @@ public:
                     offset += l_size * 2;
                 }
             }
-
             l_size *= 4;
             n_groups *= 4;
             group_size /= 4;
@@ -1454,7 +1497,9 @@ public:
 
     template<std::size_t PDest,
              std::size_t PSrc    = PDest,
-             bool        Inverse = false>
+             bool        Inverse = false,
+             bool        IScale  = false,
+             typename ScaleT     = decltype([] {})>
     inline void node6_dit(float*             data,
                           std::size_t        l_size,
                           std::size_t        offset,
@@ -1464,7 +1509,8 @@ public:
                           avx::cx_reg<float> tw3,
                           avx::cx_reg<float> tw4,
                           avx::cx_reg<float> tw5,
-                          avx::cx_reg<float> tw6) {
+                          avx::cx_reg<float> tw6,
+                          ScaleT             scaling = ScaleT{}) {
         constexpr auto PLoad  = std::max(PSrc, reg_size);
         constexpr auto PStore = std::max(PDest, reg_size);
 
@@ -1478,7 +1524,7 @@ public:
         auto* ptr5 = avx::ra_addr<PLoad>(data, offset + l_size / 8 * 5);
         auto* ptr6 = avx::ra_addr<PLoad>(data, offset + l_size / 8 * 6);
         auto* ptr7 = avx::ra_addr<PLoad>(data, offset + l_size / 8 * 7);
-        
+
         auto p1 = avx::cxload<PLoad>(ptr1);
         auto p3 = avx::cxload<PLoad>(ptr3);
         auto p0 = avx::cxload<PLoad>(ptr0);
@@ -1516,9 +1562,16 @@ public:
         auto [b5, b7] = avx::btfly(a5, a7tw);
 
         auto [b4tw, b5tw, b6tw, b7tw] = avx::mul({b4, tw3}, {b5, tw4}, {b6, tw5}, {b7, tw6});
-        
+
         auto [c2, c6] = avx::btfly(b2, b6tw);
         auto [c3, c7] = avx::btfly(b3, b7tw);
+
+        if constexpr (IScale) {
+            c2 = avx::mul(c2, scaling);
+            c6 = avx::mul(c6, scaling);
+            c3 = avx::mul(c3, scaling);
+            c7 = avx::mul(c7, scaling);
+        }
 
         std::tie(c2, c6, c3, c7) = avx::convert<float>::inverse<Inverse>(c2, c6, c3, c7);
         std::tie(c2, c6, c3, c7) = avx::convert<float>::repack<PStore, PDest>(c2, c6, c3, c7);
@@ -1530,8 +1583,16 @@ public:
 
         auto [c0, c4] = avx::btfly(b0, b4tw);
         auto [c1, c5] = avx::btfly(b1, b5tw);
-        std::tie(c5, c1, c4, c0) = avx::convert<float>::inverse<Inverse>(c5, c1, c4, c0);
-        std::tie(c5, c1, c4, c0) = avx::convert<float>::repack<PStore, PDest>(c5, c1, c4, c0);
+
+        if constexpr (IScale) {
+            c0 = avx::mul(c0, scaling);
+            c4 = avx::mul(c4, scaling);
+            c1 = avx::mul(c1, scaling);
+            c5 = avx::mul(c5, scaling);
+        }
+
+        std::tie(c0, c4, c1, c5) = avx::convert<float>::inverse<Inverse>(c0, c4, c1, c5);
+        std::tie(c0, c4, c1, c5) = avx::convert<float>::repack<PStore, PDest>(c0, c4, c1, c5);
 
         cxstore<PStore>(ptr5, c5);
         cxstore<PStore>(ptr1, c1);
@@ -1761,10 +1822,25 @@ private:
         std::size_t n_groups = 1;
 
         std::size_t sub_size_ = std::min(fft_size, sub_size);
-        if (fft_size > sub_size_ && log2i(fft_size / sub_size_) % 2 != 0) {
-            sub_size_ = sub_size_ / 2;
-        }
+        // if (fft_size > sub_size_ ) {
+        //     sub_size_ = sub_size_ / 2;
+        // }
 
+        if (log2i(sub_size_ / (reg_size * 2)) % 2 == 0) {
+            for (uint k = 0; k < reg_size; ++k) {
+                *(tw_it++) = wnk(l_size, k);
+            }
+            for (uint k = 0; k < reg_size * 2; ++k) {
+                *(tw_it++) = wnk(l_size * 2UL, k);
+            }
+
+            for (uint k = 0; k < reg_size * 4; ++k) {
+                *(tw_it++) = wnk(l_size * 4UL, k);
+            }
+
+            l_size *= 8;
+            n_groups *= 8;
+        }
         while (l_size < sub_size_) {
             for (std::size_t i_group = 0; i_group < n_groups; ++i_group) {
                 for (uint k = 0; k < reg_size; ++k) {
