@@ -2,9 +2,14 @@
 #include "test_pcx.hpp"
 
 #include <iostream>
+#include <utility>
 
-void test_que(pcx::fft_unit<float>& unit, std::vector<std::complex<float>>& v1) {
-    unit.unsorted(v1);
+// void test_que(pcx::fft_unit<float>& unit, std::vector<std::complex<float>>& v1) {
+//     unit.unsorted(v1);
+// }
+
+void test_que(pcx::fft_unit<float, 8192, 512>& unit, pcx::vector<float>& v1) {
+    unit.unsorted_fi(v1);
 }
 
 template<typename T>
@@ -44,6 +49,12 @@ constexpr auto reverse_bit_order(uint64_t num, uint64_t depth) -> uint64_t {
 template<typename T>
 inline auto wnk(std::size_t n, std::size_t k) -> std::complex<T> {
     constexpr double pi = 3.14159265358979323846;
+    if (n == k * 4) {
+        return {0, -1};
+    }
+    if (n == k * 2) {
+        return {-1, 0};
+    }
     return exp(std::complex<T>(0, -2 * pi * static_cast<double>(k) / static_cast<double>(n)));
 }
 template<typename T, typename Allocator, std::size_t PackSize>
@@ -260,30 +271,38 @@ int test_fftu_float(std::size_t size) {
         svec_out[i] = vec[i];
     }
 
-    for (std::size_t sub_size = 64; sub_size <= size * 2; sub_size *= 2) {
+    for (std::size_t sub_size = 64; sub_size <= size; sub_size *= 2) {
         vec_out = vec;
 
         auto unit = pcx::fft_unit<float, pcx::dynamic_size, pcx::dynamic_size>(size, sub_size);
 
-        auto ffu = fftu(vec);
-
-        vec_out = vec;
+        auto ffu   = fftu(vec);
+        auto eps_u = 1U << depth - 1;
+        vec_out    = vec;
         unit.unsorted(vec_out);
+        int ret = 0;
         for (uint i = 0; i < size; ++i) {
             auto val = std::complex<float>(ffu[i].value());
-            if (!equal_eps(val, vec_out[i].value(), 1U)) {
+            if (!equal_eps(val, vec_out[i].value(), eps_u)) {
                 std::cout << PackSize << " fftu " << size << ":" << sub_size << " #" << i << ": "
                           << abs(val - vec_out[i].value()) << "  " << val << vec_out[i].value() << "\n";
-                return 1;
+                ++ret;
+            }
+            if (ret > 16) {
+                return ret;
             }
         }
+        if (ret != 0) {
+            return ret;
+        }
+
         for (uint i = 0; i < size; ++i) {
             svec_out[i] = vec[i];
         }
         unit.unsorted(svec_out);
         for (uint i = 0; i < size; ++i) {
             auto val = std::complex<float>(ffu[i].value());
-            if (!equal_eps(val, svec_out[i], 4U)) {
+            if (!equal_eps(val, svec_out[i], eps_u)) {
                 std::cout << PackSize << " fftu svec " << size << ":" << sub_size << " #" << i << ": "
                           << abs(val - svec_out[i]) << "  " << val << svec_out[i] << "\n";
                 return 1;
@@ -293,10 +312,45 @@ int test_fftu_float(std::size_t size) {
     return 0;
 }
 
+template<std::size_t PackSize = 8, std::size_t Pow>
+int test_fftu_float_fixed() {
+    constexpr float pi   = 3.14159265358979323846;
+    constexpr auto  size = 1U << (6 + Pow);
+
+    std::cout << "fixed " << size << "\n";
+    auto vec      = pcx::vector<float, std::allocator<float>, PackSize>(size);
+    auto vec_out  = pcx::vector<float, std::allocator<float>, PackSize>(size);
+    auto svec_out = std::vector<std::complex<float>>(size);
+    for (uint i = 0; i < size; ++i) {
+        vec[i]      = std::exp(std::complex(0.F, 2 * pi * i / size * 13.37F));
+        svec_out[i] = vec[i];
+    }
+
+    auto unit = pcx::fft_unit<float, size, size>();
+    auto ffu  = fftu(vec);
+
+    auto eps_u = size;
+    vec_out    = vec;
+    unit.unsorted_fi(vec_out);
+    for (uint i = 0; i < size; ++i) {
+        auto val = std::complex<float>(ffu[i].value());
+        if (!equal_eps(val, vec_out[i].value(), eps_u)) {
+            std::cout << PackSize << " fftu " << size << ":" << size << " #" << i << ": "
+                      << abs(val - vec_out[i].value()) << "  " << val << vec_out[i].value() << "\n";
+            return 1;
+        }
+    }
+    return 0;
+}
+template<std::size_t PackSize = 8, std::size_t... N>
+int test_fftu_float_fixed(std::index_sequence<N...>) {
+    return (test_fftu_float_fixed<PackSize, N>() + ...);
+}
+
 int main() {
     int ret = 0;
 
-    for (uint i = 6; i < 16; ++i) {
+    for (uint i = 12; i < 16; ++i) {
         std::cout << (1U << i) << "\n";
         // ret += test_fft_float4(1U << i);
         ret += test_fft_float(1U << i);
@@ -307,6 +361,12 @@ int main() {
             return ret;
         }
     }
+
+    // auto p = std::make_index_sequence<8>{};
+    // test_fftu_float_fixed(p);
+    // if (ret > 0) {
+    //     return ret;
+    // }
 
     // ret += test_fft_float4(64*2);
 

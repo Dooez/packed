@@ -135,10 +135,38 @@ inline auto div(cx_reg<T> lhs, typename reg<T>::type rhs) -> cx_reg<T> {
     return {avx::div(lhs.real, rhs), avx::div(lhs.imag, rhs)};
 }
 
-template<typename T>
+/**
+ * @brief Performs butterfly operation multiplying right hand side by complex unit RhsRotI times;
+ * 
+ * @tparam RhsRotI 
+ * @tparam T 
+ */
+template<uint RhsRotI = 0, typename T = double>
+    requires(RhsRotI < 4)
 inline auto btfly(cx_reg<T> lhs, cx_reg<T> rhs) {
-    auto s = add(lhs, rhs);
-    auto d = sub(lhs, rhs);
+    cx_reg<T> s;
+    cx_reg<T> d;
+    if constexpr (RhsRotI == 0) {
+        s = add(lhs, rhs);
+        d = sub(lhs, rhs);
+    } else if constexpr (RhsRotI == 1) {
+        auto s_re = sub(lhs.real, rhs.imag);
+        auto d_re = add(lhs.real, rhs.imag);
+        auto s_im = add(lhs.imag, rhs.real);
+        auto d_im = sub(lhs.imag, rhs.real);
+        s         = {s_re, s_im};
+        d         = {d_re, d_im};
+    } else if constexpr (RhsRotI == 2) {
+        s = sub(lhs, rhs);
+        d = add(lhs, rhs);
+    } else {
+        auto s_re = add(lhs.real, rhs.imag);
+        auto d_re = sub(lhs.real, rhs.imag);
+        auto s_im = sub(lhs.imag, rhs.real);
+        auto d_im = add(lhs.imag, rhs.real);
+        s         = {s_re, s_im};
+        d         = {d_re, d_im};
+    }
     return std::make_tuple(s, d);
 }
 
