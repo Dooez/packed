@@ -831,20 +831,20 @@ public:
             const auto tw5 = avx::cxload<reg_size>(twiddle_ptr + reg_size * 10);
             const auto tw6 = avx::cxload<reg_size>(twiddle_ptr + reg_size * 12);
             twiddle_ptr += reg_size * 14;
-            group_size /= 2;
 
+            group_size /= 2;
             if (max_size / (reg_size * 2) == 4) {
                 for (std::size_t i = 0; i < group_size; ++i) {
                     node8_dit<PDest, PTform, Inverse, Scale>(
                         data, l_size, offset, tw0, tw1, tw2, tw3, tw4, tw5, tw6, scaling);
                     offset += l_size * 4;
                 }
-            } else {
-                for (std::size_t i = 0; i < group_size; ++i) {
-                    node8_dit<PTform, PTform, Inverse>(
-                        data, l_size, offset, tw0, tw1, tw2, tw3, tw4, tw5, tw6);
-                    offset += l_size * 4;
-                }
+                return twiddle_ptr;
+            }
+
+            for (std::size_t i = 0; i < group_size; ++i) {
+                node8_dit<PTform, PTform, Inverse>(data, l_size, offset, tw0, tw1, tw2, tw3, tw4, tw5, tw6);
+                offset += l_size * 4;
             }
 
             l_size *= 8;
@@ -871,41 +871,26 @@ public:
             group_size /= 4;
         }
 
-        auto scaling = std::conditional_t<Scale, typename avx::reg<float>::type, decltype([] {})>{};
-        if constexpr (Scale) {
-            scaling = avx::broadcast(static_cast<float>(1 / static_cast<double>(max_size)));
-        }
         if constexpr ((PDest < reg_size) || Scale) {
-            if (l_size == max_size / 2) {
-                for (std::size_t i_group = 0; i_group < n_groups; ++i_group) {
-                    std::size_t offset = i_group * reg_size;
-
-                    const auto tw0 = avx::cxload<reg_size>(twiddle_ptr);
-                    const auto tw1 = avx::cxload<reg_size>(twiddle_ptr + reg_size * 2);
-                    const auto tw2 = avx::cxload<reg_size>(twiddle_ptr + reg_size * 4);
-                    twiddle_ptr += reg_size * 6;
-
-                    for (std::size_t i = 0; i < group_size; ++i) {
-                        node4_dit<PDest, PTform, Inverse, Scale>(
-                            data, l_size, offset, tw0, tw1, tw2, scaling);
-                        offset += l_size * 2;
-                    }
-                }
-
-                return twiddle_ptr;
+            auto scaling = std::conditional_t<Scale, typename avx::reg<float>::type, decltype([] {})>{};
+            if constexpr (Scale) {
+                scaling = avx::broadcast(static_cast<float>(1 / static_cast<double>(max_size)));
             }
-        }
-
-        if (l_size == max_size) {
             for (std::size_t i_group = 0; i_group < n_groups; ++i_group) {
                 std::size_t offset = i_group * reg_size;
-                const auto  tw0    = avx::cxload<reg_size>(twiddle_ptr);
-                twiddle_ptr += reg_size * 2;
 
-                node2<PDest, PTform, Inverse, Scale>(data, l_size, offset, tw0, scaling);
+                const auto tw0 = avx::cxload<reg_size>(twiddle_ptr);
+                const auto tw1 = avx::cxload<reg_size>(twiddle_ptr + reg_size * 2);
+                const auto tw2 = avx::cxload<reg_size>(twiddle_ptr + reg_size * 4);
+                twiddle_ptr += reg_size * 6;
+
+                for (std::size_t i = 0; i < group_size; ++i) {
+                    node4_dit<PDest, PTform, Inverse, Scale>(data, l_size, offset, tw0, tw1, tw2, scaling);
+                    offset += l_size * 2;
+                }
             }
+            return twiddle_ptr;
         }
-
         return twiddle_ptr;
     };
 
