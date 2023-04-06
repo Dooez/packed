@@ -833,27 +833,20 @@ public:
             twiddle_ptr += reg_size * 14;
             group_size /= 2;
 
-            if constexpr (Scale) {
-                if (max_size / (reg_size * 2) == 8) {
-                    for (std::size_t i = 0; i < group_size; ++i) {
-                        node6_dit<PTform, PTform, Inverse, Scale>(
-                            data, l_size, offset, tw0, tw1, tw2, tw3, tw4, tw5, tw6, scaling);
-                        offset += l_size * 4;
-                    }
-                } else {
-                    for (std::size_t i = 0; i < group_size; ++i) {
-                        node6_dit<PTform, PTform, Inverse>(
-                            data, l_size, offset, tw0, tw1, tw2, tw3, tw4, tw5, tw6);
-                        offset += l_size * 4;
-                    }
+            if (max_size / (reg_size * 2) == 4) {
+                for (std::size_t i = 0; i < group_size; ++i) {
+                    node8_dit<PDest, PTform, Inverse, Scale>(
+                        data, l_size, offset, tw0, tw1, tw2, tw3, tw4, tw5, tw6, scaling);
+                    offset += l_size * 4;
                 }
             } else {
                 for (std::size_t i = 0; i < group_size; ++i) {
-                    node6_dit<PTform, PTform, Inverse>(
+                    node8_dit<PTform, PTform, Inverse>(
                         data, l_size, offset, tw0, tw1, tw2, tw3, tw4, tw5, tw6);
                     offset += l_size * 4;
                 }
             }
+
             l_size *= 8;
             n_groups *= 8;
             group_size /= 4;
@@ -1499,8 +1492,9 @@ public:
              std::size_t PSrc    = PDest,
              bool        Inverse = false,
              bool        IScale  = false,
-             typename ScaleT     = decltype([] {})>
-    inline void node6_dit(float*             data,
+
+             typename ScaleT = decltype([] {})>
+    inline void node8_dit(float*             data,
                           std::size_t        l_size,
                           std::size_t        offset,
                           avx::cx_reg<float> tw0,
@@ -1517,13 +1511,13 @@ public:
         using reg_t = avx::cx_reg<float>;
 
         auto* ptr0 = avx::ra_addr<PLoad>(data, offset);
-        auto* ptr1 = avx::ra_addr<PLoad>(data, offset + l_size / 8 * 1);
-        auto* ptr2 = avx::ra_addr<PLoad>(data, offset + l_size / 8 * 2);
-        auto* ptr3 = avx::ra_addr<PLoad>(data, offset + l_size / 8 * 3);
-        auto* ptr4 = avx::ra_addr<PLoad>(data, offset + l_size / 8 * 4);
-        auto* ptr5 = avx::ra_addr<PLoad>(data, offset + l_size / 8 * 5);
-        auto* ptr6 = avx::ra_addr<PLoad>(data, offset + l_size / 8 * 6);
-        auto* ptr7 = avx::ra_addr<PLoad>(data, offset + l_size / 8 * 7);
+        auto* ptr1 = avx::ra_addr<PLoad>(data, offset + l_size * 1 / 2);
+        auto* ptr2 = avx::ra_addr<PLoad>(data, offset + l_size * 2 / 2);
+        auto* ptr3 = avx::ra_addr<PLoad>(data, offset + l_size * 3 / 2);
+        auto* ptr4 = avx::ra_addr<PLoad>(data, offset + l_size * 4 / 2);
+        auto* ptr5 = avx::ra_addr<PLoad>(data, offset + l_size * 5 / 2);
+        auto* ptr6 = avx::ra_addr<PLoad>(data, offset + l_size * 6 / 2);
+        auto* ptr7 = avx::ra_addr<PLoad>(data, offset + l_size * 7 / 2);
 
         auto p1 = avx::cxload<PLoad>(ptr1);
         auto p3 = avx::cxload<PLoad>(ptr3);
