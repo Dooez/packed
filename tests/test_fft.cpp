@@ -68,8 +68,7 @@ inline auto wnk(std::size_t n, std::size_t k) -> std::complex<T> {
     if (n == k * 2) {
         return {-1, 0};
     }
-    return exp(
-        std::complex<T>(0, -2 * pi * static_cast<double>(k) / static_cast<double>(n)));
+    return exp(std::complex<T>(0, -2 * pi * static_cast<double>(k) / static_cast<double>(n)));
 }
 template<typename T, typename Allocator, std::size_t PackSize>
 auto fft(const pcx::vector<T, Allocator, PackSize>& vector) {
@@ -118,7 +117,7 @@ auto fftu(const pcx::vector<T, Allocator, PackSize>& vector) {
     while (l_size <= size) {
         for (uint i_group = 0; i_group < n_groups; ++i_group) {
             auto group_offset = i_group * group_size * 2;
-            auto w = wnk<T>(l_size, reverse_bit_order(i_group, log2i(l_size / 2)));
+            auto w            = wnk<T>(l_size, reverse_bit_order(i_group, log2i(l_size / 2)));
             // std::cout << "tw: " << w << "\n";
 
             for (uint i = 0; i < group_size; ++i) {
@@ -151,8 +150,7 @@ auto ifftu(const pcx::vector<T, Allocator, PackSize>& vector) {
     while (l_size >= 2) {
         for (uint i_group = 0; i_group < n_groups; ++i_group) {
             auto group_offset = i_group * group_size * 2;
-            auto w =
-                std::conj(wnk<T>(l_size, reverse_bit_order(i_group, log2i(l_size / 2))));
+            auto w            = std::conj(wnk<T>(l_size, reverse_bit_order(i_group, log2i(l_size / 2))));
             // w                 = {1, 0};
             for (uint i = 0; i < group_size; ++i) {
                 auto p0 = u[i + group_offset].value();
@@ -195,8 +193,7 @@ int test_fft_float(std::size_t size) {
     auto ff = fft(vec);
 
     for (std::size_t sub_size = size; sub_size <= size * 2; sub_size *= 2) {
-        auto unit =
-            pcx::fft_unit<float, pcx::dynamic_size, pcx::dynamic_size>(size, sub_size);
+        auto unit = pcx::fft_unit<float, pcx::dynamic_size, pcx::dynamic_size>(size, sub_size);
 
         vec_out = vec;
 
@@ -206,11 +203,10 @@ int test_fft_float(std::size_t size) {
             auto val = std::complex<float>(ff[i].value());
             if (!equal_eps(val, vec_out[i].value(), 1U << (depth))) {
                 std::cout << "vec  " << size << ":" << sub_size << " #" << i << ": "
-                          << abs(val - vec_out[i].value()) << "  " << val
-                          << vec_out[i].value() << "\n";
+                          << abs(val - vec_out[i].value()) << "  " << val << vec_out[i].value() << "\n";
                 ++ret;
             }
-            if (ret > 31){
+            if (ret > 31) {
                 return ret;
             }
         }
@@ -221,8 +217,7 @@ int test_fft_float(std::size_t size) {
             auto val = std::complex<float>(vec[i].value());
             if (!equal_eps(val, vec_out[i].value(), 1U << (depth))) {
                 std::cout << "ifftvec  " << size << ":" << sub_size << " #" << i << ": "
-                          << abs(val - vec_out[i].value()) << "  " << val
-                          << vec_out[i].value() << "\n";
+                          << abs(val - vec_out[i].value()) << "  " << val << vec_out[i].value() << "\n";
                 return 1;
             }
         }
@@ -233,8 +228,7 @@ int test_fft_float(std::size_t size) {
             auto val = std::complex<float>(ff[i].value());
             if (!equal_eps(val, vec_out[i].value(), 1U << (depth))) {
                 std::cout << "veco " << size << ":" << sub_size << " #" << i << ": "
-                          << abs(val - vec_out[i].value()) << "  " << val
-                          << vec_out[i].value() << "\n";
+                          << abs(val - vec_out[i].value()) << "  " << val << vec_out[i].value() << "\n";
                 return 1;
             }
         }
@@ -247,8 +241,8 @@ int test_fft_float(std::size_t size) {
         for (uint i = 0; i < size; ++i) {
             auto val = std::complex<float>(ff[i].value());
             if (!equal_eps(val, svec_out[i], 1U << (depth))) {
-                std::cout << "svec " << size << ":" << sub_size << " #" << i << ": "
-                          << abs(val - svec_out[i]) << "  " << val << svec_out[i] << "\n";
+                std::cout << "svec " << size << ":" << sub_size << " #" << i << ": " << abs(val - svec_out[i])
+                          << "  " << val << svec_out[i] << "\n";
                 return 1;
             }
         }
@@ -271,8 +265,8 @@ int test_fft_float(std::size_t size) {
         for (uint i = 0; i < size; ++i) {
             auto val = std::complex<float>(ff[i].value());
             if (!equal_eps(val, svec_out[i], 1U << (depth))) {
-                std::cout << "svec " << size << ":" << sub_size << " #" << i << ": "
-                          << abs(val - svec_out[i]) << "  " << val << svec_out[i] << "\n";
+                std::cout << "svec " << size << ":" << sub_size << " #" << i << ": " << abs(val - svec_out[i])
+                          << "  " << val << svec_out[i] << "\n";
                 return 1;
             }
         }
@@ -298,8 +292,7 @@ int test_fftu_float(std::size_t size) {
     for (std::size_t sub_size = 64; sub_size <= size; sub_size *= 2) {
         vec_out = vec;
 
-        auto unit =
-            pcx::fft_unit<float, pcx::dynamic_size, pcx::dynamic_size>(size, sub_size);
+        auto unit = pcx::fft_unit<float, pcx::dynamic_size, pcx::dynamic_size>(size, sub_size);
 
         auto ffu   = fftu(vec);
         auto eps_u = 1U << depth - 1;
@@ -309,10 +302,26 @@ int test_fftu_float(std::size_t size) {
         for (uint i = 0; i < size; ++i) {
             auto val = std::complex<float>(ffu[i].value());
             if (!equal_eps(val, vec_out[i].value(), eps_u)) {
-                std::cout << PackSize << " fftu " << size << ":" << sub_size << " #" << i
-                          << ": " << abs(val - vec_out[i].value()) << "  " << val
-                          << vec_out[i].value() << "\n";
+                std::cout << PackSize << " fftu " << size << ":" << sub_size << " #" << i << ": "
+                          << abs(val - vec_out[i].value()) << "  " << val << vec_out[i].value() << "\n";
                 ++ret;
+            }
+            if (ret > 16) {
+                return ret;
+            }
+        }
+        if (ret != 0) {
+            return ret;
+        }
+
+        ret = 0;
+        unit.fftu_internal_inverse<PackSize>(vec_out.data());
+        for (uint i = 0; i < size; ++i) {
+            auto val = std::complex<float>(vec[i].value());
+            if (!equal_eps(val, vec_out[i].value(), 1U << (depth))) {
+                std::cout << "ifftvec  " << size << ":" << sub_size << " #" << i << ": "
+                          << abs(val - vec_out[i].value()) << "  " << val << vec_out[i].value() << "\n";
+                ret++;
             }
             if (ret > 16) {
                 return ret;
@@ -329,9 +338,8 @@ int test_fftu_float(std::size_t size) {
         for (uint i = 0; i < size; ++i) {
             auto val = std::complex<float>(ffu[i].value());
             if (!equal_eps(val, svec_out[i], eps_u)) {
-                std::cout << PackSize << " fftu svec " << size << ":" << sub_size << " #"
-                          << i << ": " << abs(val - svec_out[i]) << "  " << val
-                          << svec_out[i] << "\n";
+                std::cout << PackSize << " fftu svec " << size << ":" << sub_size << " #" << i << ": "
+                          << abs(val - svec_out[i]) << "  " << val << svec_out[i] << "\n";
                 return 1;
             }
         }
@@ -363,8 +371,7 @@ int test_fftu_float_fixed() {
         auto val = std::complex<float>(ffu[i].value());
         if (!equal_eps(val, vec_out[i].value(), eps_u)) {
             std::cout << PackSize << " fftu " << size << ":" << size << " #" << i << ": "
-                      << abs(val - vec_out[i].value()) << "  " << val
-                      << vec_out[i].value() << "\n";
+                      << abs(val - vec_out[i].value()) << "  " << val << vec_out[i].value() << "\n";
             return 1;
         }
     }
