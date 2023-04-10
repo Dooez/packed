@@ -382,16 +382,65 @@ int test_fftu_float_fixed(std::index_sequence<N...>) {
     return (test_fftu_float_fixed<PackSize, N>() + ...);
 }
 
+
+template<std::size_t PackSize = 8>
+int test_ifftu_float(std::size_t size) {
+    constexpr float pi = 3.14159265358979323846;
+
+    auto depth = log2i(size);
+
+    auto vec      = pcx::vector<float, std::allocator<float>, PackSize>(size);
+    auto vec_out  = pcx::vector<float, std::allocator<float>, PackSize>(size);
+    auto svec_out = std::vector<std::complex<float>>(size);
+    for (uint i = 0; i < size; ++i) {
+        vec[i]      = std::exp(std::complex(0.F, 2 * pi * i / size * 13.37F));
+        svec_out[i] = vec[i];
+    }
+
+    for (std::size_t sub_size = size; sub_size <= size; sub_size *= 2) {
+        vec_out = vec;
+
+        auto unit = pcx::fft_unit<float, pcx::dynamic_size, pcx::dynamic_size>(size, sub_size);
+
+        auto ffu   = fftu(vec);
+        auto eps_u = 1U << depth - 1;
+        vec_out    = vec;
+        auto vec_i = vec;
+
+        unit.unsorted(vec_out);
+        unit.fftu_internal_inverse<PackSize>(ffu.data());
+        int ret = 0;
+        for (int i = size - 1; i >= 0; --i) {
+            auto val = std::complex<float>(ffu[i].value());
+            if (!equal_eps(val, vec_out[i].value(), eps_u)) {
+                std::cout << PackSize << " fftu " << size << ":" << sub_size << " #" << i << ": "
+                          << abs(val - vec_out[i].value()) << "  " << val << vec_out[i].value() << "\n";
+                ++ret;
+            }
+            if (ret > 16) {
+                return ret;
+            }
+        }
+        if (ret != 0) {
+            return ret;
+        }
+
+    }
+    return 0;
+}
+
+
 int main() {
     int ret = 0;
 
 
-    for (uint i = 6; i < 16; ++i) {
+    for (uint i = 12; i < 16; ++i) {
         std::cout << (1U << i) << "\n";
+        ret += test_ifftu_float(1U << i);
         // ret += test_fft_float4(1U << i);
-        ret += test_fft_float(1U << i);
+        // ret += test_fft_float(1U << i);
         // ret += test_fft_float<1024>(1U << i);
-        ret += test_fftu_float(1U << i);
+        // ret += test_fftu_float(1U << i);
         // ret += test_fftu_float<1024>(1U << i);
         if (ret > 0) {
             return ret;
