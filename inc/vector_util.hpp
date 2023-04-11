@@ -175,14 +175,14 @@ constexpr void apply_for_each(F&& f, Tups&&... args) {
  */
 namespace avx {
 /**
-     * @brief Register aligned adress 
-     * 
-     * @tparam PackSize 
-     * @tparam T 
-     * @param data Base address. Must be aligned by avx register size. 
+     * @brief Register aligned adress
+     *
+     * @tparam PackSize
+     * @tparam T
+     * @param data Base address. Must be aligned by avx register size.
      * @param offset New address offset. Must be a multiple of avx register size.
      * If data in-pack index I is non-zero, offset must be less then PackSize - I;
-     * @return T* 
+     * @return T*
      */
 template<std::size_t PackSize, typename T>
 constexpr auto ra_addr(T* data, std::size_t offset) -> T* {
@@ -281,19 +281,19 @@ inline auto unpackhi_pd(reg<double>::type a, reg<double>::type b) -> reg<double>
 };
 
 inline auto unpacklo_128(reg<float>::type a, reg<float>::type b) -> reg<float>::type {
-    return _mm256_permute2f128_ps(a, b, 0b00100000);
+    return _mm256_insertf128_ps(a, _mm256_extractf128_ps(b, 0), 1);
 };
 inline auto unpackhi_128(reg<float>::type a, reg<float>::type b) -> reg<float>::type {
     return _mm256_permute2f128_ps(a, b, 0b00110001);
 };
 inline auto unpacklo_128(reg<double>::type a, reg<double>::type b) -> reg<double>::type {
-    return _mm256_permute2f128_pd(a, b, 0b00110001);
+    return _mm256_insertf128_pd(a, _mm256_extractf128_pd(b, 0), 1);
 };
 inline auto unpackhi_128(reg<double>::type a, reg<double>::type b) -> reg<double>::type {
     return _mm256_permute2f128_pd(a, b, 0b00110001);
 };
 
-inline auto unpack_ps(cx_reg<float> a, cx_reg<float> b) -> std::tuple<cx_reg<float>, cx_reg<float>>  {
+inline auto unpack_ps(cx_reg<float> a, cx_reg<float> b) -> std::tuple<cx_reg<float>, cx_reg<float>> {
     auto real_lo = unpacklo_ps(a.real, b.real);
     auto real_hi = unpackhi_ps(a.real, b.real);
     auto imag_lo = unpacklo_ps(a.imag, b.imag);
@@ -303,7 +303,7 @@ inline auto unpack_ps(cx_reg<float> a, cx_reg<float> b) -> std::tuple<cx_reg<flo
 };
 
 template<typename T>
-inline auto unpack_pd(cx_reg<T> a, cx_reg<T> b) -> std::tuple<cx_reg<T>, cx_reg<T>>  {
+inline auto unpack_pd(cx_reg<T> a, cx_reg<T> b) -> std::tuple<cx_reg<T>, cx_reg<T>> {
     auto real_lo = unpacklo_pd(a.real, b.real);
     auto real_hi = unpackhi_pd(a.real, b.real);
     auto imag_lo = unpacklo_pd(a.imag, b.imag);
@@ -314,10 +314,10 @@ inline auto unpack_pd(cx_reg<T> a, cx_reg<T> b) -> std::tuple<cx_reg<T>, cx_reg<
 
 template<typename T>
 inline auto unpack_128(cx_reg<T> a, cx_reg<T> b) -> std::tuple<cx_reg<T>, cx_reg<T>> {
-    auto real_lo = unpacklo_128(a.real, b.real);
     auto real_hi = unpackhi_128(a.real, b.real);
-    auto imag_lo = unpacklo_128(a.imag, b.imag);
+    auto real_lo = unpacklo_128(a.real, b.real);
     auto imag_hi = unpackhi_128(a.imag, b.imag);
+    auto imag_lo = unpacklo_128(a.imag, b.imag);
 
     return {cx_reg<float>({real_lo, imag_lo}), cx_reg<float>({real_hi, imag_hi})};
 };
