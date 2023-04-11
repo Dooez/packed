@@ -434,7 +434,7 @@ int main() {
     int ret = 0;
 
 
-    for (uint i = 12; i < 16; ++i) {
+    for (uint i = 6; i < 16; ++i) {
         std::cout << (1U << i) << "\n";
         ret += test_ifftu_float(1U << i);
         // ret += test_fft_float4(1U << i);
