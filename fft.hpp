@@ -200,8 +200,6 @@ public:
                 avx::ra_addr<PTform>(data, size() / 8 * 5), size() / 8, twiddle_ptr);
             twiddle_ptr = unsorted_subtransform_recursive<PData, PTform>(
                 avx::ra_addr<PTform>(data, size() / 8 * 6), size() / 8, twiddle_ptr);
-
-            auto k      = twiddle_ptr - m_twiddles_unsorted.data();
             twiddle_ptr = unsorted_subtransform_recursive<PData, PTform>(
                 avx::ra_addr<PTform>(data, size() / 8 * 7), size() / 8, twiddle_ptr);
         } else {
@@ -231,6 +229,7 @@ public:
                 cxstore<PTform>(ptr0, a0);
                 cxstore<PTform>(ptr1, a1);
             }
+
             twiddle_ptr = unsorted_subtransform_recursive<PData, PTform, true>(data, size() / 2, twiddle_ptr);
 
             unsorted_subtransform_recursive<PData, PTform>(
@@ -248,8 +247,6 @@ public:
 
             twiddle_ptr = unsorted_subtransform_recursive_inverse<PTform, PData>(
                 avx::ra_addr<PTform>(data, size() / 8 * 7), size() / 8, twiddle_ptr);
-
-            auto k      = twiddle_ptr - m_twiddles_unsorted.data();
             twiddle_ptr = unsorted_subtransform_recursive_inverse<PTform, PData>(
                 avx::ra_addr<PTform>(data, size() / 8 * 6), size() / 8, twiddle_ptr);
             twiddle_ptr = unsorted_subtransform_recursive_inverse<PTform, PData>(
@@ -265,14 +262,15 @@ public:
             twiddle_ptr =
                 unsorted_subtransform_recursive_inverse<PTform, PData, true>(data, size() / 8, twiddle_ptr);
             for (std::size_t i_group = 0; i_group < size() / 8 / reg_size; ++i_group) {
-                // node8_dif<PData, PTform, true>(data, size(), i_group * reg_size);
+                node8_dif<PData, PTform, true>(data, size(), i_group * reg_size);
             }
         } else {
             constexpr auto PTform = std::max(PData, reg_size);
 
             twiddle_ptr = unsorted_subtransform_recursive_inverse<PData, PTform>(
                 avx::ra_addr<PTform>(data, size() / 2), size() / 2, twiddle_ptr);
-            unsorted_subtransform_recursive_inverse<PData, PTform, true>(data, size() / 2, twiddle_ptr);
+            twiddle_ptr =
+                unsorted_subtransform_recursive_inverse<PData, PTform, true>(data, size() / 2, twiddle_ptr);
 
             twiddle_ptr -= 2;
 
@@ -282,7 +280,21 @@ public:
                 avx::broadcast(twiddle_ptr + 1),
             };
             for (std::size_t i_group = 0; i_group < size() / 2 / reg_size; ++i_group) {
-                // node2<PData, PTform, true>(data, size(), i_group * reg_size, tw0);
+                auto* ptr0 = avx::ra_addr<PTform>(data, i_group * reg_size);
+                auto* ptr1 = avx::ra_addr<PTform>(data, i_group * reg_size + size() / 2);
+
+                auto a1 = avx::cxload<PTform>(ptr1);
+                auto a0 = avx::cxload<PTform>(ptr0);
+
+                std::tie(a1, a0) = avx::convert<float>::repack<PData, PTform>(a1, a0);
+                std::tie(a1, a0) = avx::convert<float>::inverse(a1, a0);
+
+                auto [p0, p1] = avx::ibtfly(a0, a1);
+
+                std::tie(p1, p0) = avx::convert<float>::inverse(p1, p0);
+
+                cxstore<PTform>(ptr0, p0);
+                cxstore<PTform>(ptr1, p1);
             }
         }
     }
@@ -948,7 +960,7 @@ public:
                 if constexpr (First) {
                     twiddle_ptr += 6;
                     for (std::size_t i = 0; i < l_size / reg_size / 4; ++i) {
-                        // node4_dif<PTform, PSrc>(data, l_size, i * reg_size);
+                        node4_dif<PTform, PSrc>(data, l_size, i * reg_size);
                     }
                 } else {
                     reg_t tw0 = {avx::broadcast(twiddle_ptr++), avx::broadcast(twiddle_ptr++)};
@@ -957,7 +969,7 @@ public:
                     reg_t tw2 = {avx::broadcast(twiddle_ptr++), avx::broadcast(twiddle_ptr++)};
 
                     for (std::size_t i = 0; i < l_size / reg_size / 4; ++i) {
-                        // node4_dif<PTform, PSrc>(data, l_size, i * reg_size, tw0, tw1, tw2);
+                        node4_dif<PTform, PSrc>(data, l_size, i * reg_size, tw0, tw1, tw2);
                     }
                 }
                 l_size /= 4;
@@ -965,7 +977,7 @@ public:
             } else if (l_size == reg_size * 8) {
                 reg_t tw0 = {avx::broadcast(twiddle_ptr++), avx::broadcast(twiddle_ptr++)};
                 for (std::size_t i = 0; i < l_size / reg_size / 2; ++i) {
-                    // node2<PTform, PSrc>(data, l_size, i * reg_size, tw0);
+                    node2<PTform, PSrc>(data, l_size, i * reg_size, tw0);
                 }
 
                 l_size /= 2;
@@ -978,7 +990,7 @@ public:
             if constexpr (First) {
                 twiddle_ptr += 6;
                 for (std::size_t i = 0; i < l_size / reg_size / 4; ++i) {
-                    // node4_dif<PTform, PTform>(data, l_size, i * reg_size);
+                    node4_dif<PTform, PTform>(data, l_size, i * reg_size);
                 }
                 ++i_group;
             }
@@ -991,7 +1003,7 @@ public:
                 auto* group_ptr = avx::ra_addr<PTform>(data, i_group * l_size);
 
                 for (std::size_t i = 0; i < l_size / reg_size / 4; ++i) {
-                    // node4_dif<PTform, PTform>(group_ptr, l_size, i * reg_size, tw0, tw1, tw2);
+                    node4_dif<PTform, PTform>(group_ptr, l_size, i * reg_size, tw0, tw1, tw2);
                 }
             }
             l_size /= 4;
@@ -1085,11 +1097,11 @@ public:
             }
 
             std::tie(she0, she1, she2, she3) = avx::convert<float>::combine<PDest>(she0, she1, she2, she3);
-            //
-            //             cxstore<PTform>(ptr0, she0);
-            //             cxstore<PTform>(ptr1, she1);
-            //             cxstore<PTform>(ptr2, she2);
-            //             cxstore<PTform>(ptr3, she3);
+
+            cxstore<PTform>(ptr0, she0);
+            cxstore<PTform>(ptr1, she1);
+            cxstore<PTform>(ptr2, she2);
+            cxstore<PTform>(ptr3, she3);
         }
         return twiddle_ptr;
     }
@@ -1148,8 +1160,7 @@ public:
             auto she2 = avx::cxload<PTform>(ptr2);
             auto she3 = avx::cxload<PTform>(ptr3);
 
-            auto scaling = avx::broadcast(static_cast<float>(1 / static_cast<double>(size)));
-            // auto scaling = avx::broadcast(static_cast<float>(1. / 32.));
+            auto scaling = avx::broadcast(static_cast<float>(1 / static_cast<double>(this->size())));
 
             std::tie(she0, she1, she2, she3) =
                 avx::convert<float>::repack<PSrc, PTform>(she0, she1, she2, she3);
@@ -1312,24 +1323,24 @@ public:
             avx::ra_addr<PTform>(data, size / 4), size / 4, twiddle_ptr);
         twiddle_ptr =
             unsorted_subtransform_recursive_inverse<PDest, PTform, First>(data, size / 4, twiddle_ptr);
-        //         if constexpr (First) {
-        //             twiddle_ptr -= 6;
-        //             for (std::size_t i_group = 0; i_group < size / 4 / reg_size; ++i_group) {
-        //                 auto offset = i_group * reg_size;
-        //                 node4_dif<PTform, PSrc, true>(data, size, offset);
-        //             }
-        //         } else {
-        twiddle_ptr -= 6;
-        //             reg_t tw0 = {avx::broadcast(twiddle_ptr + 0), avx::broadcast(twiddle_ptr + 1)};
-        //
-        //             reg_t tw1 = {avx::broadcast(twiddle_ptr + 2), avx::broadcast(twiddle_ptr + 3)};
-        //             reg_t tw2 = {avx::broadcast(twiddle_ptr + 4), avx::broadcast(twiddle_ptr + 5)};
-        //
-        //             for (std::size_t i_group = 0; i_group < size / 4 / reg_size; ++i_group) {
-        //                 auto offset = i_group * reg_size;
-        //                 node4_dif<PTform, PSrc, true>(data, size, offset, tw0, tw1, tw2);
-        //             }
-        //         }
+        if constexpr (First) {
+            twiddle_ptr -= 6;
+            for (std::size_t i_group = 0; i_group < size / 4 / reg_size; ++i_group) {
+                auto offset = i_group * reg_size;
+                node4_dif<PTform, PSrc, true>(data, size, offset);
+            }
+        } else {
+            twiddle_ptr -= 6;
+            reg_t tw0 = {avx::broadcast(twiddle_ptr + 0), avx::broadcast(twiddle_ptr + 1)};
+
+            reg_t tw1 = {avx::broadcast(twiddle_ptr + 2), avx::broadcast(twiddle_ptr + 3)};
+            reg_t tw2 = {avx::broadcast(twiddle_ptr + 4), avx::broadcast(twiddle_ptr + 5)};
+
+            for (std::size_t i_group = 0; i_group < size / 4 / reg_size; ++i_group) {
+                auto offset = i_group * reg_size;
+                node4_dif<PTform, PSrc, true>(data, size, offset, tw0, tw1, tw2);
+            }
+        }
         return twiddle_ptr;
     };
 
@@ -1618,10 +1629,10 @@ public:
 
 
         if constexpr (Inverse) {
-            auto c4 = cxload<PLoad>(ptr4);
-            auto c5 = cxload<PLoad>(ptr5);
-            auto c6 = cxload<PLoad>(ptr6);
-            auto c7 = cxload<PLoad>(ptr7);
+            auto c4 = avx::cxload<PLoad>(ptr4);
+            auto c5 = avx::cxload<PLoad>(ptr5);
+            auto c6 = avx::cxload<PLoad>(ptr6);
+            auto c7 = avx::cxload<PLoad>(ptr7);
 
             std::tie(c4, c5, c6, c7) = avx::convert<T>::template repack<PSrc, PLoad>(c4, c5, c6, c7);
             std::tie(c4, c5, c6, c7) = avx::convert<T>::template inverse(c4, c5, c6, c7);
@@ -1641,10 +1652,10 @@ public:
 
             auto [a5, a7] = avx::ibtfly<3>(b5, b7);
 
-            auto c0 = cxload<PLoad>(ptr0);
-            auto c1 = cxload<PLoad>(ptr1);
-            auto c2 = cxload<PLoad>(ptr2);
-            auto c3 = cxload<PLoad>(ptr3);
+            auto c0 = avx::cxload<PLoad>(ptr0);
+            auto c1 = avx::cxload<PLoad>(ptr1);
+            auto c2 = avx::cxload<PLoad>(ptr2);
+            auto c3 = avx::cxload<PLoad>(ptr3);
 
             std::tie(c0, c1, c2, c3) = avx::convert<T>::template repack<PSrc, PLoad>(c0, c1, c2, c3);
             std::tie(c0, c1, c2, c3) = avx::convert<T>::template inverse(c0, c1, c2, c3);
@@ -1658,18 +1669,22 @@ public:
             auto [p1, p5] = avx::ibtfly(a1, a5);
             auto [p3, p7] = avx::ibtfly(a3, a7);
 
-            avx::cxstore<PLoad>(ptr1, p1);
-            avx::cxstore<PLoad>(ptr5, p5);
-            avx::cxstore<PLoad>(ptr3, p3);
-            avx::cxstore<PLoad>(ptr7, p7);
+            std::tie(p1, p5, p3, p7) = avx::convert<T>::template inverse(p1, p5, p3, p7);
+
+            avx::cxstore<PStore>(ptr1, p1);
+            avx::cxstore<PStore>(ptr5, p5);
+            avx::cxstore<PStore>(ptr3, p3);
+            avx::cxstore<PStore>(ptr7, p7);
 
             auto [p0, p4] = avx::ibtfly(a0, a4);
             auto [p2, p6] = avx::ibtfly(a2, a6);
 
-            avx::cxstore<PLoad>(ptr0, p0);
-            avx::cxstore<PLoad>(ptr4, p4);
-            avx::cxstore<PLoad>(ptr2, p2);
-            avx::cxstore<PLoad>(ptr6, p6);
+            std::tie(p0, p4, p2, p6) = avx::convert<T>::template inverse(p0, p4, p2, p6);
+
+            avx::cxstore<PStore>(ptr0, p0);
+            avx::cxstore<PStore>(ptr4, p4);
+            avx::cxstore<PStore>(ptr2, p2);
+            avx::cxstore<PStore>(ptr6, p6);
 
         } else {
             auto p1 = avx::cxload<PLoad>(ptr1);
