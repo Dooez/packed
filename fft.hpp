@@ -1053,10 +1053,10 @@ public:
             auto [d2, d3] = avx::btfly(shc2, shc3tw);
 
 
-            cxstore<PTform>(ptr0, tw7);
-            cxstore<PTform>(ptr1, tw8);
-            cxstore<PTform>(ptr2, tw7);
-            cxstore<PTform>(ptr3, tw8);
+            cxstore<PTform>(ptr0, d0);
+            cxstore<PTform>(ptr1, d1);
+            cxstore<PTform>(ptr2, d2);
+            cxstore<PTform>(ptr3, d3);
 
             auto shuf = [](reg_t lhs, reg_t rhs) {
                 auto lhs_re = _mm256_shuffle_ps(lhs.real, rhs.real, 0b10001000);
@@ -1202,10 +1202,10 @@ public:
 
 
             std::tie(d0, d2, d1, d3) = avx::convert<float>::inverse<true>(d0, d2, d1, d3);
-            cxstore<PTform>(ptr0, tw7);
-            cxstore<PTform>(ptr1, tw8);
-            cxstore<PTform>(ptr2, tw7);
-            cxstore<PTform>(ptr3, tw8);
+            cxstore<PTform>(ptr0, d0);
+            cxstore<PTform>(ptr1, d1);
+            cxstore<PTform>(ptr2, d2);
+            cxstore<PTform>(ptr3, d3);
 
 
             auto [shd1tw, shd3tw] = avx::mul({she1, tw5}, {she3, tw6});
