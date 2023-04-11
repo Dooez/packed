@@ -493,7 +493,7 @@ struct convert<float> {
         }
     }
 
-    template<bool Inverse>
+    template<bool Inverse = true>
     static inline auto inverse(auto... args) {
         auto tup = std::make_tuple(args...);
         if constexpr (Inverse) {

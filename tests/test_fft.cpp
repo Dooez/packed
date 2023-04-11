@@ -397,7 +397,7 @@ int test_ifftu_float(std::size_t size) {
         svec_out[i] = vec[i];
     }
 
-    for (std::size_t sub_size = size; sub_size <= size; sub_size *= 2) {
+    for (std::size_t sub_size = 64; sub_size <= size; sub_size *= 2) {
         vec_out = vec;
 
         auto unit = pcx::fft_unit<float, pcx::dynamic_size, pcx::dynamic_size>(size, sub_size);

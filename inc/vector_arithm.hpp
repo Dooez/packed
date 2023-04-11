@@ -136,19 +136,65 @@ inline auto div(cx_reg<T> lhs, typename reg<T>::type rhs) -> cx_reg<T> {
 }
 
 /**
- * @brief Performs butterfly operation multiplying right hand side by complex unit RhsRotI times;
- * 
- * @tparam RhsRotI 
- * @tparam T 
- */
+  * @brief Performs butterfly operation, then multiplies diff by imaginary unit RhsRotI times;
+  * 
+  * @tparam RhsRotI number of multiplications by imaginary unity
+  */
+template<uint RhsRotI = 0, typename T = double>
+    requires(RhsRotI < 4)
+inline auto ibtfly(cx_reg<T> lhs, cx_reg<T> rhs) {
+    cx_reg<T> s;
+    cx_reg<T> d;
+    if constexpr (RhsRotI == 0) {
+        auto s_re = add(lhs.real, rhs.real);
+        auto d_re = sub(lhs.real, rhs.real);
+        auto s_im = add(lhs.imag, rhs.imag);
+        auto d_im = sub(lhs.imag, rhs.imag);
+        s         = {s_re, s_im};
+        d         = {d_re, d_im};
+    } else if constexpr (RhsRotI == 1) {
+        auto s_re = add(lhs.real, rhs.real);
+        auto d_im = sub(lhs.real, rhs.real);
+        auto s_im = add(lhs.imag, rhs.imag);
+        auto d_re = sub(rhs.imag, lhs.imag);
+        s         = {s_re, s_im};
+        d         = {d_re, d_im};
+    } else if constexpr (RhsRotI == 2) {
+        auto s_re = add(lhs.real, rhs.real);
+        auto d_re = sub(rhs.real, lhs.real);
+        auto s_im = add(lhs.imag, rhs.imag);
+        auto d_im = sub(rhs.imag, lhs.imag);
+        s         = {s_re, s_im};
+        d         = {d_re, d_im};
+    } else {
+        auto s_re = add(lhs.real, rhs.real);
+        auto d_im = sub(rhs.real, lhs.real);
+        auto s_im = add(lhs.imag, rhs.imag);
+        auto d_re = sub(lhs.imag, rhs.imag);
+        s         = {s_re, s_im};
+        d         = {d_re, d_im};
+    }
+
+    return std::make_tuple(s, d);
+}
+
+/**
+  * @brief Multiplies rhs by imaginary unit RhsRotI times, then performs butterfly operation;
+  * 
+  * @tparam RhsRotI number of multiplications by imaginary unity
+  */
 template<uint RhsRotI = 0, typename T = double>
     requires(RhsRotI < 4)
 inline auto btfly(cx_reg<T> lhs, cx_reg<T> rhs) {
     cx_reg<T> s;
     cx_reg<T> d;
     if constexpr (RhsRotI == 0) {
-        s = add(lhs, rhs);
-        d = sub(lhs, rhs);
+        auto s_re = add(lhs.real, rhs.real);
+        auto d_re = sub(lhs.real, rhs.real);
+        auto s_im = add(lhs.imag, rhs.imag);
+        auto d_im = sub(lhs.imag, rhs.imag);
+        s         = {s_re, s_im};
+        d         = {d_re, d_im};
     } else if constexpr (RhsRotI == 1) {
         auto s_re = sub(lhs.real, rhs.imag);
         auto d_re = add(lhs.real, rhs.imag);
@@ -157,8 +203,12 @@ inline auto btfly(cx_reg<T> lhs, cx_reg<T> rhs) {
         s         = {s_re, s_im};
         d         = {d_re, d_im};
     } else if constexpr (RhsRotI == 2) {
-        s = sub(lhs, rhs);
-        d = add(lhs, rhs);
+        auto s_re = sub(lhs.real, rhs.real);
+        auto d_re = add(lhs.real, rhs.real);
+        auto s_im = sub(lhs.imag, rhs.imag);
+        auto d_im = add(lhs.imag, rhs.imag);
+        s         = {s_re, s_im};
+        d         = {d_re, d_im};
     } else {
         auto s_re = add(lhs.real, rhs.imag);
         auto d_re = sub(lhs.real, rhs.imag);
