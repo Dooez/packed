@@ -23,7 +23,7 @@ void test_que(pcx::fft_unit<float, 8192, 512>& unit,
               pcx::avx::cx_reg<float>          tw4,
               pcx::avx::cx_reg<float>          tw5,
               pcx::avx::cx_reg<float>          tw6) {
-    unit.node8_dit<8>(data, l_size, offset, tw0, tw1, tw2, tw3, tw4, tw5, tw6);
+    unit.node8_dit<8,8,true>(data, l_size, offset, tw0, tw1, tw2, tw3, tw4, tw5, tw6);
 }
 template<typename T>
 auto fmul(std::complex<T> lhs, std::complex<T> rhs) -> std::complex<T> {

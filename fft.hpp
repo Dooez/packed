@@ -1141,15 +1141,15 @@ public:
         return twiddle_ptr;
     };
 
-    template<std::size_t PDest, std::size_t PSrc, bool First = false>
+    template<std::size_t PDest, std::size_t PSrc, bool First = false, bool Scale = true>
     inline auto unsorted_subtransform_inverse(float* data, std::size_t size, const float* twiddle_ptr)
         -> const float* {
         constexpr auto PTform = std::max(PSrc, reg_size);
+        using reg_t           = avx::cx_reg<float>;
 
-        using reg_t = avx::cx_reg<float>;
+        const auto scale = static_cast<float>(1. / static_cast<double>(this->size()));
 
         for (int i_group = size / reg_size / 4 - 1; i_group >= 0; --i_group) {
-            // auto  i_group = i_group_ - 1;
             auto* ptr0 = avx::ra_addr<PTform>(data, reg_size * (i_group * 4));
             auto* ptr1 = avx::ra_addr<PTform>(data, reg_size * (i_group * 4 + 1));
             auto* ptr2 = avx::ra_addr<PTform>(data, reg_size * (i_group * 4 + 2));
@@ -1160,16 +1160,9 @@ public:
             auto she2 = avx::cxload<PTform>(ptr2);
             auto she3 = avx::cxload<PTform>(ptr3);
 
-            auto scaling = avx::broadcast(static_cast<float>(1 / static_cast<double>(this->size())));
-
             std::tie(she0, she1, she2, she3) =
                 avx::convert<float>::repack<PSrc, PTform>(she0, she1, she2, she3);
             std::tie(she0, she1, she2, she3) = avx::convert<float>::inverse<true>(she0, she1, she2, she3);
-
-            she0 = avx::mul(she0, scaling);
-            she1 = avx::mul(she1, scaling);
-            she2 = avx::mul(she2, scaling);
-            she3 = avx::mul(she3, scaling);
 
             auto [e0, e1] = avx::unpack_128(she0, she1);
             auto [e2, e3] = avx::unpack_128(she2, she3);
@@ -1230,6 +1223,15 @@ public:
 
             auto [p2, p3] = avx::mul({p2tw, tw0}, {p3tw, tw0});
 
+            if constexpr (Scale) {
+                auto scaling = avx::broadcast(scale);
+
+                p0 = avx::mul(p0, scaling);
+                p1 = avx::mul(p1, scaling);
+                p2 = avx::mul(p2, scaling);
+                p3 = avx::mul(p3, scaling);
+            }
+
             std::tie(p0, p2, p1, p3) = avx::convert<float>::inverse<true>(p0, p2, p1, p3);
 
             cxstore<PTform>(ptr0, p0);
@@ -1280,7 +1282,6 @@ public:
                 } else {
                     twiddle_ptr -= 6;
                     reg_t tw0 = {avx::broadcast(twiddle_ptr + 0), avx::broadcast(twiddle_ptr + 1)};
-
                     reg_t tw1 = {avx::broadcast(twiddle_ptr + 2), avx::broadcast(twiddle_ptr + 3)};
                     reg_t tw2 = {avx::broadcast(twiddle_ptr + 4), avx::broadcast(twiddle_ptr + 5)};
 
@@ -1663,7 +1664,6 @@ public:
             auto [b0, b1] = avx::ibtfly(c0, c1);
             auto [b2, b3] = avx::ibtfly<3>(c2, c3);
 
-            auto [a0, a2] = avx::ibtfly(b0, b2);
             auto [a1, a3] = avx::ibtfly(b1, b3);
 
             auto [p1, p5] = avx::ibtfly(a1, a5);
@@ -1675,6 +1675,8 @@ public:
             avx::cxstore<PStore>(ptr5, p5);
             avx::cxstore<PStore>(ptr3, p3);
             avx::cxstore<PStore>(ptr7, p7);
+
+            auto [a0, a2] = avx::ibtfly(b0, b2);
 
             auto [p0, p4] = avx::ibtfly(a0, a4);
             auto [p2, p6] = avx::ibtfly(a2, a6);
