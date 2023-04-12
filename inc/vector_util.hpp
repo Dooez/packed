@@ -208,9 +208,13 @@ struct reg<float> {
 template<>
 struct reg<double> {
     using type = __m256d;
-    
+
     static constexpr std::size_t size = 32 / sizeof(double);
 };
+
+template<typename T>
+using reg_t = typename reg<T>::type;
+
 template<typename T>
 struct cx_reg {
     typename reg<T>::type real;
