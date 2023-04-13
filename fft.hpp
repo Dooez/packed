@@ -19,10 +19,10 @@ namespace internal::fft {
 /**
  * @brief Performs three levels of FFT butterflies.
  * If data and twiddles are in ascending order, equivalent to decimation in frequency.
- * To perform decimation in time data must be in order {0, 4, 2, 6, 1, 5, 3, 7} 
+ * To perform decimation in time data must be in order {0, 4, 2, 6, 1, 5, 3, 7}
  * and twiddles must be in order {tw0, tw10, tw11, tw20, tw22, tw21, tw23}.
- * 
- * @tparam T 
+ *
+ * @tparam T
  * @tparam PDest pack size of destination
  * @tparam PSrc pack size of source
  * @tparam ConjTw use complex conjugate of twiddles (by switching data's real and imaginary parts)
@@ -53,13 +53,11 @@ inline void node8(std::array<T*, 8>             data,
 
         auto [b4, b5tw] = avx::ibtfly(c4, c5);
         auto [b6, b7tw] = avx::ibtfly(c6, c7);
-
-        auto [b5, b7] = avx::mul({b5tw, tw[5]}, {b7tw, tw[6]});
+        auto [b5, b7]   = avx::mul({b5tw, tw[5]}, {b7tw, tw[6]});
 
         auto [a4, a6tw] = avx::ibtfly(b4, b6);
         auto [a5, a7tw] = avx::ibtfly(b5, b7);
-
-        auto [a6, a7] = avx::mul({a6tw, tw[2]}, {a7tw, tw[2]});
+        auto [a6, a7]   = avx::mul({a6tw, tw[2]}, {a7tw, tw[2]});
 
         auto c0 = avx::cxload<PLoad>(data[0]);
         auto c1 = avx::cxload<PLoad>(data[1]);
@@ -71,18 +69,15 @@ inline void node8(std::array<T*, 8>             data,
 
         auto [b0, b1tw] = avx::ibtfly(c0, c1);
         auto [b2, b3tw] = avx::ibtfly(c2, c3);
-
-        auto [b1, b3] = avx::mul({b1tw, tw[3]}, {b3tw, tw[4]});
+        auto [b1, b3]   = avx::mul({b1tw, tw[3]}, {b3tw, tw[4]});
 
         auto [a0, a2tw] = avx::ibtfly(b0, b2);
         auto [a1, a3tw] = avx::ibtfly(b1, b3);
-
-        auto [a2, a3] = avx::mul({a2tw, tw[1]}, {a3tw, tw[1]});
+        auto [a2, a3]   = avx::mul({a2tw, tw[1]}, {a3tw, tw[1]});
 
         auto [p0, p4tw] = avx::ibtfly(a0, a4);
         auto [p2, p6tw] = avx::ibtfly(a2, a6);
-
-        auto [p4, p6] = avx::mul({p4tw, tw[0]}, {p6tw, tw[0]});
+        auto [p4, p6]   = avx::mul({p4tw, tw[0]}, {p6tw, tw[0]});
 
         if constexpr (Scale) {
             p0 = avx::mul(p0, scaling);
@@ -90,7 +85,6 @@ inline void node8(std::array<T*, 8>             data,
             p4 = avx::mul(p4, scaling);
             p6 = avx::mul(p6, scaling);
         }
-
         std::tie(p0, p2, p4, p6) = avx::convert<T>::template inverse<Inverse>(p0, p2, p4, p6);
         std::tie(p0, p2, p4, p6) = avx::convert<T>::template repack<PStore, PDest>(p0, p2, p4, p6);
 
@@ -101,8 +95,7 @@ inline void node8(std::array<T*, 8>             data,
 
         auto [p1, p5tw] = avx::ibtfly(a1, a5);
         auto [p3, p7tw] = avx::ibtfly(a3, a7);
-
-        auto [p5, p7] = avx::mul({p5tw, tw[0]}, {p7tw, tw[0]});
+        auto [p5, p7]   = avx::mul({p5tw, tw[0]}, {p7tw, tw[0]});
 
         if constexpr (Scale) {
             p1 = avx::mul(p1, scaling);
@@ -110,7 +103,6 @@ inline void node8(std::array<T*, 8>             data,
             p5 = avx::mul(p5, scaling);
             p7 = avx::mul(p7, scaling);
         }
-
         std::tie(p1, p3, p5, p7) = avx::convert<T>::template inverse<Inverse>(p1, p3, p5, p7);
         std::tie(p1, p3, p5, p7) = avx::convert<T>::template repack<PStore, PDest>(p1, p3, p5, p7);
 
@@ -118,7 +110,6 @@ inline void node8(std::array<T*, 8>             data,
         cxstore<PStore>(data[3], p3);
         cxstore<PStore>(data[5], p5);
         cxstore<PStore>(data[7], p7);
-
     } else {
         auto p5 = avx::cxload<PLoad>(data[5]);
         auto p7 = avx::cxload<PLoad>(data[7]);
@@ -129,14 +120,12 @@ inline void node8(std::array<T*, 8>             data,
         std::tie(p5, p7, p1, p3) = avx::convert<T>::template inverse<Inverse>(p5, p7, p1, p3);
 
         auto [p5tw, p7tw] = avx::mul({p5, tw[0]}, {p7, tw[0]});
-
-        auto [a1, a5] = avx::btfly(p1, p5tw);
-        auto [a3, a7] = avx::btfly(p3, p7tw);
+        auto [a1, a5]     = avx::btfly(p1, p5tw);
+        auto [a3, a7]     = avx::btfly(p3, p7tw);
 
         auto [a3tw, a7tw] = avx::mul({a3, tw[1]}, {a7, tw[2]});
-
-        auto [b1, b3] = avx::btfly(a1, a3tw);
-        auto [b5, b7] = avx::btfly(a5, a7tw);
+        auto [b1, b3]     = avx::btfly(a1, a3tw);
+        auto [b5, b7]     = avx::btfly(a5, a7tw);
 
         auto [b1tw, b3tw, b5tw, b7tw] = avx::mul({b1, tw[3]}, {b3, tw[4]}, {b5, tw[5]}, {b7, tw[6]});
 
@@ -149,14 +138,12 @@ inline void node8(std::array<T*, 8>             data,
         std::tie(p4, p6, p0, p2) = avx::convert<T>::template inverse<Inverse>(p4, p6, p0, p2);
 
         auto [p4tw, p6tw] = avx::mul({p4, tw[0]}, {p6, tw[0]});
-
-        auto [a0, a4] = avx::btfly(p0, p4tw);
-        auto [a2, a6] = avx::btfly(p2, p6tw);
+        auto [a0, a4]     = avx::btfly(p0, p4tw);
+        auto [a2, a6]     = avx::btfly(p2, p6tw);
 
         auto [a2tw, a6tw] = avx::mul({a2, tw[1]}, {a6, tw[2]});
-
-        auto [b0, b2] = avx::btfly(a0, a2tw);
-        auto [b4, b6] = avx::btfly(a4, a6tw);
+        auto [b0, b2]     = avx::btfly(a0, a2tw);
+        auto [b4, b6]     = avx::btfly(a4, a6tw);
 
         auto [c0, c1] = avx::btfly(b0, b1tw);
         auto [c2, c3] = avx::btfly(b2, b3tw);
@@ -167,7 +154,6 @@ inline void node8(std::array<T*, 8>             data,
             c2 = avx::mul(c2, scaling);
             c3 = avx::mul(c3, scaling);
         }
-
         std::tie(c0, c1, c2, c3) = avx::convert<T>::template inverse<Inverse>(c0, c1, c2, c3);
         std::tie(c0, c1, c2, c3) = avx::convert<T>::template repack<PStore, PDest>(c0, c1, c2, c3);
 
@@ -185,7 +171,6 @@ inline void node8(std::array<T*, 8>             data,
             c6 = avx::mul(c6, scaling);
             c7 = avx::mul(c7, scaling);
         }
-
         std::tie(c4, c5, c6, c7) = avx::convert<T>::template inverse<Inverse>(c4, c5, c6, c7);
         std::tie(c4, c5, c6, c7) = avx::convert<T>::template repack<PStore, PDest>(c4, c5, c6, c7);
 
@@ -197,7 +182,7 @@ inline void node8(std::array<T*, 8>             data,
 }
 /**
  * @brief Performs three levels of FFT butterflies. This oveload uses fixed twiddles for FFT sizes 2, 4, 8.
- * 
+ *
  */
 template<typename T, std::size_t PDest, std::size_t PSrc, bool ConjTw, bool Reverse, bool Scale>
 inline void node8(std::array<T*, 8> data, avx::reg_t<T> scaling = avx::reg_t<T>{}) {
@@ -220,11 +205,9 @@ inline void node8(std::array<T*, 8> data, avx::reg_t<T> scaling = avx::reg_t<T>{
 
         auto [b4, b5_tw] = avx::ibtfly(c4, c5);
         auto [b6, b7_tw] = avx::ibtfly<2>(c6, c7);
-
-        auto twsq2 = avx::broadcast(sq2);
-
-        b5_tw = avx::mul(b5_tw, twsq2);
-        b7_tw = avx::mul(b7_tw, twsq2);
+        auto twsq2       = avx::broadcast(sq2);
+        b5_tw            = avx::mul(b5_tw, twsq2);
+        b7_tw            = avx::mul(b7_tw, twsq2);
 
         auto [a4, a6] = avx::ibtfly<3>(b4, b6);
 
@@ -255,7 +238,6 @@ inline void node8(std::array<T*, 8> data, avx::reg_t<T> scaling = avx::reg_t<T>{
             p2 = avx::mul(p2, scaling);
             p6 = avx::mul(p6, scaling);
         }
-
         std::tie(p0, p4, p2, p6) = avx::convert<T>::template inverse(p0, p4, p2, p6);
         std::tie(p0, p4, p2, p6) = avx::convert<T>::template repack<PStore, PDest>(p0, p4, p2, p6);
 
@@ -275,7 +257,6 @@ inline void node8(std::array<T*, 8> data, avx::reg_t<T> scaling = avx::reg_t<T>{
             p3 = avx::mul(p3, scaling);
             p7 = avx::mul(p7, scaling);
         }
-
         std::tie(p1, p5, p3, p7) = avx::convert<T>::template inverse(p1, p5, p3, p7);
         std::tie(p1, p5, p3, p7) = avx::convert<T>::template repack<PStore, PDest>(p1, p5, p3, p7);
 
@@ -297,14 +278,11 @@ inline void node8(std::array<T*, 8> data, avx::reg_t<T> scaling = avx::reg_t<T>{
 
         auto [b1, b3] = avx::btfly(a1, a3);
         auto [b5, b7] = avx::btfly<3>(a5, a7);
-
-        reg_t b5_tw = {avx::add(b5.real, b5.imag), avx::sub(b5.imag, b5.real)};
-        reg_t b7_tw = {avx::sub(b7.real, b7.imag), avx::add(b7.real, b7.imag)};
-
-        auto twsq2 = avx::broadcast(sq2);
-
-        b5_tw = avx::mul(b5_tw, twsq2);
-        b7_tw = avx::mul(b7_tw, twsq2);
+        reg_t b5_tw   = {avx::add(b5.real, b5.imag), avx::sub(b5.imag, b5.real)};
+        reg_t b7_tw   = {avx::sub(b7.real, b7.imag), avx::add(b7.real, b7.imag)};
+        auto  twsq2   = avx::broadcast(sq2);
+        b5_tw         = avx::mul(b5_tw, twsq2);
+        b7_tw         = avx::mul(b7_tw, twsq2);
 
         auto p0 = avx::cxload<PLoad>(data[0]);
         auto p4 = avx::cxload<PLoad>(data[4]);
@@ -328,7 +306,6 @@ inline void node8(std::array<T*, 8> data, avx::reg_t<T> scaling = avx::reg_t<T>{
             c2 = avx::mul(c2, scaling);
             c3 = avx::mul(c3, scaling);
         }
-
         std::tie(c0, c1, c2, c3) = avx::convert<T>::template inverse<Inverse>(c0, c1, c2, c3);
         std::tie(c0, c1, c2, c3) = avx::convert<T>::template repack<PStore, PDest>(c0, c1, c2, c3);
 
@@ -348,7 +325,6 @@ inline void node8(std::array<T*, 8> data, avx::reg_t<T> scaling = avx::reg_t<T>{
             c6 = avx::mul(c6, scaling);
             c7 = avx::mul(c7, scaling);
         }
-
         std::tie(c4, c5, c6, c7) = avx::convert<T>::template inverse<Inverse>(c4, c5, c6, c7);
         std::tie(c4, c5, c6, c7) = avx::convert<T>::template repack<PStore, PDest>(c4, c5, c6, c7);
 
@@ -363,11 +339,11 @@ inline void node8(std::array<T*, 8> data, avx::reg_t<T> scaling = avx::reg_t<T>{
  * @brief Performes two levels of FFT butterflies.
  * If data is in ascending order, equivalent to decimation in frequency.
  * To perform decimation in time switch data[1] and data[2].
- * 
+ *
  * First step performs data[0,1]±tw[0]×data[2,3].
  * Second step performs data[0,2]±tw[1,2]×data[1,3].
- * 
- * @tparam T 
+ *
+ * @tparam T
  * @tparam PDest pack size of destination
  * @tparam PSrc pack size of source
  * @tparam ConjTw use complex conjugate of twiddles (by switching data's real and imaginary parts)
@@ -428,7 +404,7 @@ inline void node4(std::array<T*, 4>             data,
 };
 /**
  * @brief Performs three levels of FFT butterflies. This oveload uses fixed twiddles for FFT sizes 2, 4.
- * 
+ *
  */
 template<typename T, std::size_t PDest, std::size_t PSrc, bool ConjTw, bool Reverse, bool Scale>
 inline void node4(std::array<T*, 4> data, avx::reg_t<T> scaling = avx::reg_t<T>{}) {
