@@ -1331,21 +1331,23 @@ public:
             if constexpr (Scale) {
                 scaling = avx::broadcast(static_cast<float>(1 / static_cast<double>(max_size)));
             }
-            for (std::size_t i_group = 0; i_group < n_groups; ++i_group) {
-                std::size_t offset = i_group * reg_size;
+            if (l_size == max_size / 2) {
+                for (std::size_t i_group = 0; i_group < n_groups; ++i_group) {
+                    std::size_t offset = i_group * reg_size;
 
-                const auto tw0 = avx::cxload<reg_size>(twiddle_ptr);
-                const auto tw1 = avx::cxload<reg_size>(twiddle_ptr + reg_size * 2);
-                const auto tw2 = avx::cxload<reg_size>(twiddle_ptr + reg_size * 4);
-                twiddle_ptr += reg_size * 6;
+                    const auto tw0 = avx::cxload<reg_size>(twiddle_ptr);
+                    const auto tw1 = avx::cxload<reg_size>(twiddle_ptr + reg_size * 2);
+                    const auto tw2 = avx::cxload<reg_size>(twiddle_ptr + reg_size * 4);
+                    twiddle_ptr += reg_size * 6;
 
-                for (std::size_t i = 0; i < group_size; ++i) {
-                    node4_dit_along<PDest, PTform, Inverse, Scale>(
-                        data, l_size, offset, tw0, tw1, tw2, scaling);
-                    offset += l_size * 2;
+                    for (std::size_t i = 0; i < group_size; ++i) {
+                        node4_dit_along<PDest, PTform, Inverse, Scale>(
+                            data, l_size, offset, tw0, tw1, tw2, scaling);
+                        offset += l_size * 2;
+                    }
                 }
+                return twiddle_ptr;
             }
-            return twiddle_ptr;
         }
         return twiddle_ptr;
     };
