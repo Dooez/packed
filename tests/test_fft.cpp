@@ -4,27 +4,29 @@
 #include <iostream>
 #include <utility>
 
+// NOLINTBEGIN
+
 // void test_que(pcx::fft_unit<float>& unit, std::vector<std::complex<float>>& v1) {
 //     unit.unsorted(v1);
 // }
 
-// void test_que(pcx::fft_unit<float, 8192, 512>& unit, pcx::vector<float>& v1) {
-//     unit.unsorted_fi(v1);
-// }
-
-void test_que(pcx::fft_unit<float, 8192, 512>& unit,
-              float*                           data,
-              std::size_t                      l_size,
-              std::size_t                      offset,
-              pcx::avx::cx_reg<float>          tw0,
-              pcx::avx::cx_reg<float>          tw1,
-              pcx::avx::cx_reg<float>          tw2,
-              pcx::avx::cx_reg<float>          tw3,
-              pcx::avx::cx_reg<float>          tw4,
-              pcx::avx::cx_reg<float>          tw5,
-              pcx::avx::cx_reg<float>          tw6) {
-    unit.node8_dit<8,8,true>(data, l_size, offset, tw0, tw1, tw2, tw3, tw4, tw5, tw6);
+void test_que(pcx::fft_unit<float, 8192, 512>& unit, pcx::vector<float>& v1) {
+    unit.subtransform<1, 8>(v1.data(), v1.size());
 }
+//
+// void test_que(pcx::fft_unit<float, 8192, 512>& unit,
+//               float*                           data,
+//               std::size_t                      l_size,
+//               std::size_t                      offset,
+//               pcx::avx::cx_reg<float>          tw0,
+//               pcx::avx::cx_reg<float>          tw1,
+//               pcx::avx::cx_reg<float>          tw2,
+//               pcx::avx::cx_reg<float>          tw3,
+//               pcx::avx::cx_reg<float>          tw4,
+//               pcx::avx::cx_reg<float>          tw5,
+//               pcx::avx::cx_reg<float>          tw6) {
+//     unit.node8_dit<8,8,true>(data, l_size, offset, tw0, tw1, tw2, tw3, tw4, tw5, tw6);
+// }
 template<typename T>
 auto fmul(std::complex<T> lhs, std::complex<T> rhs) -> std::complex<T> {
     auto lhsv = pcx::avx::broadcast(lhs);
@@ -170,7 +172,7 @@ auto ifftu(const pcx::vector<T, Allocator, PackSize>& vector) {
         group_size *= 2;
     }
     for (auto a: u) {
-        a = a.value() / float(size);
+        a = a.value() / static_cast<float>(size);
     }
     return u;
 }
@@ -295,7 +297,7 @@ int test_fftu_float(std::size_t size) {
         auto unit = pcx::fft_unit<float, pcx::dynamic_size, pcx::dynamic_size>(size, sub_size);
 
         auto ffu   = fftu(vec);
-        auto eps_u = 1U << depth - 1;
+        auto eps_u = 1U << (depth - 1);
         vec_out    = vec;
         unit.unsorted(vec_out);
         int ret = 0;
@@ -343,79 +345,17 @@ int test_fftu_float(std::size_t size) {
                 return 1;
             }
         }
-    }
-    return 0;
-}
-
-template<std::size_t PackSize = 8, std::size_t Pow>
-int test_fftu_float_fixed() {
-    constexpr float pi   = 3.14159265358979323846;
-    constexpr auto  size = 1U << (6 + Pow);
-
-    std::cout << "fixed " << size << "\n";
-    auto vec      = pcx::vector<float, std::allocator<float>, PackSize>(size);
-    auto vec_out  = pcx::vector<float, std::allocator<float>, PackSize>(size);
-    auto svec_out = std::vector<std::complex<float>>(size);
-    for (uint i = 0; i < size; ++i) {
-        vec[i]      = std::exp(std::complex(0.F, 2 * pi * i / size * 13.37F));
-        svec_out[i] = vec[i];
-    }
-
-    auto unit = pcx::fft_unit<float, size, size>();
-    auto ffu  = fftu(vec);
-
-    auto eps_u = size;
-    vec_out    = vec;
-    unit.unsorted_fi(vec_out);
-    for (uint i = 0; i < size; ++i) {
-        auto val = std::complex<float>(ffu[i].value());
-        if (!equal_eps(val, vec_out[i].value(), eps_u)) {
-            std::cout << PackSize << " fftu " << size << ":" << size << " #" << i << ": "
-                      << abs(val - vec_out[i].value()) << "  " << val << vec_out[i].value() << "\n";
-            return 1;
-        }
-    }
-    return 0;
-}
-template<std::size_t PackSize = 8, std::size_t... N>
-int test_fftu_float_fixed(std::index_sequence<N...>) {
-    return (test_fftu_float_fixed<PackSize, N>() + ...);
-}
 
 
-template<std::size_t PackSize = 8>
-int test_ifftu_float(std::size_t size) {
-    constexpr float pi = 3.14159265358979323846;
-
-    auto depth = log2i(size);
-
-    auto vec      = pcx::vector<float, std::allocator<float>, PackSize>(size);
-    auto vec_out  = pcx::vector<float, std::allocator<float>, PackSize>(size);
-    auto svec_out = std::vector<std::complex<float>>(size);
-    for (uint i = 0; i < size; ++i) {
-        vec[i]      = std::exp(std::complex(0.F, 2 * pi * i / size * 13.37F));
-        svec_out[i] = vec[i];
-    }
-
-    for (std::size_t sub_size = 64; sub_size <= size; sub_size *= 2) {
         vec_out = vec;
-
-        auto unit = pcx::fft_unit<float, pcx::dynamic_size, pcx::dynamic_size>(size, sub_size);
-
-        auto ffu   = fftu(vec);
-        auto eps_u = 1U << depth - 1;
-        vec_out    = vec;
-        auto vec_i = vec;
-
-        unit.unsorted(vec_out);
-        unit.fftu_internal_inverse<PackSize>(ffu.data());
-        int ret = 0;
-        for (int i = size - 1; i >= 0; --i) {
-            auto val = std::complex<float>(ffu[i].value());
-            if (!equal_eps(val, vec_out[i].value(), eps_u)) {
-                std::cout << PackSize << " fftu " << size << ":" << sub_size << " #" << i << ": "
+        unit.fftu_internal<PackSize, false>(vec_out.data());
+        unit.fftu_internal_inverse<PackSize, false>(vec_out.data());
+        for (uint i = 0; i < size; ++i) {
+            auto val = std::complex<float>(vec[i].value());
+            if (!equal_eps(val, vec_out[i].value(), 1U << (depth))) {
+                std::cout << "ifft vec true  " << size << ":" << sub_size << " #" << i << ": "
                           << abs(val - vec_out[i].value()) << "  " << val << vec_out[i].value() << "\n";
-                ++ret;
+                ret++;
             }
             if (ret > 16) {
                 return ret;
@@ -424,11 +364,9 @@ int test_ifftu_float(std::size_t size) {
         if (ret != 0) {
             return ret;
         }
-
     }
     return 0;
 }
-
 
 int main() {
     int ret = 0;
@@ -497,3 +435,5 @@ int main() {
 
     return 0;
 }
+
+//NOLINTEND
