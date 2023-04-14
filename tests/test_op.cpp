@@ -8,10 +8,17 @@
 //     set(v_def_2.begin(), v_def_2.end(), 1);
 // }
 
+void test_repack(float* data)
+{
+    using namespace pcx::avx;
+    auto a   = cxload<8>(data);
+    auto [b] = convert<float>::split<1>(a);
+    cxstore<8>(data, b);
+}
 
 void asm_test_fun(pcx::vector<double>& v1,
                   pcx::vector<double>& v2,
-                  std::complex<double>      v3)
+                  std::complex<double> v3)
 {
     v1 = v1 + v2;
 }
@@ -326,9 +333,61 @@ int main()
             return i;
         }
     }
-    // packed_cx_vector<float> vec(123);
-    // vec = vec + 123 + 15;
 
+    auto N = 8;
 
+    auto vec = std::vector<std::complex<float>>(N);
+
+    for (uint i = 0; i < N; ++i)
+    {
+        vec[i] = std::complex<float>(i, 100 + i);
+    }
+
+    test_repack(reinterpret_cast<float*>(vec.data()));
+
+    for (auto val : vec)
+    {
+        std::cout << val << " ";
+    }
+    std::cout << "\n";
+
+    auto t1  = std::make_tuple(1U, "2U", 3U);
+    auto t2  = std::make_tuple(1.1, 2.2, 3.3);
+    auto tr  = pcx::internal::zip_tuples(t1, t2);
+    auto tr2 = pcx::internal::zip_tuples(t1);
+
+    // auto tst_appl =
+    //     pcx::internal::apply_for_each([](uint a, double b) { return a + b; }, t1, t2);
+
+    pcx::internal::apply_for_each(
+        [](auto a, auto b) { std::cout << a << " " << b << "\n"; },
+        t1,
+        t2);
+
+    uint  a, b, c = 0;
+    uint& ar   = a;
+    auto  tref = std::tuple<const uint&, uint&, volatile uint&>{a, b, c};
+
+    auto refzip = pcx::internal::zip_tuples(tref, std::move(t2));
+
+    auto foo = [](uint a, uint b) { return a * 2; };
+    // static_assert(std::invocable<decltype(foo), std::string>);
+    // static_assert(pcx::internal::appliable<decltype(foo), std::tuple<std::string>> );
+    // static_assert(pcx::internal::appliable_for_each<decltype(foo),
+    //                                                 std::tuple<int>,
+    //                                                 std::tuple<int>>);
+
+    //     bool value = pcx::internal::is_appliable_for_each_<
+    //         decltype(foo),
+    //         decltype(pcx::internal::zip_tuples(std::declval<std::tuple<int>>(),
+    //                                            std::declval<std::tuple<int>>())),
+    //         std::make_index_sequence<std::tuple_size_v<decltype(pcx::internal::zip_tuples(
+    //             std::declval<std::tuple<int>>(),
+    //             std::declval<std::tuple<int>>()))>>>::value;
+    //
+    //     static_assert(pcx::internal::appliable<decltype(foo), std::tuple<int, int>>);
+
+    auto vec_align_check = pcx::vector<float>(1024);
+    std::cout << vec_align_check.data() << "\n";
     return res;
 }

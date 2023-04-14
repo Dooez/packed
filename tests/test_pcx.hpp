@@ -2,11 +2,11 @@
 #define TEST_PCX_HPP
 #include <concepts>
 
-template<uint k_epsilon = 10, typename T = double>
+template<typename T = double>
     requires std::floating_point<T> bool
-equal_eps(T lhs, T rhs)
+equal_eps(T lhs, T rhs, std::size_t k_epsilon)
 {
-    static constexpr T epsilon = k_epsilon * std::numeric_limits<T>::epsilon();
+    T epsilon = k_epsilon * std::numeric_limits<T>::epsilon();
     if (lhs == rhs)
     {
         return true;
@@ -16,11 +16,11 @@ equal_eps(T lhs, T rhs)
     return abs(lhs - rhs) < largest * epsilon;
 }
 
-template<uint k_epsilon = 10, typename T = double>
+template<typename T = double>
     requires std::floating_point<T> bool
-equal_eps(std::complex<T> lhs, std::complex<T> rhs)
+equal_eps(std::complex<T> lhs, std::complex<T> rhs, std::size_t k_epsilon)
 {
-    static constexpr T epsilon = k_epsilon * std::numeric_limits<T>::epsilon();
+    T epsilon = k_epsilon * std::numeric_limits<T>::epsilon();
     if (lhs == rhs)
     {
         return true;

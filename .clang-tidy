@@ -3,7 +3,8 @@ Checks: '*, -altera*, -fuchsia*, -llvm-*, -llvmlibc-*,
   -cppcoreguidelines-owning-memory,
   -modernize-use-trailing-return-type, 
   -readability-identifier-length,
-  -readability-const-return-type'
+  -readability-const-return-type,
+  -cppcoreguidelines-pro-type-reinterpret-cast'
 CheckOptions:
     - key: readability-magic-numbers.IgnorePowersOf2IntegerValues
       value: true
