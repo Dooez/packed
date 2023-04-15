@@ -490,7 +490,7 @@ public:
     static constexpr auto pack_size = 1;
 
 private:
-    iterator(real_pointer data_ptr, difference_type index) noexcept
+    explicit iterator(real_pointer data_ptr) noexcept
     : m_ptr(data_ptr){};
 
 public:
@@ -569,7 +569,7 @@ public:
         return (lhs.m_ptr - rhs.m_ptr) >> 1U;
     }
 
-    [[nodiscard]] bool aligned(difference_type idx = 0) const noexcept {
+    [[nodiscard]] bool aligned(difference_type) const noexcept {
         return true;
     }
     /**
