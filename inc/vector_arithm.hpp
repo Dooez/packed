@@ -137,7 +137,7 @@ inline auto div(cx_reg<T> lhs, typename reg<T>::type rhs) -> cx_reg<T> {
 
 /**
   * @brief Performs butterfly operation, then multiplies diff by imaginary unit RhsRotI times;
-  * 
+  *
   * @tparam RhsRotI number of multiplications by imaginary unity
   */
 template<uint RhsRotI = 0, typename T = double>
@@ -180,7 +180,7 @@ inline auto ibtfly(cx_reg<T> lhs, cx_reg<T> rhs) {
 
 /**
   * @brief Multiplies rhs by imaginary unit RhsRotI times, then performs butterfly operation;
-  * 
+  *
   * @tparam RhsRotI number of multiplications by imaginary unity
   */
 template<uint RhsRotI = 0, typename T = double>
@@ -272,11 +272,20 @@ struct expression_traits {
      * @param idx data offset
      * @return avx::cx_reg<T> loaded complex register
      */
-    template<typename T, bool Const, std::size_t PackSize>
-    [[nodiscard]] static constexpr auto cx_reg(const iterator<T, Const, PackSize>& iterator, std::size_t idx)
+    template<typename T, bool Const, std::size_t IPackSize>
+    [[nodiscard]] static constexpr auto cx_reg(const iterator<T, Const, IPackSize>& iterator, std::size_t idx)
         -> avx::cx_reg<T> {
         auto real = avx::load(&(*iterator) + idx);
-        auto imag = avx::load(&(*iterator) + idx + PackSize);
+        auto imag = avx::load(&(*iterator) + idx + IPackSize);
+        return {real, imag};
+    }
+    template<typename T, std::size_t PackSize, bool Const, std::size_t IPackSize>
+    [[nodiscard]] static constexpr auto cx_reg(const iterator<T, Const, IPackSize>& iterator,
+                                               std::size_t offset) -> avx::cx_reg<T> {
+        constexpr auto PLoad = std::max(avx::reg<T>::size, IPackSize);
+
+        auto real = avx::cx_load<PLoad>(&(*iterator) + offset);
+
         return {real, imag};
     }
 

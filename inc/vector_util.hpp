@@ -18,11 +18,10 @@ constexpr const std::size_t default_pack_size = 32 / sizeof(T);
 constexpr const std::size_t dynamic_size = -1;
 
 template<std::size_t N>
-concept power_of_two = (N & (N - 1)) == 0;
+concept power_of_two = N > 0 && (N & (N - 1)) == 0;
 
 template<typename T, std::size_t PackSize>
-concept packed_floating_point = std::floating_point<T> && power_of_two<PackSize> &&
-                                (PackSize >= pcx::default_pack_size<T>);
+concept packed_floating_point = std::floating_point<T> && power_of_two<PackSize>;
 
 template<typename T, typename Allocator, std::size_t PackSize>
     requires packed_floating_point<T, PackSize>
@@ -42,7 +41,7 @@ constexpr auto pidx(std::size_t idx) -> std::size_t {
     return idx + idx / PackSize * PackSize;
 }
 
-template<typename T, std::align_val_t Alignment>
+template<typename T, std::align_val_t Alignment = std::align_val_t(64)>
 class aligned_allocator {
 public:
     using value_type      = T;
