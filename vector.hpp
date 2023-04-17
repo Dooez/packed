@@ -180,7 +180,7 @@ public:
         }
     }
 
-    template<typename E>    // clang preferes this overload to normal copy assignment
+    template<typename E>
         requires(!std::same_as<E, vector>) && internal::vector_expression<E>
     vector& operator=(const E& other) {
         assert(size() == other.size());
@@ -337,6 +337,29 @@ public:
             ++it_this;
         }
     }
+
+    template<std::size_t OPackSize>
+    explicit vector(const vector<real_type, allocator_type, OPackSize>& other)
+    : m_allocator(alloc_traits::select_on_container_copy_construction(other.m_allocator))
+    , m_size(other.m_size) {
+        if (m_size == 0) {
+            return;
+        }
+        m_ptr = alloc_traits::allocate(m_allocator, real_size(m_size));
+        *this = pcx::subrange(other.begin(), other.end());
+    }
+
+    template<typename OAllocator, std::size_t OPackSize>
+    explicit vector(const vector<T, OAllocator, OPackSize>& other, const OAllocator& allocator = OAllocator{})
+    : m_allocator(allocator)
+    , m_size(other.m_size) {
+        if (m_size == 0) {
+            return;
+        }
+        m_ptr = alloc_traits::allocate(m_allocator, real_size(m_size));
+        *this = pcx::subrange(other.begin(), other.end());
+    }
+
 private:
     [[no_unique_address]] allocator_type m_allocator{};
 
