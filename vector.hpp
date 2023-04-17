@@ -1,6 +1,7 @@
 #ifndef PCX_VECTOR_HPP
 #define PCX_VECTOR_HPP
 #include "vector_arithm.hpp"
+#include "vector_util.hpp"
 
 #include <complex>
 #include <memory>
@@ -46,7 +47,6 @@ public:
     explicit vector(const allocator_type& allocator) noexcept(
         std::is_nothrow_copy_constructible_v<allocator_type>)
     : m_allocator(allocator)
-    , m_size(0)
     , m_ptr(nullptr){};
 
     explicit vector(size_type size, const allocator_type& allocator = allocator_type())
@@ -58,10 +58,10 @@ public:
 
     template<typename U>
         requires std::is_convertible_v<U, std::complex<real_type>>
-    vector(size_type length, U value, const allocator_type& allocator = allocator_type())
+    vector(size_type size, U value, const allocator_type& allocator = allocator_type())
     : m_allocator(allocator)
-    , m_size(length)
-    , m_ptr(alloc_traits::allocate(m_allocator, num_packs(length) * PackSize * 2)) {
+    , m_size(size)
+    , m_ptr(alloc_traits::allocate(m_allocator, num_packs(size) * PackSize * 2)) {
         fill(begin(), end(), value);
     };
 
@@ -190,13 +190,10 @@ public:
             auto aligned_size = end().align_lower() - it_this;
 
             auto ptr = &(*it_this);
-            for (long i = 0; i < aligned_size; i += pack_size) {
-                auto offset = i * 2;
+            for (uint i = 0; i < aligned_size; i += pack_size) {
                 for (uint i_reg = 0; i_reg < pack_size; i_reg += reg_size) {
-                    auto data = internal::expression_traits::cx_reg<pack_size>(it_other, offset + i_reg);
-
-                    avx::store(ptr + offset + i_reg, data.real);
-                    avx::store(ptr + offset + i_reg + PackSize, data.imag);
+                    auto data = internal::expression_traits::cx_reg<pack_size>(it_other, i + i_reg);
+                    avx::cxstore<pack_size>(avx::ra_addr<pack_size>(ptr, i + i_reg), data);
                 }
             }
             it_this += aligned_size;
@@ -712,13 +709,10 @@ public:
             auto aligned_size = end().align_lower() - it_this;
 
             auto ptr = &(*it_this);
-            for (long i = 0; i < aligned_size; i += pack_size) {
-                auto offset = i * 2;
+            for (uint i = 0; i < aligned_size; i += pack_size) {
                 for (uint i_reg = 0; i_reg < pack_size; i_reg += reg_size) {
-                    auto data = internal::expression_traits::cx_reg<pack_size>(it_expr, offset + i_reg);
-
-                    avx::store(ptr + offset + i_reg, data.real);
-                    avx::store(ptr + offset + i_reg + PackSize, data.imag);
+                    auto data = internal::expression_traits::cx_reg<pack_size>(it_expr, i + i_reg);
+                    avx::cxstore<pack_size>(avx::ra_addr<pack_size>(ptr, i + i_reg), data);
                 }
             }
             it_this += aligned_size;

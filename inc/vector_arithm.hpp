@@ -253,36 +253,34 @@ namespace internal {
 
 struct expression_traits {
     /**
-     * @brief Evaluates slice of the expression with offset;
-     * Slice size is determined by avx register size; No checks are performed.
-     *
-     * @param expression
-     * @param idx offset
-     * @return auto evaluated complex register
+     * @brief Extracts simd vector from iterator.
+     * 
+     * @tparam PackSize    required pack size
+     * @param iterator     must be aligned
+     * @param offset       must be a multiple of SIMD vector size 
+     * @return constexpr auto 
      */
-
     template<std::size_t PackSize, typename I>
-    [[nodiscard]] static constexpr auto cx_reg(const I& iterator, std::size_t idx) {
-        auto data      = iterator.cx_reg(idx);
+    [[nodiscard]] static constexpr auto cx_reg(const I& iterator, std::size_t offset) {
+        auto data      = iterator.cx_reg(offset);
         std::tie(data) = avx::convert<typename I::real_type>::template repack<I::pack_size, PackSize>(data);
         return data;
     }
     /**
      * @brief Extracts simd vector from iterator.
-     * iterator must be aligned.
      *
-     * @tparam PackSize pack size of returned simd vector.
-     * @param iterator
-     * @param offset
+     * @tparam PackSize required pack size 
+     * @param iterator  must be aligned
+     * @param offset    must be a multiple of simd vector size
      * @return avx::cx_reg<T>
      */
     template<std::size_t PackSize, typename T, bool Const, std::size_t IPackSize>
     [[nodiscard]] static constexpr auto cx_reg(const iterator<T, Const, IPackSize>& iterator,
                                                std::size_t offset) -> avx::cx_reg<T> {
         constexpr auto PLoad = std::max(avx::reg<T>::size, IPackSize);
-//
-//         auto addr      = avx::ra_addr<IPackSize>(&(*iterator), offset);
-        auto data      = avx::cxload<PLoad>(&(*iterator) + offset);
+
+        auto addr      = avx::ra_addr<IPackSize>(&(*iterator), offset);
+        auto data      = avx::cxload<PLoad>(addr);
         std::tie(data) = avx::convert<T>::template repack<IPackSize, PackSize>(data);
         return data;
     }
@@ -377,6 +375,8 @@ template<typename E1, typename E2>
     requires compatible_expression<E1, E2>
 class add : public std::ranges::view_base {
     friend auto operator+<E1, E2>(const E1& lhs, const E2& rhs);
+    using lhs_iterator = decltype(std::declval<const E1>().begin());
+    using rhs_iterator = decltype(std::declval<const E2>().begin());
 
 public:
     using real_type = typename E1::real_type;
@@ -386,9 +386,6 @@ public:
         friend class add;
 
     private:
-        using lhs_iterator = decltype(std::declval<const E1>().begin());
-        using rhs_iterator = decltype(std::declval<const E2>().begin());
-
         iterator(lhs_iterator lhs, rhs_iterator rhs)
         : m_lhs(std::move(lhs))
         , m_rhs(std::move(rhs)){};
@@ -489,13 +486,14 @@ public:
 
 private:
     add(const E1& lhs, const E2& rhs)
-    : m_lhs(lhs)
-    , m_rhs(rhs) {
+    : m_lhs(lhs.begin())
+    , m_rhs(rhs.begin())
+    , m_size(lhs.size()) {
         assert(lhs.size() == rhs.size());
     };
 
 public:
-    add() noexcept = default;
+    add() noexcept = delete;
 
     add(add&& other) noexcept = default;
     add(const add&) noexcept  = default;
@@ -510,10 +508,10 @@ public:
     add& operator=(const add&) noexcept = delete;
 
     [[nodiscard]] auto begin() const noexcept -> iterator {
-        return iterator(m_lhs.begin(), m_rhs.begin());
+        return iterator(m_lhs, m_rhs);
     }
     [[nodiscard]] auto end() const noexcept -> iterator {
-        return iterator(m_lhs.end(), m_rhs.end());
+        return iterator(m_lhs + m_size, m_rhs + m_size);
     }
 
     [[nodiscard]] auto operator[](std::size_t idx) const {
@@ -521,18 +519,21 @@ public:
     };
 
     [[nodiscard]] constexpr auto size() const noexcept -> std::size_t {
-        return m_lhs.size();
+        return m_size;
     }
 
 private:
-    const E1 m_lhs;
-    const E2 m_rhs;
+    lhs_iterator m_lhs;
+    rhs_iterator m_rhs;
+    std::size_t  m_size;
 };
 
 template<typename E1, typename E2>
     requires compatible_expression<E1, E2>
 class sub : public std::ranges::view_base {
     friend auto operator-<E1, E2>(const E1& lhs, const E2& rhs);
+    using lhs_iterator = decltype(std::declval<const E1>().begin());
+    using rhs_iterator = decltype(std::declval<const E2>().begin());
 
 public:
     using real_type = typename E1::real_type;
@@ -542,9 +543,6 @@ public:
         friend class sub;
 
     private:
-        using lhs_iterator = decltype(std::declval<const E1>().begin());
-        using rhs_iterator = decltype(std::declval<const E2>().begin());
-
         iterator(lhs_iterator lhs, rhs_iterator rhs)
         : m_lhs(std::move(lhs))
         , m_rhs(std::move(rhs)){};
@@ -645,13 +643,14 @@ public:
 
 private:
     sub(const E1& lhs, const E2& rhs)
-    : m_lhs(lhs)
-    , m_rhs(rhs) {
+    : m_lhs(lhs.begin())
+    , m_rhs(rhs.begin())
+    , m_size(lhs.size()) {
         assert(lhs.size() == rhs.size());
     };
 
 public:
-    sub() noexcept = default;
+    sub() noexcept = delete;
 
     sub(sub&& other) noexcept = default;
     sub(const sub&) noexcept  = default;
@@ -666,10 +665,10 @@ public:
     sub& operator=(const sub&) noexcept = delete;
 
     [[nodiscard]] auto begin() const noexcept -> iterator {
-        return iterator(m_lhs.begin(), m_rhs.begin());
+        return iterator(m_lhs, m_rhs);
     }
     [[nodiscard]] auto end() const noexcept -> iterator {
-        return iterator(m_lhs.end(), m_rhs.end());
+        return iterator(m_lhs + m_size, m_rhs + m_size);
     }
 
     [[nodiscard]] auto operator[](std::size_t idx) const {
@@ -677,18 +676,21 @@ public:
     };
 
     [[nodiscard]] constexpr auto size() const noexcept -> std::size_t {
-        return m_lhs.size();
+        return m_size;
     }
 
 private:
-    const E1 m_lhs;
-    const E2 m_rhs;
+    lhs_iterator m_lhs;
+    rhs_iterator m_rhs;
+    std::size_t  m_size;
 };
 
 template<typename E1, typename E2>
     requires compatible_expression<E1, E2>
 class mul : public std::ranges::view_base {
     friend auto operator*<E1, E2>(const E1& lhs, const E2& rhs);
+    using lhs_iterator = decltype(std::declval<const E1>().begin());
+    using rhs_iterator = decltype(std::declval<const E2>().begin());
 
 public:
     using real_type = typename E1::real_type;
@@ -698,9 +700,6 @@ public:
         friend class mul;
 
     private:
-        using lhs_iterator = decltype(std::declval<const E1>().begin());
-        using rhs_iterator = decltype(std::declval<const E2>().begin());
-
         iterator(lhs_iterator lhs, rhs_iterator rhs)
         : m_lhs(std::move(lhs))
         , m_rhs(std::move(rhs)){};
@@ -801,8 +800,9 @@ public:
 
 private:
     mul(const E1& lhs, const E2& rhs)
-    : m_lhs(lhs)
-    , m_rhs(rhs) {
+    : m_lhs(lhs.begin())
+    , m_rhs(rhs.begin())
+    , m_size(lhs.size()) {
         assert(lhs.size() == rhs.size());
     };
 
@@ -822,10 +822,10 @@ public:
     mul& operator=(const mul&) noexcept = delete;
 
     [[nodiscard]] auto begin() const noexcept -> iterator {
-        return iterator(m_lhs.begin(), m_rhs.begin());
+        return iterator(m_lhs, m_rhs);
     }
     [[nodiscard]] auto end() const noexcept -> iterator {
-        return iterator(m_lhs.end(), m_rhs.end());
+        return iterator(m_lhs + m_size, m_rhs + m_size);
     }
 
     [[nodiscard]] auto operator[](std::size_t idx) const {
@@ -833,18 +833,21 @@ public:
     };
 
     [[nodiscard]] constexpr auto size() const noexcept -> std::size_t {
-        return m_lhs.size();
+        return m_size;
     }
 
 private:
-    const E1 m_lhs;
-    const E2 m_rhs;
+    lhs_iterator m_lhs;
+    rhs_iterator m_rhs;
+    std::size_t  m_size;
 };
 
 template<typename E1, typename E2>
     requires compatible_expression<E1, E2>
 class div : public std::ranges::view_base {
     friend auto operator/<E1, E2>(const E1& lhs, const E2& rhs);
+    using lhs_iterator = decltype(std::declval<const E1>().begin());
+    using rhs_iterator = decltype(std::declval<const E2>().begin());
 
 public:
     using real_type = typename E1::real_type;
@@ -854,9 +857,6 @@ public:
         friend class div;
 
     private:
-        using lhs_iterator = decltype(std::declval<const E1>().begin());
-        using rhs_iterator = decltype(std::declval<const E2>().begin());
-
         iterator(lhs_iterator lhs, rhs_iterator rhs)
         : m_lhs(std::move(lhs))
         , m_rhs(std::move(rhs)){};
@@ -957,13 +957,14 @@ public:
 
 private:
     div(const E1& lhs, const E2& rhs)
-    : m_lhs(lhs)
-    , m_rhs(rhs) {
+    : m_lhs(lhs.begin())
+    , m_rhs(rhs.begin())
+    , m_size(lhs.size()) {
         assert(lhs.size() == rhs.size());
     };
 
 public:
-    div() noexcept = default;
+    div() noexcept = delete;
 
     div(div&& other) noexcept = default;
     div(const div&) noexcept  = default;
@@ -978,10 +979,10 @@ public:
     div& operator=(const div&) noexcept = delete;
 
     [[nodiscard]] auto begin() const noexcept -> iterator {
-        return iterator(m_lhs.begin(), m_rhs.begin());
+        return iterator(m_lhs, m_rhs);
     }
     [[nodiscard]] auto end() const noexcept -> iterator {
-        return iterator(m_lhs.end(), m_rhs.end());
+        return iterator(m_lhs + m_size, m_rhs + m_size);
     }
 
     [[nodiscard]] auto operator[](std::size_t idx) const {
@@ -989,12 +990,13 @@ public:
     };
 
     [[nodiscard]] constexpr auto size() const noexcept -> std::size_t {
-        return m_lhs.size();
+        return m_size;
     }
 
 private:
-    const E1 m_lhs;
-    const E2 m_rhs;
+    lhs_iterator m_lhs;
+    rhs_iterator m_rhs;
+    std::size_t  m_size;
 };
 
 template<typename E, typename S>

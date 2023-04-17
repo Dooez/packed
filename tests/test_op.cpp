@@ -20,7 +20,7 @@ void asm_test_fun(pcx::vector<double>& v1,
                   pcx::vector<double>& v2,
                   std::complex<double> v3)
 {
-    v1 = v1 + v2;
+    v1 = v1 + v2 * v1;
 }
 template<typename T>
     requires std::floating_point<T>
