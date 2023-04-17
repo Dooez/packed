@@ -18,11 +18,10 @@ constexpr const std::size_t default_pack_size = 32 / sizeof(T);
 constexpr const std::size_t dynamic_size = -1;
 
 template<std::size_t N>
-concept power_of_two = (N & (N - 1)) == 0;
+concept power_of_two = N > 0 && (N & (N - 1)) == 0;
 
 template<typename T, std::size_t PackSize>
-concept packed_floating_point = std::floating_point<T> && power_of_two<PackSize> &&
-                                (PackSize >= pcx::default_pack_size<T>);
+concept packed_floating_point = std::floating_point<T> && power_of_two<PackSize>;
 
 template<typename T, typename Allocator, std::size_t PackSize>
     requires packed_floating_point<T, PackSize>
@@ -42,7 +41,7 @@ constexpr auto pidx(std::size_t idx) -> std::size_t {
     return idx + idx / PackSize * PackSize;
 }
 
-template<typename T, std::align_val_t Alignment>
+template<typename T, std::align_val_t Alignment = std::align_val_t{64}>
 class aligned_allocator {
 public:
     using value_type      = T;
@@ -174,28 +173,6 @@ constexpr void apply_for_each(F&& f, Tups&&... args) {
  *
  */
 namespace avx {
-/**
-     * @brief Register aligned adress
-     *
-     * @tparam PackSize
-     * @tparam T
-     * @param data Base address. Must be aligned by avx register size.
-     * @param offset New address offset. Must be a multiple of avx register size.
-     * If data in-pack index I is non-zero, offset must be less then PackSize - I;
-     * @return T*
-     */
-template<std::size_t PackSize, typename T>
-constexpr auto ra_addr(T* data, std::size_t offset) -> T* {
-    return data + offset + (offset / PackSize) * PackSize;
-}
-template<>
-constexpr auto ra_addr<8>(float* data, std::size_t offset) -> float* {
-    return data + offset * 2;
-}
-template<>
-constexpr auto ra_addr<4>(double* data, std::size_t offset) -> double* {
-    return data + offset * 2;
-}
 
 template<typename T>
 struct reg;
@@ -220,6 +197,27 @@ struct cx_reg {
     typename reg<T>::type real;
     typename reg<T>::type imag;
 };
+
+/**
+     * @brief Register aligned adress
+     *
+     * @tparam PackSize
+     * @tparam T
+     * @param data Base address. Must be aligned by avx register size.
+     * @param offset New address offset. Must be a multiple of avx register size.
+     * If data in-pack index I is non-zero, offset must be less then PackSize - I;
+     * @return T*
+     */
+template<std::size_t PackSize, typename T>
+constexpr auto ra_addr(T* data, std::size_t offset) -> T* {
+    return data + offset + (offset / PackSize) * PackSize;
+}
+template<std::size_t PackSize, typename T>
+    requires(PackSize < avx::reg<T>::size)
+constexpr auto ra_addr(T* data, std::size_t offset) -> T* {
+    return data + offset * 2;
+}
+
 
 inline auto load(const float* source) -> reg<float>::type {
     return _mm256_loadu_ps(source);
@@ -499,6 +497,86 @@ struct convert<float> {
         } else {
             return tup;
         }
+    }
+
+    template<bool Inverse = true>
+    static inline auto inverse(auto... args) {
+        auto tup = std::make_tuple(args...);
+        if constexpr (Inverse) {
+            auto inverse = [](auto reg) {
+                using reg_t = decltype(reg);
+                return reg_t{reg.imag, reg.real};
+            };
+            return internal::apply_for_each(inverse, tup);
+        } else {
+            return tup;
+        }
+    };
+};
+
+template<>
+struct convert<double> {
+    static constexpr auto swap_12 = [](cx_reg<double> reg) {
+        auto real = _mm256_permute4x64_pd(reg.real, 0b11011000);
+        auto imag = _mm256_permute4x64_pd(reg.imag, 0b11011000);
+        return cx_reg<double>({real, imag});
+    };
+
+    static constexpr auto swap_24 = [](cx_reg<float> reg) {
+        auto real = unpacklo_128(reg.real, reg.imag);
+        auto imag = unpackhi_128(reg.real, reg.imag);
+        return cx_reg<double>({real, imag});
+    };
+
+    template<std::size_t PackFrom, std::size_t PackTo>
+        requires(PackFrom > 0) && (PackTo > 0)
+    static inline auto repack(auto... args) {
+        auto tup = std::make_tuple(args...);
+        if constexpr (PackFrom == PackTo || (PackFrom >= 4 && PackTo >= 4)) {
+            return tup;
+        } else if constexpr (PackFrom == 1) {
+            if constexpr (PackTo >= 4) {
+                auto pack_1 = [](cx_reg<float> reg) {
+                    auto real = unpacklo_pd(reg.real, reg.imag);
+                    auto imag = unpackhi_pd(reg.real, reg.imag);
+                    return cx_reg<float>({real, imag});
+                };
+                auto tmp = internal::apply_for_each(pack_1, tup);
+                return internal::apply_for_each(swap_12, tmp);
+            } else if constexpr (PackTo == 2) {
+                return internal::apply_for_each(swap_12, tup);
+            }
+        } else if constexpr (PackFrom == 2) {
+            if constexpr (PackTo >= 4) {
+                return internal::apply_for_each(swap_24, tup);
+            } else if constexpr (PackTo == 1) {
+                return internal::apply_for_each(swap_12, tup);
+            }
+        } else if constexpr (PackFrom >= 4) {
+            if constexpr (PackTo == 2) {
+                return internal::apply_for_each(swap_24, tup);
+            } else if constexpr (PackTo == 1) {
+                auto pack_1 = [](cx_reg<float> reg) {
+                    auto real = unpacklo_pd(reg.real, reg.imag);
+                    auto imag = unpackhi_pd(reg.real, reg.imag);
+                    return cx_reg<float>({real, imag});
+                };
+                auto tmp = internal::apply_for_each(pack_1, tup);
+                return internal::apply_for_each(swap_24, tmp);
+            }
+        }
+    };
+
+    template<std::size_t PackFrom>
+    static inline auto split(auto... args) {
+        auto tup = std::make_tuple(args...);
+        { return tup; }
+    }
+
+    template<std::size_t PackTo>
+    static inline auto combine(auto... args) {
+        auto tup = std::make_tuple(args...);
+        { return tup; }
     }
 
     template<bool Inverse = true>

@@ -5,6 +5,7 @@
 #include <cassert>
 #include <complex>
 #include <concepts>
+#include <cstddef>
 #include <immintrin.h>
 #include <ranges>
 
@@ -137,7 +138,7 @@ inline auto div(cx_reg<T> lhs, typename reg<T>::type rhs) -> cx_reg<T> {
 
 /**
   * @brief Performs butterfly operation, then multiplies diff by imaginary unit RhsRotI times;
-  * 
+  *
   * @tparam RhsRotI number of multiplications by imaginary unity
   */
 template<uint RhsRotI = 0, typename T = double>
@@ -180,7 +181,7 @@ inline auto ibtfly(cx_reg<T> lhs, cx_reg<T> rhs) {
 
 /**
   * @brief Multiplies rhs by imaginary unit RhsRotI times, then performs butterfly operation;
-  * 
+  *
   * @tparam RhsRotI number of multiplications by imaginary unity
   */
 template<uint RhsRotI = 0, typename T = double>
@@ -246,38 +247,42 @@ inline auto mul(const cx_reg<Args> (&... args)[2]) {
     auto tmp = internal::apply_for_each(real_mul, tup);
     return internal::apply_for_each(imag_mul, tmp);
 }
-
 }    // namespace avx
 
 namespace internal {
 
 struct expression_traits {
     /**
-     * @brief Evaluates slice of the expression with offset;
-     * Slice size is determined by avx register size; No checks are performed.
-     *
-     * @param expression
-     * @param idx offset
-     * @return auto evaluated complex register
+     * @brief Extracts simd vector from iterator.
+     * 
+     * @tparam PackSize    required pack size
+     * @param iterator     must be aligned
+     * @param offset       must be a multiple of SIMD vector size 
+     * @return constexpr auto 
      */
-    template<typename I>
-    [[nodiscard]] static constexpr auto cx_reg(const I& iterator, std::size_t idx) {
-        return iterator.cx_reg(idx);
+    template<std::size_t PackSize, typename I>
+    [[nodiscard]] static constexpr auto cx_reg(const I& iterator, std::size_t offset) {
+        auto data      = iterator.cx_reg(offset);
+        std::tie(data) = avx::convert<typename I::real_type>::template repack<I::pack_size, PackSize>(data);
+        return data;
     }
     /**
-     * @brief Loads data from iterator with offset.
-     * No checks are performed.
+     * @brief Extracts simd vector from iterator.
      *
-     * @param it iterator
-     * @param idx data offset
-     * @return avx::cx_reg<T> loaded complex register
+     * @tparam PackSize required pack size 
+     * @param iterator  must be aligned
+     * @param offset    must be a multiple of simd vector size
+     * @return avx::cx_reg<T>
      */
-    template<typename T, bool Const, std::size_t PackSize>
-    [[nodiscard]] static constexpr auto cx_reg(const iterator<T, Const, PackSize>& iterator, std::size_t idx)
-        -> avx::cx_reg<T> {
-        auto real = avx::load(&(*iterator) + idx);
-        auto imag = avx::load(&(*iterator) + idx + PackSize);
-        return {real, imag};
+    template<std::size_t PackSize, typename T, bool Const, std::size_t IPackSize>
+    [[nodiscard]] static constexpr auto cx_reg(const iterator<T, Const, IPackSize>& iterator,
+                                               std::size_t offset) -> avx::cx_reg<T> {
+        constexpr auto PLoad = std::max(avx::reg<T>::size, IPackSize);
+
+        auto addr      = avx::ra_addr<IPackSize>(&(*iterator), offset);
+        auto data      = avx::cxload<PLoad>(addr);
+        std::tie(data) = avx::convert<T>::template repack<IPackSize, PackSize>(data);
+        return data;
     }
 
     template<typename I>
@@ -303,7 +308,7 @@ concept vector_expression =    //
         { expression_traits::aligned(expression.begin(), idx) } -> std::same_as<bool>;
 
         {
-            expression_traits::cx_reg(expression.begin(), idx)
+            expression_traits::cx_reg<avx::reg<typename E::real_type>::size>(expression.begin(), idx)
             } -> std::same_as<avx::cx_reg<typename E::real_type>>;
     };
 
@@ -370,17 +375,17 @@ template<typename E1, typename E2>
     requires compatible_expression<E1, E2>
 class add : public std::ranges::view_base {
     friend auto operator+<E1, E2>(const E1& lhs, const E2& rhs);
+    using lhs_iterator = decltype(std::declval<const E1>().begin());
+    using rhs_iterator = decltype(std::declval<const E2>().begin());
 
 public:
     using real_type = typename E1::real_type;
-
+    static constexpr auto pack_size =
+        std::min(std::max(E1::pack_size, E2::pack_size), avx::reg<real_type>::size);
     class iterator {
         friend class add;
 
     private:
-        using lhs_iterator = decltype(std::declval<const E1>().begin());
-        using rhs_iterator = decltype(std::declval<const E2>().begin());
-
         iterator(lhs_iterator lhs, rhs_iterator rhs)
         : m_lhs(std::move(lhs))
         , m_rhs(std::move(rhs)){};
@@ -390,6 +395,8 @@ public:
         using value_type       = const std::complex<real_type>;
         using difference_type  = std::ptrdiff_t;
         using iterator_concept = std::random_access_iterator_tag;
+
+        static constexpr auto pack_size = add::pack_size;
 
         iterator() = default;
 
@@ -462,8 +469,8 @@ public:
             return value_type(*(m_lhs + idx)) + value_type(*(m_rhs + idx));
         }
         [[nodiscard]] auto cx_reg(std::size_t idx) const -> avx::cx_reg<real_type> {
-            const auto lhs = expression_traits::cx_reg(m_lhs, idx);
-            const auto rhs = expression_traits::cx_reg(m_rhs, idx);
+            const auto lhs = expression_traits::cx_reg<pack_size>(m_lhs, idx);
+            const auto rhs = expression_traits::cx_reg<pack_size>(m_rhs, idx);
 
             return avx::add(lhs, rhs);
         }
@@ -479,13 +486,14 @@ public:
 
 private:
     add(const E1& lhs, const E2& rhs)
-    : m_lhs(lhs)
-    , m_rhs(rhs) {
+    : m_lhs(lhs.begin())
+    , m_rhs(rhs.begin())
+    , m_size(lhs.size()) {
         assert(lhs.size() == rhs.size());
     };
 
 public:
-    add() noexcept = default;
+    add() noexcept = delete;
 
     add(add&& other) noexcept = default;
     add(const add&) noexcept  = default;
@@ -500,10 +508,10 @@ public:
     add& operator=(const add&) noexcept = delete;
 
     [[nodiscard]] auto begin() const noexcept -> iterator {
-        return iterator(m_lhs.begin(), m_rhs.begin());
+        return iterator(m_lhs, m_rhs);
     }
     [[nodiscard]] auto end() const noexcept -> iterator {
-        return iterator(m_lhs.end(), m_rhs.end());
+        return iterator(m_lhs + m_size, m_rhs + m_size);
     }
 
     [[nodiscard]] auto operator[](std::size_t idx) const {
@@ -511,29 +519,30 @@ public:
     };
 
     [[nodiscard]] constexpr auto size() const noexcept -> std::size_t {
-        return m_lhs.size();
+        return m_size;
     }
 
 private:
-    const E1 m_lhs;
-    const E2 m_rhs;
+    lhs_iterator m_lhs;
+    rhs_iterator m_rhs;
+    std::size_t  m_size;
 };
 
 template<typename E1, typename E2>
     requires compatible_expression<E1, E2>
 class sub : public std::ranges::view_base {
     friend auto operator-<E1, E2>(const E1& lhs, const E2& rhs);
+    using lhs_iterator = decltype(std::declval<const E1>().begin());
+    using rhs_iterator = decltype(std::declval<const E2>().begin());
 
 public:
     using real_type = typename E1::real_type;
-
+    static constexpr auto pack_size =
+        std::min(std::max(E1::pack_size, E2::pack_size), avx::reg<real_type>::size);
     class iterator {
         friend class sub;
 
     private:
-        using lhs_iterator = decltype(std::declval<const E1>().begin());
-        using rhs_iterator = decltype(std::declval<const E2>().begin());
-
         iterator(lhs_iterator lhs, rhs_iterator rhs)
         : m_lhs(std::move(lhs))
         , m_rhs(std::move(rhs)){};
@@ -543,6 +552,8 @@ public:
         using value_type       = const std::complex<real_type>;
         using difference_type  = std::ptrdiff_t;
         using iterator_concept = std::random_access_iterator_tag;
+
+        static constexpr auto pack_size = sub::pack_size;
 
         iterator() = default;
 
@@ -615,8 +626,8 @@ public:
             return value_type(*(m_lhs + idx)) - value_type(*(m_rhs + idx));
         }
         [[nodiscard]] auto cx_reg(std::size_t idx) const -> avx::cx_reg<real_type> {
-            const auto lhs = expression_traits::cx_reg(m_lhs, idx);
-            const auto rhs = expression_traits::cx_reg(m_rhs, idx);
+            const auto lhs = expression_traits::cx_reg<pack_size>(m_lhs, idx);
+            const auto rhs = expression_traits::cx_reg<pack_size>(m_rhs, idx);
 
             return avx::sub(lhs, rhs);
         }
@@ -632,13 +643,14 @@ public:
 
 private:
     sub(const E1& lhs, const E2& rhs)
-    : m_lhs(lhs)
-    , m_rhs(rhs) {
+    : m_lhs(lhs.begin())
+    , m_rhs(rhs.begin())
+    , m_size(lhs.size()) {
         assert(lhs.size() == rhs.size());
     };
 
 public:
-    sub() noexcept = default;
+    sub() noexcept = delete;
 
     sub(sub&& other) noexcept = default;
     sub(const sub&) noexcept  = default;
@@ -653,10 +665,10 @@ public:
     sub& operator=(const sub&) noexcept = delete;
 
     [[nodiscard]] auto begin() const noexcept -> iterator {
-        return iterator(m_lhs.begin(), m_rhs.begin());
+        return iterator(m_lhs, m_rhs);
     }
     [[nodiscard]] auto end() const noexcept -> iterator {
-        return iterator(m_lhs.end(), m_rhs.end());
+        return iterator(m_lhs + m_size, m_rhs + m_size);
     }
 
     [[nodiscard]] auto operator[](std::size_t idx) const {
@@ -664,29 +676,30 @@ public:
     };
 
     [[nodiscard]] constexpr auto size() const noexcept -> std::size_t {
-        return m_lhs.size();
+        return m_size;
     }
 
 private:
-    const E1 m_lhs;
-    const E2 m_rhs;
+    lhs_iterator m_lhs;
+    rhs_iterator m_rhs;
+    std::size_t  m_size;
 };
 
 template<typename E1, typename E2>
     requires compatible_expression<E1, E2>
 class mul : public std::ranges::view_base {
     friend auto operator*<E1, E2>(const E1& lhs, const E2& rhs);
+    using lhs_iterator = decltype(std::declval<const E1>().begin());
+    using rhs_iterator = decltype(std::declval<const E2>().begin());
 
 public:
     using real_type = typename E1::real_type;
 
+    static constexpr auto pack_size = avx::reg<real_type>::size;
     class iterator {
         friend class mul;
 
     private:
-        using lhs_iterator = decltype(std::declval<const E1>().begin());
-        using rhs_iterator = decltype(std::declval<const E2>().begin());
-
         iterator(lhs_iterator lhs, rhs_iterator rhs)
         : m_lhs(std::move(lhs))
         , m_rhs(std::move(rhs)){};
@@ -696,6 +709,8 @@ public:
         using value_type       = const std::complex<real_type>;
         using difference_type  = std::ptrdiff_t;
         using iterator_concept = std::random_access_iterator_tag;
+
+        static constexpr auto pack_size = mul::pack_size;
 
         iterator() = default;
 
@@ -768,8 +783,8 @@ public:
             return value_type(*(m_lhs + idx)) * value_type(*(m_rhs + idx));
         }
         [[nodiscard]] auto cx_reg(std::size_t idx) const -> avx::cx_reg<real_type> {
-            const auto lhs = expression_traits::cx_reg(m_lhs, idx);
-            const auto rhs = expression_traits::cx_reg(m_rhs, idx);
+            const auto lhs = expression_traits::cx_reg<pack_size>(m_lhs, idx);
+            const auto rhs = expression_traits::cx_reg<pack_size>(m_rhs, idx);
 
             return avx::mul(lhs, rhs);
         }
@@ -785,8 +800,9 @@ public:
 
 private:
     mul(const E1& lhs, const E2& rhs)
-    : m_lhs(lhs)
-    , m_rhs(rhs) {
+    : m_lhs(lhs.begin())
+    , m_rhs(rhs.begin())
+    , m_size(lhs.size()) {
         assert(lhs.size() == rhs.size());
     };
 
@@ -806,10 +822,10 @@ public:
     mul& operator=(const mul&) noexcept = delete;
 
     [[nodiscard]] auto begin() const noexcept -> iterator {
-        return iterator(m_lhs.begin(), m_rhs.begin());
+        return iterator(m_lhs, m_rhs);
     }
     [[nodiscard]] auto end() const noexcept -> iterator {
-        return iterator(m_lhs.end(), m_rhs.end());
+        return iterator(m_lhs + m_size, m_rhs + m_size);
     }
 
     [[nodiscard]] auto operator[](std::size_t idx) const {
@@ -817,29 +833,30 @@ public:
     };
 
     [[nodiscard]] constexpr auto size() const noexcept -> std::size_t {
-        return m_lhs.size();
+        return m_size;
     }
 
 private:
-    const E1 m_lhs;
-    const E2 m_rhs;
+    lhs_iterator m_lhs;
+    rhs_iterator m_rhs;
+    std::size_t  m_size;
 };
 
 template<typename E1, typename E2>
     requires compatible_expression<E1, E2>
 class div : public std::ranges::view_base {
     friend auto operator/<E1, E2>(const E1& lhs, const E2& rhs);
+    using lhs_iterator = decltype(std::declval<const E1>().begin());
+    using rhs_iterator = decltype(std::declval<const E2>().begin());
 
 public:
     using real_type = typename E1::real_type;
 
+    static constexpr auto pack_size = avx::reg<real_type>::size;
     class iterator {
         friend class div;
 
     private:
-        using lhs_iterator = decltype(std::declval<const E1>().begin());
-        using rhs_iterator = decltype(std::declval<const E2>().begin());
-
         iterator(lhs_iterator lhs, rhs_iterator rhs)
         : m_lhs(std::move(lhs))
         , m_rhs(std::move(rhs)){};
@@ -849,6 +866,8 @@ public:
         using value_type       = const std::complex<real_type>;
         using difference_type  = std::ptrdiff_t;
         using iterator_concept = std::random_access_iterator_tag;
+
+        static constexpr auto pack_size = div::pack_size;
 
         iterator() = default;
 
@@ -921,8 +940,8 @@ public:
             return value_type(*(m_lhs + idx)) / value_type(*(m_rhs + idx));
         }
         [[nodiscard]] auto cx_reg(std::size_t idx) const -> avx::cx_reg<real_type> {
-            const auto lhs = expression_traits::cx_reg(m_lhs, idx);
-            const auto rhs = expression_traits::cx_reg(m_rhs, idx);
+            const auto lhs = expression_traits::cx_reg<pack_size>(m_lhs, idx);
+            const auto rhs = expression_traits::cx_reg<pack_size>(m_rhs, idx);
 
             return avx::div(lhs, rhs);
         }
@@ -938,13 +957,14 @@ public:
 
 private:
     div(const E1& lhs, const E2& rhs)
-    : m_lhs(lhs)
-    , m_rhs(rhs) {
+    : m_lhs(lhs.begin())
+    , m_rhs(rhs.begin())
+    , m_size(lhs.size()) {
         assert(lhs.size() == rhs.size());
     };
 
 public:
-    div() noexcept = default;
+    div() noexcept = delete;
 
     div(div&& other) noexcept = default;
     div(const div&) noexcept  = default;
@@ -959,10 +979,10 @@ public:
     div& operator=(const div&) noexcept = delete;
 
     [[nodiscard]] auto begin() const noexcept -> iterator {
-        return iterator(m_lhs.begin(), m_rhs.begin());
+        return iterator(m_lhs, m_rhs);
     }
     [[nodiscard]] auto end() const noexcept -> iterator {
-        return iterator(m_lhs.end(), m_rhs.end());
+        return iterator(m_lhs + m_size, m_rhs + m_size);
     }
 
     [[nodiscard]] auto operator[](std::size_t idx) const {
@@ -970,12 +990,13 @@ public:
     };
 
     [[nodiscard]] constexpr auto size() const noexcept -> std::size_t {
-        return m_lhs.size();
+        return m_size;
     }
 
 private:
-    const E1 m_lhs;
-    const E2 m_rhs;
+    lhs_iterator m_lhs;
+    rhs_iterator m_rhs;
+    std::size_t  m_size;
 };
 
 template<typename E, typename S>
@@ -988,6 +1009,7 @@ class scalar_add : public std::ranges::view_base {
 public:
     using real_type = typename E::real_type;
 
+    static constexpr auto pack_size = std::min(E::pack_size, avx::reg<real_type>::size);
     class iterator {
         friend class scalar_add;
 
@@ -1003,6 +1025,8 @@ public:
         using value_type       = const std::complex<real_type>;
         using difference_type  = std::ptrdiff_t;
         using iterator_concept = std::random_access_iterator_tag;
+
+        static constexpr auto pack_size = scalar_add::pack_size;
 
         iterator() = default;
 
@@ -1074,7 +1098,7 @@ public:
         }
         [[nodiscard]] auto cx_reg(std::size_t idx) const -> avx::cx_reg<real_type> {
             const auto scalar = avx::broadcast(m_scalar);
-            const auto vector = expression_traits::cx_reg(m_vector, idx);
+            const auto vector = expression_traits::cx_reg<pack_size>(m_vector, idx);
 
             return avx::add(scalar, vector);
         }
@@ -1135,6 +1159,7 @@ class scalar_sub : public std::ranges::view_base {
 public:
     using real_type = typename E::real_type;
 
+    static constexpr auto pack_size = std::min(E::pack_size, avx::reg<real_type>::size);
     class iterator {
         friend class scalar_sub;
 
@@ -1150,6 +1175,8 @@ public:
         using value_type       = const std::complex<real_type>;
         using difference_type  = std::ptrdiff_t;
         using iterator_concept = std::random_access_iterator_tag;
+
+        static constexpr auto pack_size = scalar_sub::pack_size;
 
         iterator() = default;
 
@@ -1221,7 +1248,7 @@ public:
         }
         [[nodiscard]] auto cx_reg(std::size_t idx) const -> avx::cx_reg<real_type> {
             const auto scalar = avx::broadcast(m_scalar);
-            const auto vector = expression_traits::cx_reg(m_vector, idx);
+            const auto vector = expression_traits::cx_reg<pack_size>(m_vector, idx);
 
             return avx::sub(scalar, vector);
         }
@@ -1284,6 +1311,7 @@ class scalar_mul : public std::ranges::view_base {
 public:
     using real_type = typename E::real_type;
 
+    static constexpr auto pack_size = std::min(E::pack_size, avx::reg<real_type>::size);
     class iterator {
         friend class scalar_mul;
 
@@ -1299,6 +1327,8 @@ public:
         using value_type       = const std::complex<real_type>;
         using difference_type  = std::ptrdiff_t;
         using iterator_concept = std::random_access_iterator_tag;
+
+        static constexpr auto pack_size = scalar_mul::pack_size;
 
         iterator() = default;
 
@@ -1370,7 +1400,7 @@ public:
         }
         [[nodiscard]] auto cx_reg(std::size_t idx) const -> avx::cx_reg<real_type> {
             const auto scalar = avx::broadcast(m_scalar);
-            const auto vector = expression_traits::cx_reg(m_vector, idx);
+            const auto vector = expression_traits::cx_reg<pack_size>(m_vector, idx);
 
             return avx::mul(scalar, vector);
         }
@@ -1431,6 +1461,7 @@ class scalar_div : public std::ranges::view_base {
 public:
     using real_type = typename E::real_type;
 
+    static constexpr auto pack_size = std::min(E::pack_size, avx::reg<real_type>::size);
     class iterator {
         friend class scalar_div;
 
@@ -1446,6 +1477,8 @@ public:
         using value_type       = const std::complex<real_type>;
         using difference_type  = std::ptrdiff_t;
         using iterator_concept = std::random_access_iterator_tag;
+
+        static constexpr auto pack_size = scalar_div::pack_size;
 
         iterator() = default;
 
@@ -1517,7 +1550,7 @@ public:
         }
         [[nodiscard]] auto cx_reg(std::size_t idx) const -> avx::cx_reg<real_type> {
             const auto scalar = avx::broadcast(m_scalar);
-            const auto vector = expression_traits::cx_reg(m_vector, idx);
+            const auto vector = expression_traits::cx_reg<pack_size>(m_vector, idx);
 
             return avx::div(scalar, vector);
         }
