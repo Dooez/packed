@@ -5,6 +5,7 @@
 #include <cassert>
 #include <complex>
 #include <concepts>
+#include <cstddef>
 #include <immintrin.h>
 #include <ranges>
 
@@ -246,7 +247,6 @@ inline auto mul(const cx_reg<Args> (&... args)[2]) {
     auto tmp = internal::apply_for_each(real_mul, tup);
     return internal::apply_for_each(imag_mul, tmp);
 }
-
 }    // namespace avx
 
 namespace internal {
@@ -260,33 +260,31 @@ struct expression_traits {
      * @param idx offset
      * @return auto evaluated complex register
      */
-    template<typename I>
+
+    template<std::size_t PackSize, typename I>
     [[nodiscard]] static constexpr auto cx_reg(const I& iterator, std::size_t idx) {
-        return iterator.cx_reg(idx);
+        auto data      = iterator.cx_reg(idx);
+        std::tie(data) = avx::convert<typename I::real_type>::template repack<I::pack_size, PackSize>(data);
+        return data;
     }
     /**
-     * @brief Loads data from iterator with offset.
-     * No checks are performed.
+     * @brief Extracts simd vector from iterator.
+     * iterator must be aligned.
      *
-     * @param it iterator
-     * @param idx data offset
-     * @return avx::cx_reg<T> loaded complex register
+     * @tparam PackSize pack size of returned simd vector.
+     * @param iterator
+     * @param offset
+     * @return avx::cx_reg<T>
      */
-    template<typename T, bool Const, std::size_t IPackSize>
-    [[nodiscard]] static constexpr auto cx_reg(const iterator<T, Const, IPackSize>& iterator, std::size_t idx)
-        -> avx::cx_reg<T> {
-        auto real = avx::load(&(*iterator) + idx);
-        auto imag = avx::load(&(*iterator) + idx + IPackSize);
-        return {real, imag};
-    }
-    template<typename T, std::size_t PackSize, bool Const, std::size_t IPackSize>
+    template<std::size_t PackSize, typename T, bool Const, std::size_t IPackSize>
     [[nodiscard]] static constexpr auto cx_reg(const iterator<T, Const, IPackSize>& iterator,
                                                std::size_t offset) -> avx::cx_reg<T> {
         constexpr auto PLoad = std::max(avx::reg<T>::size, IPackSize);
-
-        auto real = avx::cx_load<PLoad>(&(*iterator) + offset);
-
-        return {real, imag};
+//
+//         auto addr      = avx::ra_addr<IPackSize>(&(*iterator), offset);
+        auto data      = avx::cxload<PLoad>(&(*iterator) + offset);
+        std::tie(data) = avx::convert<T>::template repack<IPackSize, PackSize>(data);
+        return data;
     }
 
     template<typename I>
@@ -312,7 +310,7 @@ concept vector_expression =    //
         { expression_traits::aligned(expression.begin(), idx) } -> std::same_as<bool>;
 
         {
-            expression_traits::cx_reg(expression.begin(), idx)
+            expression_traits::cx_reg<avx::reg<typename E::real_type>::size>(expression.begin(), idx)
             } -> std::same_as<avx::cx_reg<typename E::real_type>>;
     };
 
@@ -382,7 +380,8 @@ class add : public std::ranges::view_base {
 
 public:
     using real_type = typename E1::real_type;
-
+    static constexpr auto pack_size =
+        std::min(std::max(E1::pack_size, E2::pack_size), avx::reg<real_type>::size);
     class iterator {
         friend class add;
 
@@ -399,6 +398,8 @@ public:
         using value_type       = const std::complex<real_type>;
         using difference_type  = std::ptrdiff_t;
         using iterator_concept = std::random_access_iterator_tag;
+
+        static constexpr auto pack_size = add::pack_size;
 
         iterator() = default;
 
@@ -471,8 +472,8 @@ public:
             return value_type(*(m_lhs + idx)) + value_type(*(m_rhs + idx));
         }
         [[nodiscard]] auto cx_reg(std::size_t idx) const -> avx::cx_reg<real_type> {
-            const auto lhs = expression_traits::cx_reg(m_lhs, idx);
-            const auto rhs = expression_traits::cx_reg(m_rhs, idx);
+            const auto lhs = expression_traits::cx_reg<pack_size>(m_lhs, idx);
+            const auto rhs = expression_traits::cx_reg<pack_size>(m_rhs, idx);
 
             return avx::add(lhs, rhs);
         }
@@ -535,7 +536,8 @@ class sub : public std::ranges::view_base {
 
 public:
     using real_type = typename E1::real_type;
-
+    static constexpr auto pack_size =
+        std::min(std::max(E1::pack_size, E2::pack_size), avx::reg<real_type>::size);
     class iterator {
         friend class sub;
 
@@ -552,6 +554,8 @@ public:
         using value_type       = const std::complex<real_type>;
         using difference_type  = std::ptrdiff_t;
         using iterator_concept = std::random_access_iterator_tag;
+
+        static constexpr auto pack_size = sub::pack_size;
 
         iterator() = default;
 
@@ -624,8 +628,8 @@ public:
             return value_type(*(m_lhs + idx)) - value_type(*(m_rhs + idx));
         }
         [[nodiscard]] auto cx_reg(std::size_t idx) const -> avx::cx_reg<real_type> {
-            const auto lhs = expression_traits::cx_reg(m_lhs, idx);
-            const auto rhs = expression_traits::cx_reg(m_rhs, idx);
+            const auto lhs = expression_traits::cx_reg<pack_size>(m_lhs, idx);
+            const auto rhs = expression_traits::cx_reg<pack_size>(m_rhs, idx);
 
             return avx::sub(lhs, rhs);
         }
@@ -689,6 +693,7 @@ class mul : public std::ranges::view_base {
 public:
     using real_type = typename E1::real_type;
 
+    static constexpr auto pack_size = avx::reg<real_type>::size;
     class iterator {
         friend class mul;
 
@@ -705,6 +710,8 @@ public:
         using value_type       = const std::complex<real_type>;
         using difference_type  = std::ptrdiff_t;
         using iterator_concept = std::random_access_iterator_tag;
+
+        static constexpr auto pack_size = mul::pack_size;
 
         iterator() = default;
 
@@ -777,8 +784,8 @@ public:
             return value_type(*(m_lhs + idx)) * value_type(*(m_rhs + idx));
         }
         [[nodiscard]] auto cx_reg(std::size_t idx) const -> avx::cx_reg<real_type> {
-            const auto lhs = expression_traits::cx_reg(m_lhs, idx);
-            const auto rhs = expression_traits::cx_reg(m_rhs, idx);
+            const auto lhs = expression_traits::cx_reg<pack_size>(m_lhs, idx);
+            const auto rhs = expression_traits::cx_reg<pack_size>(m_rhs, idx);
 
             return avx::mul(lhs, rhs);
         }
@@ -842,6 +849,7 @@ class div : public std::ranges::view_base {
 public:
     using real_type = typename E1::real_type;
 
+    static constexpr auto pack_size = avx::reg<real_type>::size;
     class iterator {
         friend class div;
 
@@ -858,6 +866,8 @@ public:
         using value_type       = const std::complex<real_type>;
         using difference_type  = std::ptrdiff_t;
         using iterator_concept = std::random_access_iterator_tag;
+
+        static constexpr auto pack_size = div::pack_size;
 
         iterator() = default;
 
@@ -930,8 +940,8 @@ public:
             return value_type(*(m_lhs + idx)) / value_type(*(m_rhs + idx));
         }
         [[nodiscard]] auto cx_reg(std::size_t idx) const -> avx::cx_reg<real_type> {
-            const auto lhs = expression_traits::cx_reg(m_lhs, idx);
-            const auto rhs = expression_traits::cx_reg(m_rhs, idx);
+            const auto lhs = expression_traits::cx_reg<pack_size>(m_lhs, idx);
+            const auto rhs = expression_traits::cx_reg<pack_size>(m_rhs, idx);
 
             return avx::div(lhs, rhs);
         }
@@ -997,6 +1007,7 @@ class scalar_add : public std::ranges::view_base {
 public:
     using real_type = typename E::real_type;
 
+    static constexpr auto pack_size = std::min(E::pack_size, avx::reg<real_type>::size);
     class iterator {
         friend class scalar_add;
 
@@ -1012,6 +1023,8 @@ public:
         using value_type       = const std::complex<real_type>;
         using difference_type  = std::ptrdiff_t;
         using iterator_concept = std::random_access_iterator_tag;
+
+        static constexpr auto pack_size = scalar_add::pack_size;
 
         iterator() = default;
 
@@ -1083,7 +1096,7 @@ public:
         }
         [[nodiscard]] auto cx_reg(std::size_t idx) const -> avx::cx_reg<real_type> {
             const auto scalar = avx::broadcast(m_scalar);
-            const auto vector = expression_traits::cx_reg(m_vector, idx);
+            const auto vector = expression_traits::cx_reg<pack_size>(m_vector, idx);
 
             return avx::add(scalar, vector);
         }
@@ -1144,6 +1157,7 @@ class scalar_sub : public std::ranges::view_base {
 public:
     using real_type = typename E::real_type;
 
+    static constexpr auto pack_size = std::min(E::pack_size, avx::reg<real_type>::size);
     class iterator {
         friend class scalar_sub;
 
@@ -1159,6 +1173,8 @@ public:
         using value_type       = const std::complex<real_type>;
         using difference_type  = std::ptrdiff_t;
         using iterator_concept = std::random_access_iterator_tag;
+
+        static constexpr auto pack_size = scalar_sub::pack_size;
 
         iterator() = default;
 
@@ -1230,7 +1246,7 @@ public:
         }
         [[nodiscard]] auto cx_reg(std::size_t idx) const -> avx::cx_reg<real_type> {
             const auto scalar = avx::broadcast(m_scalar);
-            const auto vector = expression_traits::cx_reg(m_vector, idx);
+            const auto vector = expression_traits::cx_reg<pack_size>(m_vector, idx);
 
             return avx::sub(scalar, vector);
         }
@@ -1293,6 +1309,7 @@ class scalar_mul : public std::ranges::view_base {
 public:
     using real_type = typename E::real_type;
 
+    static constexpr auto pack_size = std::min(E::pack_size, avx::reg<real_type>::size);
     class iterator {
         friend class scalar_mul;
 
@@ -1308,6 +1325,8 @@ public:
         using value_type       = const std::complex<real_type>;
         using difference_type  = std::ptrdiff_t;
         using iterator_concept = std::random_access_iterator_tag;
+
+        static constexpr auto pack_size = scalar_mul::pack_size;
 
         iterator() = default;
 
@@ -1379,7 +1398,7 @@ public:
         }
         [[nodiscard]] auto cx_reg(std::size_t idx) const -> avx::cx_reg<real_type> {
             const auto scalar = avx::broadcast(m_scalar);
-            const auto vector = expression_traits::cx_reg(m_vector, idx);
+            const auto vector = expression_traits::cx_reg<pack_size>(m_vector, idx);
 
             return avx::mul(scalar, vector);
         }
@@ -1440,6 +1459,7 @@ class scalar_div : public std::ranges::view_base {
 public:
     using real_type = typename E::real_type;
 
+    static constexpr auto pack_size = std::min(E::pack_size, avx::reg<real_type>::size);
     class iterator {
         friend class scalar_div;
 
@@ -1455,6 +1475,8 @@ public:
         using value_type       = const std::complex<real_type>;
         using difference_type  = std::ptrdiff_t;
         using iterator_concept = std::random_access_iterator_tag;
+
+        static constexpr auto pack_size = scalar_div::pack_size;
 
         iterator() = default;
 
@@ -1526,7 +1548,7 @@ public:
         }
         [[nodiscard]] auto cx_reg(std::size_t idx) const -> avx::cx_reg<real_type> {
             const auto scalar = avx::broadcast(m_scalar);
-            const auto vector = expression_traits::cx_reg(m_vector, idx);
+            const auto vector = expression_traits::cx_reg<pack_size>(m_vector, idx);
 
             return avx::div(scalar, vector);
         }

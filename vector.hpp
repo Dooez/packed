@@ -193,7 +193,7 @@ public:
             for (long i = 0; i < aligned_size; i += pack_size) {
                 auto offset = i * 2;
                 for (uint i_reg = 0; i_reg < pack_size; i_reg += reg_size) {
-                    auto data = internal::expression_traits::cx_reg(it_other, offset + i_reg);
+                    auto data = internal::expression_traits::cx_reg<pack_size>(it_other, offset + i_reg);
 
                     avx::store(ptr + offset + i_reg, data.real);
                     avx::store(ptr + offset + i_reg + PackSize, data.imag);
@@ -715,7 +715,7 @@ public:
             for (long i = 0; i < aligned_size; i += pack_size) {
                 auto offset = i * 2;
                 for (uint i_reg = 0; i_reg < pack_size; i_reg += reg_size) {
-                    auto data = internal::expression_traits::cx_reg(it_expr, offset + i_reg);
+                    auto data = internal::expression_traits::cx_reg<pack_size>(it_expr, offset + i_reg);
 
                     avx::store(ptr + offset + i_reg, data.real);
                     avx::store(ptr + offset + i_reg + PackSize, data.imag);

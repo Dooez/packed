@@ -41,7 +41,7 @@ constexpr auto pidx(std::size_t idx) -> std::size_t {
     return idx + idx / PackSize * PackSize;
 }
 
-template<typename T, std::align_val_t Alignment = std::align_val_t(64)>
+template<typename T, std::align_val_t Alignment = std::align_val_t{64}>
 class aligned_allocator {
 public:
     using value_type      = T;
@@ -498,6 +498,86 @@ struct convert<float> {
         } else {
             return tup;
         }
+    }
+
+    template<bool Inverse = true>
+    static inline auto inverse(auto... args) {
+        auto tup = std::make_tuple(args...);
+        if constexpr (Inverse) {
+            auto inverse = [](auto reg) {
+                using reg_t = decltype(reg);
+                return reg_t{reg.imag, reg.real};
+            };
+            return internal::apply_for_each(inverse, tup);
+        } else {
+            return tup;
+        }
+    };
+};
+
+template<>
+struct convert<double> {
+    static constexpr auto swap_12 = [](cx_reg<double> reg) {
+        auto real = _mm256_permute4x64_pd(reg.real, 0b11011000);
+        auto imag = _mm256_permute4x64_pd(reg.imag, 0b11011000);
+        return cx_reg<double>({real, imag});
+    };
+
+    static constexpr auto swap_24 = [](cx_reg<float> reg) {
+        auto real = unpacklo_128(reg.real, reg.imag);
+        auto imag = unpackhi_128(reg.real, reg.imag);
+        return cx_reg<double>({real, imag});
+    };
+
+    template<std::size_t PackFrom, std::size_t PackTo>
+        requires(PackFrom > 0) && (PackTo > 0)
+    static inline auto repack(auto... args) {
+        auto tup = std::make_tuple(args...);
+        if constexpr (PackFrom == PackTo || (PackFrom >= 4 && PackTo >= 4)) {
+            return tup;
+        } else if constexpr (PackFrom == 1) {
+            if constexpr (PackTo >= 4) {
+                auto pack_1 = [](cx_reg<float> reg) {
+                    auto real = unpacklo_pd(reg.real, reg.imag);
+                    auto imag = unpackhi_pd(reg.real, reg.imag);
+                    return cx_reg<float>({real, imag});
+                };
+                auto tmp = internal::apply_for_each(pack_1, tup);
+                return internal::apply_for_each(swap_12, tmp);
+            } else if constexpr (PackTo == 2) {
+                return internal::apply_for_each(swap_12, tup);
+            }
+        } else if constexpr (PackFrom == 2) {
+            if constexpr (PackTo >= 4) {
+                return internal::apply_for_each(swap_24, tup);
+            } else if constexpr (PackTo == 1) {
+                return internal::apply_for_each(swap_12, tup);
+            }
+        } else if constexpr (PackFrom >= 4) {
+            if constexpr (PackTo == 2) {
+                return internal::apply_for_each(swap_24, tup);
+            } else if constexpr (PackTo == 1) {
+                auto pack_1 = [](cx_reg<float> reg) {
+                    auto real = unpacklo_pd(reg.real, reg.imag);
+                    auto imag = unpackhi_pd(reg.real, reg.imag);
+                    return cx_reg<float>({real, imag});
+                };
+                auto tmp = internal::apply_for_each(pack_1, tup);
+                return internal::apply_for_each(swap_24, tmp);
+            }
+        }
+    };
+
+    template<std::size_t PackFrom>
+    static inline auto split(auto... args) {
+        auto tup = std::make_tuple(args...);
+        { return tup; }
+    }
+
+    template<std::size_t PackTo>
+    static inline auto combine(auto... args) {
+        auto tup = std::make_tuple(args...);
+        { return tup; }
     }
 
     template<bool Inverse = true>
