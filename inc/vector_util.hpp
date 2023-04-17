@@ -173,28 +173,6 @@ constexpr void apply_for_each(F&& f, Tups&&... args) {
  *
  */
 namespace avx {
-/**
-     * @brief Register aligned adress
-     *
-     * @tparam PackSize
-     * @tparam T
-     * @param data Base address. Must be aligned by avx register size.
-     * @param offset New address offset. Must be a multiple of avx register size.
-     * If data in-pack index I is non-zero, offset must be less then PackSize - I;
-     * @return T*
-     */
-template<std::size_t PackSize, typename T>
-constexpr auto ra_addr(T* data, std::size_t offset) -> T* {
-    return data + offset + (offset / PackSize) * PackSize;
-}
-template<>
-constexpr auto ra_addr<8>(float* data, std::size_t offset) -> float* {
-    return data + offset * 2;
-}
-template<>
-constexpr auto ra_addr<4>(double* data, std::size_t offset) -> double* {
-    return data + offset * 2;
-}
 
 template<typename T>
 struct reg;
@@ -219,6 +197,27 @@ struct cx_reg {
     typename reg<T>::type real;
     typename reg<T>::type imag;
 };
+
+/**
+     * @brief Register aligned adress
+     *
+     * @tparam PackSize
+     * @tparam T
+     * @param data Base address. Must be aligned by avx register size.
+     * @param offset New address offset. Must be a multiple of avx register size.
+     * If data in-pack index I is non-zero, offset must be less then PackSize - I;
+     * @return T*
+     */
+template<std::size_t PackSize, typename T>
+constexpr auto ra_addr(T* data, std::size_t offset) -> T* {
+    return data + offset + (offset / PackSize) * PackSize;
+}
+template<std::size_t PackSize, typename T>
+    requires(PackSize < avx::reg<T>::size)
+constexpr auto ra_addr(T* data, std::size_t offset) -> T* {
+    return data + offset * 2;
+}
+
 
 inline auto load(const float* source) -> reg<float>::type {
     return _mm256_loadu_ps(source);

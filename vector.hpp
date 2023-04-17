@@ -4,6 +4,7 @@
 #include "vector_util.hpp"
 
 #include <complex>
+#include <cstddef>
 #include <memory>
 #include <vector>
 
@@ -23,6 +24,9 @@ template<typename T,
     requires packed_floating_point<T, PackSize>
 class vector {
     friend class internal::expression_traits;
+    template<typename OT, typename OAllocator, std::size_t OPackSize>
+        requires packed_floating_point<OT, OPackSize>
+    friend class pcx::vector;
 
 private:
     using alloc_traits = std::allocator_traits<Allocator>;
@@ -309,6 +313,30 @@ public:
         return const_iterator(m_ptr + packed_idx(size()), size());
     }
 
+    template<typename SAllocator>
+    explicit operator std::vector<std::complex<T>, SAllocator>() const {
+        auto it_this      = begin();
+        auto aligned_size = end().align_lower() - it_this;
+
+        auto svec = std::vector<std::complex<T>, SAllocator>();
+        svec.reserve(m_size);
+        svec.resize(aligned_size);
+        auto* svec_ptr = reinterpret_cast<T*>(svec.data());
+
+        auto ptr = &(*it_this);
+        for (uint i = 0; i < aligned_size; i += pack_size) {
+            for (uint i_reg = 0; i_reg < pack_size; i_reg += avx::reg<real_type>::size) {
+                auto data = avx::cxload<pack_size>(m_ptr, i + i_reg);
+                avx::cxstore<avx::reg<real_type>::size>(avx::ra_addr<1>(svec_ptr, i + i_reg), data);
+            }
+        }
+        it_this += aligned_size;
+
+        while (it_this < end()) {
+            svec.push_back(it_this.vale());
+            ++it_this;
+        }
+    }
 private:
     [[no_unique_address]] allocator_type m_allocator{};
 
