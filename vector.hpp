@@ -360,6 +360,7 @@ public:
         *this = pcx::subrange(other.begin(), other.end());
     }
 
+    
 private:
     [[no_unique_address]] allocator_type m_allocator{};
 
@@ -674,6 +675,24 @@ public:
         requires(Size == pcx::dynamic_size)
     : m_begin(begin)
     , m_size(size){};
+
+    subrange(const iterator& begin, const iterator& end) noexcept
+        requires(Size == pcx::dynamic_size)
+    : m_begin(begin)
+    , m_size(end - begin){};
+
+    template<typename VAllocator>
+    subrange(vector<real_type, VAllocator, pack_size>& vector) noexcept
+        requires(Size == pcx::dynamic_size)
+    : m_begin(vector.begin())
+    , m_size(vector.size()){};
+
+    template<typename VAllocator>
+    subrange(const vector<real_type, VAllocator, pack_size>& vector) noexcept
+        requires(Size == pcx::dynamic_size) && Const
+    : m_begin(vector.begin())
+    , m_size(vector.size()){};
+
 
     explicit subrange(const iterator& begin) noexcept
         requires(Size != pcx::dynamic_size)
