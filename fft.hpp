@@ -7,6 +7,7 @@
 
 #include <array>
 #include <cmath>
+#include <concepts>
 #include <cstddef>
 #include <iostream>
 #include <memory>
@@ -357,9 +358,9 @@ inline void node8(std::array<T*, 8> data, avx::reg_t<T> scaling = avx::reg_t<T>{
  * @param scaling avx register with scaling factor
  */
 template<typename T, std::size_t PDest, std::size_t PSrc, bool ConjTw, bool Reverse, bool Scale>
-inline void node4(std::array<T*, 4>             data,
-                  std::array<avx::cx_reg<T>, 3> tw,
-                  avx::reg_t<T>                 scaling = avx::reg_t<T>{}) {
+inline void node4_old(std::array<T*, 4>             data,
+                      std::array<avx::cx_reg<T>, 3> tw,
+                      avx::reg_t<T>                 scaling = avx::reg_t<T>{}) {
     constexpr auto PLoad   = std::max(PSrc, avx::reg<T>::size);
     constexpr auto PStore  = std::max(PDest, avx::reg<T>::size);
     constexpr bool Inverse = ConjTw || Reverse;
@@ -410,7 +411,7 @@ inline void node4(std::array<T*, 4>             data,
  *
  */
 template<typename T, std::size_t PDest, std::size_t PSrc, bool ConjTw, bool Reverse, bool Scale>
-inline void node4(std::array<T*, 4> data, avx::reg_t<T> scaling = avx::reg_t<T>{}) {
+inline void node4_old(std::array<T*, 4> data, avx::reg_t<T> scaling = avx::reg_t<T>{}) {
     constexpr auto PLoad   = std::max(PSrc, avx::reg<T>::size);
     constexpr auto PStore  = std::max(PDest, avx::reg<T>::size);
     constexpr bool Inverse = ConjTw || Reverse;
@@ -452,7 +453,7 @@ inline void node4(std::array<T*, 4> data, avx::reg_t<T> scaling = avx::reg_t<T>{
 };
 
 template<typename T, std::size_t PDest, std::size_t PSrc, bool ConjTw, bool Reverse, bool Scale>
-inline void node2(std::array<T*, 2> data, avx::cx_reg<T> tw0, avx::reg_t<T> scaling = avx::reg_t<T>{}) {
+inline void node2_old(std::array<T*, 2> data, avx::cx_reg<T> tw0, avx::reg_t<T> scaling = avx::reg_t<T>{}) {
     constexpr auto PLoad   = std::max(PSrc, avx::reg<T>::size);
     constexpr auto PStore  = std::max(PDest, avx::reg<T>::size);
     constexpr bool Inverse = ConjTw || Reverse;
@@ -510,25 +511,37 @@ inline void node2(std::array<T*, 2> data, avx::reg_t<T> scaling = avx::reg_t<T>{
     cxstore<PStore>(data[1], a1);
 }
 
-template<typename T, std::size_t PDest, std::size_t PSrc, bool ConjTw, bool Reverse, bool Scale>
-inline void node4(std::array<T*, 4>             dest,
-                  std::array<T*, 4>             src,
+template<typename T,
+         std::size_t PDest,
+         std::size_t PSrc,
+         bool        ConjTw,
+         bool        Reverse,
+         bool        Scale,
+         typename... U>
+inline void node4(std::array<T*, 4> dest,
+                  std::array<U*, 4>... src,
                   std::array<avx::cx_reg<T>, 3> tw,
                   avx::reg_t<T>                 scaling = avx::reg_t<T>{}) {
     constexpr auto PLoad   = std::max(PSrc, avx::reg<T>::size);
     constexpr auto PStore  = std::max(PDest, avx::reg<T>::size);
     constexpr bool Inverse = ConjTw || Reverse;
-
-    auto p2 = avx::cxload<PLoad>(src[2]);
-    auto p3 = avx::cxload<PLoad>(src[3]);
-    auto p0 = avx::cxload<PLoad>(src[0]);
-    auto p1 = avx::cxload<PLoad>(src[1]);
-
+    // NOLINTNEXTLINE(*-declaration)
+    avx::cx_reg<T> p0, p1, p2, p3;
+    if constexpr (sizeof...(src) != 0) {
+        p2 = avx::cxload<PLoad>(src[2]...);
+        p3 = avx::cxload<PLoad>(src[3]...);
+        p0 = avx::cxload<PLoad>(src[0]...);
+        p1 = avx::cxload<PLoad>(src[1]...);
+    } else {
+        p2 = avx::cxload<PLoad>(dest[2]);
+        p3 = avx::cxload<PLoad>(dest[3]);
+        p0 = avx::cxload<PLoad>(dest[0]);
+        p1 = avx::cxload<PLoad>(dest[1]);
+    }
     std::tie(p2, p3, p0, p1) = avx::convert<T>::template repack<PSrc, PLoad>(p2, p3, p0, p1);
     std::tie(p2, p3, p0, p1) = avx::convert<T>::template inverse<Inverse>(p2, p3, p0, p1);
-
     // NOLINTNEXTLINE(*-declaration)
-    avx::cx_reg<T> b0{}, b1{}, b2{}, b3{};
+    avx::cx_reg<T> b0, b1, b2, b3;
     if constexpr (Reverse) {
         auto [a2, a3tw] = avx::ibtfly(p2, p3);
         auto [a0, a1tw] = avx::ibtfly(p0, p1);
@@ -560,20 +573,32 @@ inline void node4(std::array<T*, 4>             dest,
     cxstore<PStore>(dest[2], b2);
     cxstore<PStore>(dest[3], b3);
 };
-template<typename T, std::size_t PDest, std::size_t PSrc, bool ConjTw, bool Reverse, bool Scale>
-inline void node4(std::array<T*, 4> dest, std::array<T*, 4> src, avx::reg_t<T> scaling = avx::reg_t<T>{}) {
+template<typename T,
+         std::size_t PDest,
+         std::size_t PSrc,
+         bool        ConjTw,
+         bool        Reverse,
+         bool        Scale,
+         typename... U>
+inline void node4(std::array<T*, 4> dest, std::array<U*, 4>... src, avx::reg_t<T> scaling = avx::reg_t<T>{}) {
     constexpr auto PLoad   = std::max(PSrc, avx::reg<T>::size);
     constexpr auto PStore  = std::max(PDest, avx::reg<T>::size);
     constexpr bool Inverse = ConjTw || Reverse;
-
-    auto p2 = avx::cxload<PLoad>(src[2]);
-    auto p3 = avx::cxload<PLoad>(src[3]);
-    auto p0 = avx::cxload<PLoad>(src[0]);
-    auto p1 = avx::cxload<PLoad>(src[1]);
-
+    // NOLINTNEXTLINE(*-declaration)
+    avx::cx_reg<T> p0, p1, p2, p3;
+    if constexpr (sizeof...(src) != 0) {
+        p2 = avx::cxload<PLoad>(src[2]...);
+        p3 = avx::cxload<PLoad>(src[3]...);
+        p0 = avx::cxload<PLoad>(src[0]...);
+        p1 = avx::cxload<PLoad>(src[1]...);
+    } else {
+        p2 = avx::cxload<PLoad>(dest[2]);
+        p3 = avx::cxload<PLoad>(dest[3]);
+        p0 = avx::cxload<PLoad>(dest[0]);
+        p1 = avx::cxload<PLoad>(dest[1]);
+    }
     std::tie(p2, p3, p0, p1) = avx::convert<T>::template repack<PSrc, PLoad>(p2, p3, p0, p1);
     std::tie(p2, p3, p0, p1) = avx::convert<T>::template inverse<Inverse>(p2, p3, p0, p1);
-
     // NOLINTNEXTLINE(*-declaration)
     avx::cx_reg<T> b0{}, b1{}, b2{}, b3{};
     if constexpr (Reverse) {
@@ -602,21 +627,32 @@ inline void node4(std::array<T*, 4> dest, std::array<T*, 4> src, avx::reg_t<T> s
     cxstore<PStore>(dest[3], b3);
 };
 
-template<typename T, std::size_t PDest, std::size_t PSrc, bool ConjTw, bool Reverse, bool Scale>
+template<typename T,
+         std::size_t PDest,
+         std::size_t PSrc,
+         bool        ConjTw,
+         bool        Reverse,
+         bool        Scale,
+         typename... U>
 inline void node2(std::array<T*, 2> dest,
-                  std::array<T*, 2> src,
-                  avx::cx_reg<T>    tw0,
-                  avx::reg_t<T>     scaling = avx::reg_t<T>{}) {
+                  std::array<U*, 2>... src,
+                  avx::cx_reg<T> tw0,
+                  avx::reg_t<T>  scaling = avx::reg_t<T>{}) {
     constexpr auto PLoad   = std::max(PSrc, avx::reg<T>::size);
     constexpr auto PStore  = std::max(PDest, avx::reg<T>::size);
     constexpr bool Inverse = ConjTw || Reverse;
-
-    auto p1 = avx::cxload<PLoad>(src[1]);
-    auto p0 = avx::cxload<PLoad>(src[0]);
-
+    // NOLINTNEXTLINE(*-declaration)
+    avx::cx_reg<T> p0, p1;
+    if constexpr (sizeof...(src) != 0) {
+        p0 = avx::cxload<PLoad>(src[0]...);
+        p1 = avx::cxload<PLoad>(src[1]...);
+    } else {
+        p0 = avx::cxload<PLoad>(dest[0]);
+        p1 = avx::cxload<PLoad>(dest[1]);
+    }
     std::tie(p1, p0) = avx::convert<T>::template repack<PSrc, PLoad>(p1, p0);
     std::tie(p1, p0) = avx::convert<T>::template inverse<Inverse>(p1, p0);
-
+    // NOLINTNEXTLINE(*-declaration)
     avx::cx_reg<T> a0, a1;
     if constexpr (Reverse) {
         std::tie(a0, a1) = avx::btfly(p0, p1);
