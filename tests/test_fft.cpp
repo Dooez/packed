@@ -402,35 +402,38 @@ int test_fftu_float_0(std::size_t size) {
         auto ffu   = fftu(vec);
         auto eps_u = 1U << (depth - 1);
 
-        auto vec_short = pcx::vector<float, std::allocator<float>, PackSize>(size - 31);
-        auto vec_zero  = pcx::vector<float, std::allocator<float>, PackSize>(size);
+        for (auto n_empty = size / 2; n_empty < std::min(size, size / 2 + pcx::avx::reg<float>::size);
+             ++n_empty) {
+            auto vec_short = pcx::vector<float, std::allocator<float>, PackSize>(size - n_empty);
+            auto vec_zero  = pcx::vector<float, std::allocator<float>, PackSize>(size);
 
-        vec_short = pcx::subrange(vec.begin(), vec_short.size());
-        pcx::subrange(vec_zero.begin(), vec_short.size())
-            .assign(pcx::subrange(vec.begin(), vec_short.size()));
+            vec_short = pcx::subrange(vec.begin(), vec_short.size());
+            pcx::subrange(vec_zero.begin(), vec_short.size())
+                .assign(pcx::subrange(vec.begin(), vec_short.size()));
 
-        for (uint i = 0; i < size; ++i) {
-            svec_out[i] = vec_zero[i];
-        }
-
-        auto vec_out_zero = vec_zero;
-        vec_out = vec_out_zero;
-        unit.unsorted(vec_out_zero);
-        unit.unsorted(vec_out, vec_short);
-        int ret = 0;
-        for (uint i = 0; i < size; ++i) {
-            auto val = std::complex<float>(vec_out_zero[i].value());
-            if (!equal_eps(val, vec_out[i].value(), eps_u)) {
-                std::cout << PackSize << " fftu " << size << ":" << sub_size << " #" << i << ": "
-                          << abs(val - vec_out[i].value()) << "  " << val << vec_out[i].value() << "\n";
-                ++ret;
+            for (uint i = 0; i < size; ++i) {
+                svec_out[i] = vec_zero[i];
             }
-            if (ret > 16) {
+
+            auto vec_out_zero = vec_zero;
+            vec_out           = vec_out_zero;
+            unit.unsorted(vec_out_zero);
+            unit.unsorted(vec_out, vec_short);
+            int ret = 0;
+            for (uint i = 0; i < size; ++i) {
+                auto val = std::complex<float>(vec_out_zero[i].value());
+                if (!equal_eps(val, vec_out[i].value(), eps_u)) {
+                    std::cout << PackSize << " fftu " << size << ":" << sub_size << " #" << i << ": "
+                              << abs(val - vec_out[i].value()) << "  " << val << vec_out[i].value() << "\n";
+                    ++ret;
+                }
+                if (ret > 16) {
+                    return ret;
+                }
+            }
+            if (ret != 0) {
                 return ret;
             }
-        }
-        if (ret != 0) {
-            return ret;
         }
     }
     return 0;
@@ -444,7 +447,7 @@ int main() {
         // ret += test_ifftu_float(1U << i);
         // ret += test_fft_float4(1U << i);
         // ret += test_fft_float<1024>(1U << i);
-        // ret += test_fft_float(1U << i);
+        ret += test_fft_float(1U << i);
         ret += test_fftu_float(1U << i);
         ret += test_fftu_float_0(1U << i);
         // ret += test_fftu_float<1024>(1U << i);
