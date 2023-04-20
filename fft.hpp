@@ -23,353 +23,252 @@ namespace internal::fft {
 template<typename T, typename... U>
 concept has_type = (std::same_as<T, U> || ...);
 
-/**
- * @brief Performs three levels of FFT butterflies.
- * If data and twiddles are in ascending order, equivalent to decimation in frequency.
- * To perform decimation in time data must be in order {0, 4, 2, 6, 1, 5, 3, 7}
- * and twiddles must be in order {tw0, tw10, tw11, tw20, tw22, tw21, tw23}.
- *
- * @tparam T
- * @tparam PDest pack size of destination
- * @tparam PSrc pack size of source
- * @tparam ConjTw use complex conjugate of twiddles (by switching data's real and imaginary parts)
- * @tparam Reverse perform operations in reverse order with complex conjugate of twiddles (unoffected by ConjTw)
- * @tparam Scale multiply the result by scaling factor
- * @param data array of pointers to data
- * @param tw array of avx registers with twiddles
- * @param scaling avx register with scaling factor
- */
-template<typename T, std::size_t PDest, std::size_t PSrc, bool ConjTw, bool Reverse, bool Scale>
-inline void node8(std::array<T*, 8>             data,
-                  std::array<avx::cx_reg<T>, 7> tw,
-                  avx::reg_t<T>                 scaling = avx::reg_t<T>{}) {
+template<typename T, std::size_t PDest, std::size_t PSrc, bool ConjTw, bool Reverse, typename... Args>
+inline void node8(std::array<T*, 8> dest, Args... args) {
     constexpr auto PLoad   = std::max(PSrc, avx::reg<T>::size);
     constexpr auto PStore  = std::max(PDest, avx::reg<T>::size);
     constexpr bool Inverse = ConjTw || Reverse;
 
-    using reg_t = avx::cx_reg<float>;
+    using src_type       = std::array<T*, 8>;
+    using tw_type        = std::array<avx::cx_reg<T>, 7>;
+    constexpr bool Src   = has_type<src_type, Args...>;
+    constexpr bool Tw    = has_type<tw_type, Args...>;
+    constexpr bool Scale = has_type<avx::reg_t<T>, Args...>;
 
     if constexpr (Reverse) {
-        auto c4 = avx::cxload<PLoad>(data[4]);
-        auto c5 = avx::cxload<PLoad>(data[5]);
-        auto c6 = avx::cxload<PLoad>(data[6]);
-        auto c7 = avx::cxload<PLoad>(data[7]);
-
+        avx::cx_reg<T> c4, c5, c6, c7;
+        if constexpr (Src) {
+            auto& src = std::get<src_type&>(std::tie(args...));
+            c4        = avx::cxload<PLoad>(src[4]);
+            c5        = avx::cxload<PLoad>(src[5]);
+            c6        = avx::cxload<PLoad>(src[6]);
+            c7        = avx::cxload<PLoad>(src[7]);
+        } else {
+            c4 = avx::cxload<PLoad>(dest[4]);
+            c5 = avx::cxload<PLoad>(dest[5]);
+            c6 = avx::cxload<PLoad>(dest[6]);
+            c7 = avx::cxload<PLoad>(dest[7]);
+        }
         std::tie(c4, c5, c6, c7) = avx::convert<T>::template repack<PSrc, PLoad>(c4, c5, c6, c7);
         std::tie(c4, c5, c6, c7) = avx::convert<T>::template inverse<Inverse>(c4, c5, c6, c7);
+        avx::cx_reg<T> a4, a5, a6, a7;
+        if constexpr (Tw) {
+            auto& tw        = std::get<tw_type&>(std::tie(args...));
+            auto [b4, b5tw] = avx::ibtfly(c4, c5);
+            auto [b6, b7tw] = avx::ibtfly(c6, c7);
+            auto [b5, b7]   = avx::mul({b5tw, tw[5]}, {b7tw, tw[6]});
 
-        auto [b4, b5tw] = avx::ibtfly(c4, c5);
-        auto [b6, b7tw] = avx::ibtfly(c6, c7);
-        auto [b5, b7]   = avx::mul({b5tw, tw[5]}, {b7tw, tw[6]});
+            std::tie(a4, a6) = avx::ibtfly(b4, b6);
+            std::tie(a5, a7) = avx::ibtfly(b5, b7);
+            std::tie(a6, a7) = avx::mul({a6, tw[2]}, {a7, tw[2]});
+        } else {
+            static const T sq2 = std::sqrt(double{2}) / 2;
+            auto [b4, b5_tw]   = avx::ibtfly(c4, c5);
+            auto [b6, b7_tw]   = avx::ibtfly<2>(c6, c7);
+            auto twsq2         = avx::broadcast(sq2);
+            b5_tw              = avx::mul(b5_tw, twsq2);
+            b7_tw              = avx::mul(b7_tw, twsq2);
 
-        auto [a4, a6tw] = avx::ibtfly(b4, b6);
-        auto [a5, a7tw] = avx::ibtfly(b5, b7);
-        auto [a6, a7]   = avx::mul({a6tw, tw[2]}, {a7tw, tw[2]});
-
-        auto c0 = avx::cxload<PLoad>(data[0]);
-        auto c1 = avx::cxload<PLoad>(data[1]);
-        auto c2 = avx::cxload<PLoad>(data[2]);
-        auto c3 = avx::cxload<PLoad>(data[3]);
-
+            std::tie(a4, a6) = avx::ibtfly<3>(b4, b6);
+            auto b5 = avx::cx_reg<T>{avx::add(b5_tw.real, b5_tw.imag), avx::sub(b5_tw.imag, b5_tw.real)};
+            auto b7 = avx::cx_reg<T>{avx::sub(b7_tw.real, b7_tw.imag), avx::add(b7_tw.real, b7_tw.imag)};
+            std::tie(a5, a7) = avx::ibtfly<3>(b5, b7);
+        }
+        avx::cx_reg<T> c0, c1, c2, c3;
+        if constexpr (Src) {
+            auto& src = std::get<src_type&>(std::tie(args...));
+            c0        = avx::cxload<PLoad>(src[0]);
+            c1        = avx::cxload<PLoad>(src[1]);
+            c2        = avx::cxload<PLoad>(src[2]);
+            c3        = avx::cxload<PLoad>(src[3]);
+        } else {
+            c0 = avx::cxload<PLoad>(dest[0]);
+            c1 = avx::cxload<PLoad>(dest[1]);
+            c2 = avx::cxload<PLoad>(dest[2]);
+            c3 = avx::cxload<PLoad>(dest[3]);
+        }
         std::tie(c0, c1, c2, c3) = avx::convert<T>::template repack<PSrc, PLoad>(c0, c1, c2, c3);
         std::tie(c0, c1, c2, c3) = avx::convert<T>::template inverse<Inverse>(c0, c1, c2, c3);
 
-        auto [b0, b1tw] = avx::ibtfly(c0, c1);
-        auto [b2, b3tw] = avx::ibtfly(c2, c3);
-        auto [b1, b3]   = avx::mul({b1tw, tw[3]}, {b3tw, tw[4]});
+        avx::cx_reg<T> p0, p2, p4, p6, a1, a3;
+        if constexpr (Tw) {
+            auto& tw        = std::get<tw_type&>(std::tie(args...));
+            auto [b0, b1tw] = avx::ibtfly(c0, c1);
+            auto [b2, b3tw] = avx::ibtfly(c2, c3);
+            auto [b1, b3]   = avx::mul({b1tw, tw[3]}, {b3tw, tw[4]});
 
-        auto [a0, a2tw] = avx::ibtfly(b0, b2);
-        auto [a1, a3tw] = avx::ibtfly(b1, b3);
-        auto [a2, a3]   = avx::mul({a2tw, tw[1]}, {a3tw, tw[1]});
+            auto [a0, a2]    = avx::ibtfly(b0, b2);
+            std::tie(a1, a3) = avx::ibtfly(b1, b3);
+            std::tie(a2, a3) = avx::mul({a2, tw[1]}, {a3, tw[1]});
 
-        auto [p0, p4tw] = avx::ibtfly(a0, a4);
-        auto [p2, p6tw] = avx::ibtfly(a2, a6);
-        auto [p4, p6]   = avx::mul({p4tw, tw[0]}, {p6tw, tw[0]});
+            std::tie(p0, p4) = avx::ibtfly(a0, a4);
+            std::tie(p2, p6) = avx::ibtfly(a2, a6);
+            std::tie(p4, p6) = avx::mul({p4, tw[0]}, {p6, tw[0]});
+        } else {
+            auto [b0, b1] = avx::ibtfly(c0, c1);
+            auto [b2, b3] = avx::ibtfly<3>(c2, c3);
 
-        if constexpr (Scale) {
-            p0 = avx::mul(p0, scaling);
-            p2 = avx::mul(p2, scaling);
-            p4 = avx::mul(p4, scaling);
-            p6 = avx::mul(p6, scaling);
+            auto [a0, a2]    = avx::ibtfly(b0, b2);
+            std::tie(a1, a3) = avx::ibtfly(b1, b3);
+
+            std::tie(p0, p4) = avx::ibtfly(a0, a4);
+            std::tie(p2, p6) = avx::ibtfly(a2, a6);
         }
-        std::tie(p0, p2, p4, p6) = avx::convert<T>::template inverse<Inverse>(p0, p2, p4, p6);
-        std::tie(p0, p2, p4, p6) = avx::convert<T>::template repack<PStore, PDest>(p0, p2, p4, p6);
-
-        cxstore<PStore>(data[0], p0);
-        cxstore<PStore>(data[2], p2);
-        cxstore<PStore>(data[4], p4);
-        cxstore<PStore>(data[6], p6);
-
-        auto [p1, p5tw] = avx::ibtfly(a1, a5);
-        auto [p3, p7tw] = avx::ibtfly(a3, a7);
-        auto [p5, p7]   = avx::mul({p5tw, tw[0]}, {p7tw, tw[0]});
-
         if constexpr (Scale) {
-            p1 = avx::mul(p1, scaling);
-            p3 = avx::mul(p3, scaling);
-            p5 = avx::mul(p5, scaling);
-            p7 = avx::mul(p7, scaling);
+            auto& scaling = std::get<avx::reg_t<T>&>(std::tie(args...));
+            p0            = avx::mul(p0, scaling);
+            p4            = avx::mul(p4, scaling);
+            p2            = avx::mul(p2, scaling);
+            p6            = avx::mul(p6, scaling);
         }
-        std::tie(p1, p3, p5, p7) = avx::convert<T>::template inverse<Inverse>(p1, p3, p5, p7);
-        std::tie(p1, p3, p5, p7) = avx::convert<T>::template repack<PStore, PDest>(p1, p3, p5, p7);
-
-        cxstore<PStore>(data[1], p1);
-        cxstore<PStore>(data[3], p3);
-        cxstore<PStore>(data[5], p5);
-        cxstore<PStore>(data[7], p7);
-    } else {
-        auto p5 = avx::cxload<PLoad>(data[5]);
-        auto p7 = avx::cxload<PLoad>(data[7]);
-        auto p1 = avx::cxload<PLoad>(data[1]);
-        auto p3 = avx::cxload<PLoad>(data[3]);
-
-        std::tie(p5, p7, p1, p3) = avx::convert<T>::template repack<PSrc, PLoad>(p5, p7, p1, p3);
-        std::tie(p5, p7, p1, p3) = avx::convert<T>::template inverse<Inverse>(p5, p7, p1, p3);
-
-        auto [p5tw, p7tw] = avx::mul({p5, tw[0]}, {p7, tw[0]});
-        auto [a1, a5]     = avx::btfly(p1, p5tw);
-        auto [a3, a7]     = avx::btfly(p3, p7tw);
-
-        auto [a3tw, a7tw] = avx::mul({a3, tw[1]}, {a7, tw[2]});
-        auto [b1, b3]     = avx::btfly(a1, a3tw);
-        auto [b5, b7]     = avx::btfly(a5, a7tw);
-
-        auto [b1tw, b3tw, b5tw, b7tw] = avx::mul({b1, tw[3]}, {b3, tw[4]}, {b5, tw[5]}, {b7, tw[6]});
-
-        auto p4 = avx::cxload<PLoad>(data[4]);
-        auto p6 = avx::cxload<PLoad>(data[6]);
-        auto p0 = avx::cxload<PLoad>(data[0]);
-        auto p2 = avx::cxload<PLoad>(data[2]);
-
-        std::tie(p4, p6, p0, p2) = avx::convert<T>::template repack<PSrc, PLoad>(p4, p6, p0, p2);
-        std::tie(p4, p6, p0, p2) = avx::convert<T>::template inverse<Inverse>(p4, p6, p0, p2);
-
-        auto [p4tw, p6tw] = avx::mul({p4, tw[0]}, {p6, tw[0]});
-        auto [a0, a4]     = avx::btfly(p0, p4tw);
-        auto [a2, a6]     = avx::btfly(p2, p6tw);
-
-        auto [a2tw, a6tw] = avx::mul({a2, tw[1]}, {a6, tw[2]});
-        auto [b0, b2]     = avx::btfly(a0, a2tw);
-        auto [b4, b6]     = avx::btfly(a4, a6tw);
-
-        auto [c0, c1] = avx::btfly(b0, b1tw);
-        auto [c2, c3] = avx::btfly(b2, b3tw);
-
-        if constexpr (Scale) {
-            c0 = avx::mul(c0, scaling);
-            c1 = avx::mul(c1, scaling);
-            c2 = avx::mul(c2, scaling);
-            c3 = avx::mul(c3, scaling);
-        }
-        std::tie(c0, c1, c2, c3) = avx::convert<T>::template inverse<Inverse>(c0, c1, c2, c3);
-        std::tie(c0, c1, c2, c3) = avx::convert<T>::template repack<PStore, PDest>(c0, c1, c2, c3);
-
-        cxstore<PStore>(data[0], c0);
-        cxstore<PStore>(data[1], c1);
-        cxstore<PStore>(data[2], c2);
-        cxstore<PStore>(data[3], c3);
-
-        auto [c4, c5] = avx::btfly(b4, b5tw);
-        auto [c6, c7] = avx::btfly(b6, b7tw);
-
-        if constexpr (Scale) {
-            c4 = avx::mul(c4, scaling);
-            c5 = avx::mul(c5, scaling);
-            c6 = avx::mul(c6, scaling);
-            c7 = avx::mul(c7, scaling);
-        }
-        std::tie(c4, c5, c6, c7) = avx::convert<T>::template inverse<Inverse>(c4, c5, c6, c7);
-        std::tie(c4, c5, c6, c7) = avx::convert<T>::template repack<PStore, PDest>(c4, c5, c6, c7);
-
-        cxstore<PStore>(data[4], c4);
-        cxstore<PStore>(data[5], c5);
-        cxstore<PStore>(data[6], c6);
-        cxstore<PStore>(data[7], c7);
-    }
-}
-/**
- * @brief Performs three levels of FFT butterflies. This oveload uses fixed twiddles for FFT sizes 2, 4, 8.
- *
- */
-template<typename T, std::size_t PDest, std::size_t PSrc, bool ConjTw, bool Reverse, bool Scale>
-inline void node8(std::array<T*, 8> data, avx::reg_t<T> scaling = avx::reg_t<T>{}) {
-    constexpr auto PLoad   = std::max(PSrc, avx::reg<T>::size);
-    constexpr auto PStore  = std::max(PDest, avx::reg<T>::size);
-    constexpr bool Inverse = ConjTw || Reverse;
-
-    static const T sq2 = std::sqrt(double{2}) / 2;
-
-    using reg_t = avx::cx_reg<float>;
-
-    if constexpr (Reverse) {
-        auto c4 = avx::cxload<PLoad>(data[4]);
-        auto c5 = avx::cxload<PLoad>(data[5]);
-        auto c6 = avx::cxload<PLoad>(data[6]);
-        auto c7 = avx::cxload<PLoad>(data[7]);
-
-        std::tie(c4, c5, c6, c7) = avx::convert<T>::template repack<PSrc, PLoad>(c4, c5, c6, c7);
-        std::tie(c4, c5, c6, c7) = avx::convert<T>::template inverse<Inverse>(c4, c5, c6, c7);
-
-        auto [b4, b5_tw] = avx::ibtfly(c4, c5);
-        auto [b6, b7_tw] = avx::ibtfly<2>(c6, c7);
-        auto twsq2       = avx::broadcast(sq2);
-        b5_tw            = avx::mul(b5_tw, twsq2);
-        b7_tw            = avx::mul(b7_tw, twsq2);
-
-        auto [a4, a6] = avx::ibtfly<3>(b4, b6);
-
-        reg_t b5 = {avx::add(b5_tw.real, b5_tw.imag), avx::sub(b5_tw.imag, b5_tw.real)};
-        reg_t b7 = {avx::sub(b7_tw.real, b7_tw.imag), avx::add(b7_tw.real, b7_tw.imag)};
-
-        auto [a5, a7] = avx::ibtfly<3>(b5, b7);
-
-        auto c0 = avx::cxload<PLoad>(data[0]);
-        auto c1 = avx::cxload<PLoad>(data[1]);
-        auto c2 = avx::cxload<PLoad>(data[2]);
-        auto c3 = avx::cxload<PLoad>(data[3]);
-
-        std::tie(c0, c1, c2, c3) = avx::convert<T>::template repack<PSrc, PLoad>(c0, c1, c2, c3);
-        std::tie(c0, c1, c2, c3) = avx::convert<T>::template inverse(c0, c1, c2, c3);
-
-        auto [b0, b1] = avx::ibtfly(c0, c1);
-        auto [b2, b3] = avx::ibtfly<3>(c2, c3);
-
-        auto [a0, a2] = avx::ibtfly(b0, b2);
-
-        auto [p0, p4] = avx::ibtfly(a0, a4);
-        auto [p2, p6] = avx::ibtfly(a2, a6);
-
-        if constexpr (Scale) {
-            p0 = avx::mul(p0, scaling);
-            p4 = avx::mul(p4, scaling);
-            p2 = avx::mul(p2, scaling);
-            p6 = avx::mul(p6, scaling);
-        }
-        std::tie(p0, p4, p2, p6) = avx::convert<T>::template inverse(p0, p4, p2, p6);
+        std::tie(p0, p4, p2, p6) = avx::convert<T>::template inverse<Inverse>(p0, p4, p2, p6);
         std::tie(p0, p4, p2, p6) = avx::convert<T>::template repack<PStore, PDest>(p0, p4, p2, p6);
 
-        avx::cxstore<PStore>(data[0], p0);
-        avx::cxstore<PStore>(data[4], p4);
-        avx::cxstore<PStore>(data[2], p2);
-        avx::cxstore<PStore>(data[6], p6);
-
-        auto [a1, a3] = avx::ibtfly(b1, b3);
+        avx::cxstore<PStore>(dest[0], p0);
+        avx::cxstore<PStore>(dest[4], p4);
+        avx::cxstore<PStore>(dest[2], p2);
+        avx::cxstore<PStore>(dest[6], p6);
 
         auto [p1, p5] = avx::ibtfly(a1, a5);
         auto [p3, p7] = avx::ibtfly(a3, a7);
-
-        if constexpr (Scale) {
-            p1 = avx::mul(p1, scaling);
-            p5 = avx::mul(p5, scaling);
-            p3 = avx::mul(p3, scaling);
-            p7 = avx::mul(p7, scaling);
+        if constexpr (Tw) {
+            auto& tw         = std::get<tw_type&>(std::tie(args...));
+            std::tie(p5, p7) = avx::mul({p5, tw[0]}, {p7, tw[0]});
         }
-        std::tie(p1, p5, p3, p7) = avx::convert<T>::template inverse(p1, p5, p3, p7);
+        if constexpr (Scale) {
+            auto& scaling = std::get<avx::reg_t<T>&>(std::tie(args...));
+            p1            = avx::mul(p1, scaling);
+            p5            = avx::mul(p5, scaling);
+            p3            = avx::mul(p3, scaling);
+            p7            = avx::mul(p7, scaling);
+        }
+        std::tie(p1, p5, p3, p7) = avx::convert<T>::template inverse<Inverse>(p1, p5, p3, p7);
         std::tie(p1, p5, p3, p7) = avx::convert<T>::template repack<PStore, PDest>(p1, p5, p3, p7);
 
-        avx::cxstore<PStore>(data[1], p1);
-        avx::cxstore<PStore>(data[5], p5);
-        avx::cxstore<PStore>(data[3], p3);
-        avx::cxstore<PStore>(data[7], p7);
+        avx::cxstore<PStore>(dest[1], p1);
+        avx::cxstore<PStore>(dest[5], p5);
+        avx::cxstore<PStore>(dest[3], p3);
+        avx::cxstore<PStore>(dest[7], p7);
     } else {
-        auto p1 = avx::cxload<PLoad>(data[1]);
-        auto p5 = avx::cxload<PLoad>(data[5]);
-        auto p3 = avx::cxload<PLoad>(data[3]);
-        auto p7 = avx::cxload<PLoad>(data[7]);
+        avx::cx_reg<T> p1, p3, p5, p7;
+        if constexpr (Src) {
+            auto& src = std::get<src_type&>(std::tie(args...));
+            p5        = avx::cxload<PLoad>(src[5]);
+            p1        = avx::cxload<PLoad>(src[1]);
+            p7        = avx::cxload<PLoad>(src[7]);
+            p3        = avx::cxload<PLoad>(src[3]);
+        } else {
+            p5 = avx::cxload<PLoad>(dest[5]);
+            p1 = avx::cxload<PLoad>(dest[1]);
+            p7 = avx::cxload<PLoad>(dest[7]);
+            p3 = avx::cxload<PLoad>(dest[3]);
+        }
+        std::tie(p5, p1, p7, p3) = avx::convert<T>::template repack<PSrc, PLoad>(p5, p1, p7, p3);
+        std::tie(p5, p1, p7, p3) = avx::convert<T>::template inverse<Inverse>(p5, p1, p7, p3);
 
-        std::tie(p1, p5, p3, p7) = avx::convert<T>::template repack<PSrc, PLoad>(p1, p5, p3, p7);
-        std::tie(p1, p5, p3, p7) = avx::convert<T>::template inverse<Inverse>(p1, p5, p3, p7);
+        avx::cx_reg<T> b1, b3, b5, b7;
+        if constexpr (Tw) {
+            auto& tw          = std::get<tw_type&>(std::tie(args...));
+            auto [p5tw, p7tw] = avx::mul({p5, tw[0]}, {p7, tw[0]});
+            auto [a1, a5]     = avx::btfly(p1, p5tw);
+            auto [a3, a7]     = avx::btfly(p3, p7tw);
 
-        auto [a1, a5] = avx::btfly(p1, p5);
-        auto [a3, a7] = avx::btfly(p3, p7);
+            auto [a3tw, a7tw] = avx::mul({a3, tw[1]}, {a7, tw[2]});
+            std::tie(b1, b3)  = avx::btfly(a1, a3tw);
+            std::tie(b5, b7)  = avx::btfly(a5, a7tw);
 
-        auto [b1, b3] = avx::btfly(a1, a3);
-        auto [b5, b7] = avx::btfly<3>(a5, a7);
-        reg_t b5_tw   = {avx::add(b5.real, b5.imag), avx::sub(b5.imag, b5.real)};
-        reg_t b7_tw   = {avx::sub(b7.real, b7.imag), avx::add(b7.real, b7.imag)};
-        auto  twsq2   = avx::broadcast(sq2);
-        b5_tw         = avx::mul(b5_tw, twsq2);
-        b7_tw         = avx::mul(b7_tw, twsq2);
+            std::tie(b1, b3, b5, b7) = avx::mul({b1, tw[3]}, {b3, tw[4]}, {b5, tw[5]}, {b7, tw[6]});
+        } else {
+            static const T sq2 = std::sqrt(double{2}) / 2;
+            auto [a1, a5]      = avx::btfly(p1, p5);
+            auto [a3, a7]      = avx::btfly(p3, p7);
 
-        auto p0 = avx::cxload<PLoad>(data[0]);
-        auto p4 = avx::cxload<PLoad>(data[4]);
-        auto p2 = avx::cxload<PLoad>(data[2]);
-        auto p6 = avx::cxload<PLoad>(data[6]);
+            std::tie(b1, b3) = avx::btfly(a1, a3);
+            std::tie(b5, b7) = avx::btfly<3>(a5, a7);
+            auto b5_tw       = avx::cx_reg<T>{avx::add(b5.real, b5.imag), avx::sub(b5.imag, b5.real)};
+            auto b7_tw       = avx::cx_reg<T>{avx::sub(b7.real, b7.imag), avx::add(b7.real, b7.imag)};
+            auto twsq2       = avx::broadcast(sq2);
+            b5               = avx::mul(b5_tw, twsq2);
+            b7               = avx::mul(b7_tw, twsq2);
+        }
+        avx::cx_reg<T> p0, p2, p4, p6;
+        if constexpr (Src) {
+            auto& src = std::get<src_type&>(std::tie(args...));
+            p4        = avx::cxload<PLoad>(src[4]);
+            p0        = avx::cxload<PLoad>(src[0]);
+            p6        = avx::cxload<PLoad>(src[6]);
+            p2        = avx::cxload<PLoad>(src[2]);
+        } else {
+            p4 = avx::cxload<PLoad>(dest[4]);
+            p0 = avx::cxload<PLoad>(dest[0]);
+            p6 = avx::cxload<PLoad>(dest[6]);
+            p2 = avx::cxload<PLoad>(dest[2]);
+        }
+        std::tie(p4, p0, p6, p2) = avx::convert<T>::template repack<PSrc, PLoad>(p4, p0, p6, p2);
+        std::tie(p4, p0, p6, p2) = avx::convert<T>::template inverse<Inverse>(p4, p0, p6, p2);
 
-        std::tie(p4, p6, p0, p2) = avx::convert<T>::template repack<PSrc, PLoad>(p4, p6, p0, p2);
-        std::tie(p4, p6, p0, p2) = avx::convert<T>::template inverse<Inverse>(p4, p6, p0, p2);
+        avx::cx_reg<T> c0, c1, c2, c3, b4, b6;
+        if constexpr (Tw) {
+            auto& tw          = std::get<tw_type&>(std::tie(args...));
+            auto [p4tw, p6tw] = avx::mul({p4, tw[0]}, {p6, tw[0]});
+            auto [a0, a4]     = avx::btfly(p0, p4tw);
+            auto [a2, a6]     = avx::btfly(p2, p6tw);
 
-        auto [a0, a4] = avx::btfly(p0, p4);
-        auto [a2, a6] = avx::btfly(p2, p6);
+            auto [a2tw, a6tw] = avx::mul({a2, tw[1]}, {a6, tw[2]});
+            auto [b0, b2]     = avx::btfly(a0, a2tw);
+            std::tie(b4, b6)  = avx::btfly(a4, a6tw);
 
-        auto [b0, b2] = avx::btfly(a0, a2);
+            std::tie(c0, c1) = avx::btfly(b0, b1);
+            std::tie(c2, c3) = avx::btfly(b2, b3);
+        } else {
+            auto [a0, a4] = avx::btfly(p0, p4);
+            auto [a2, a6] = avx::btfly(p2, p6);
 
-        auto [c0, c1] = avx::btfly(b0, b1);
-        auto [c2, c3] = avx::btfly<3>(b2, b3);
+            auto [b0, b2]    = avx::btfly(a0, a2);
+            std::tie(b4, b6) = avx::btfly<3>(a4, a6);
 
+            std::tie(c0, c1) = avx::btfly(b0, b1);
+            std::tie(c2, c3) = avx::btfly<3>(b2, b3);
+        }
         if constexpr (Scale) {
-            c0 = avx::mul(c0, scaling);
-            c1 = avx::mul(c1, scaling);
-            c2 = avx::mul(c2, scaling);
-            c3 = avx::mul(c3, scaling);
+            auto& scaling = std::get<avx::reg_t<T>&>(std::tie(args...));
+            c0            = avx::mul(c0, scaling);
+            c1            = avx::mul(c1, scaling);
+            c2            = avx::mul(c2, scaling);
+            c3            = avx::mul(c3, scaling);
         }
         std::tie(c0, c1, c2, c3) = avx::convert<T>::template inverse<Inverse>(c0, c1, c2, c3);
         std::tie(c0, c1, c2, c3) = avx::convert<T>::template repack<PStore, PDest>(c0, c1, c2, c3);
 
-        cxstore<PStore>(data[0], c0);
-        cxstore<PStore>(data[1], c1);
-        cxstore<PStore>(data[2], c2);
-        cxstore<PStore>(data[3], c3);
+        cxstore<PStore>(dest[0], c0);
+        cxstore<PStore>(dest[1], c1);
+        cxstore<PStore>(dest[2], c2);
+        cxstore<PStore>(dest[3], c3);
 
-        auto [b4, b6] = avx::btfly<3>(a4, a6);
-
-        auto [c4, c5] = avx::btfly(b4, b5_tw);
-        auto [c6, c7] = avx::btfly<2>(b6, b7_tw);
-
+        avx::cx_reg<T> c4, c5, c6, c7;
+        if constexpr (Tw) {
+            std::tie(c4, c5) = avx::btfly(b4, b5);
+            std::tie(c6, c7) = avx::btfly(b6, b7);
+        } else {
+            std::tie(c4, c5) = avx::btfly(b4, b5);
+            std::tie(c6, c7) = avx::btfly<2>(b6, b7);
+        }
         if constexpr (Scale) {
-            c4 = avx::mul(c4, scaling);
-            c5 = avx::mul(c5, scaling);
-            c6 = avx::mul(c6, scaling);
-            c7 = avx::mul(c7, scaling);
+            auto& scaling = std::get<avx::reg_t<T>&>(std::tie(args...));
+            c4            = avx::mul(c4, scaling);
+            c5            = avx::mul(c5, scaling);
+            c6            = avx::mul(c6, scaling);
+            c7            = avx::mul(c7, scaling);
         }
         std::tie(c4, c5, c6, c7) = avx::convert<T>::template inverse<Inverse>(c4, c5, c6, c7);
         std::tie(c4, c5, c6, c7) = avx::convert<T>::template repack<PStore, PDest>(c4, c5, c6, c7);
 
-        cxstore<PStore>(data[4], c4);
-        cxstore<PStore>(data[5], c5);
-        cxstore<PStore>(data[6], c6);
-        cxstore<PStore>(data[7], c7);
+        cxstore<PStore>(dest[4], c4);
+        cxstore<PStore>(dest[5], c5);
+        cxstore<PStore>(dest[6], c6);
+        cxstore<PStore>(dest[7], c7);
     }
-}
-
-template<typename T, std::size_t PDest, std::size_t PSrc, bool ConjTw, bool Reverse, bool Scale>
-inline void node2(std::array<T*, 2> data, avx::reg_t<T> scaling = avx::reg_t<T>{}) {
-    constexpr auto PLoad   = std::max(PSrc, avx::reg<T>::size);
-    constexpr auto PStore  = std::max(PDest, avx::reg<T>::size);
-    constexpr bool Inverse = ConjTw || Reverse;
-
-    auto p1 = avx::cxload<PLoad>(data[1]);
-    auto p0 = avx::cxload<PLoad>(data[0]);
-
-    std::tie(p1, p0) = avx::convert<T>::template repack<PSrc, PLoad>(p1, p0);
-    std::tie(p1, p0) = avx::convert<T>::template inverse<Inverse>(p1, p0);
-
-    avx::cx_reg<T> a0, a1;
-    if constexpr (Reverse) {
-        std::tie(a0, a1) = avx::ibtfly(p0, p1);
-    } else {
-        std::tie(a0, a1) = avx::btfly(p0, p1);
-    }
-    if constexpr (Scale) {
-        a0 = avx::mul(a0, scaling);
-        a1 = avx::mul(a1, scaling);
-    }
-    std::tie(a0, a1) = avx::convert<T>::template inverse<Inverse>(a0, a1);
-    std::tie(a0, a1) = avx::convert<T>::template repack<PStore, PDest>(a0, a1);
-
-    cxstore<PStore>(data[0], a0);
-    cxstore<PStore>(data[1], a1);
-}
+};
 
 /**
   * @brief Performes two levels of FFT butterflies.
@@ -466,51 +365,53 @@ inline void node4(std::array<T*, 4> dest, Args... args) {
     cxstore<PStore>(dest[3], b3);
 };
 
-
-template<typename T,
-         std::size_t PDest,
-         std::size_t PSrc,
-         bool        ConjTw,
-         bool        Reverse,
-         bool        Scale,
-         typename... U>
-inline void node2(std::array<T*, 2> dest,
-                  std::array<U*, 2>... src,
-                  avx::cx_reg<T> tw0,
-                  avx::reg_t<T>  scaling = avx::reg_t<T>{}) {
+template<typename T, std::size_t PDest, std::size_t PSrc, bool ConjTw, bool Reverse, typename... Args>
+inline void node2(std::array<T*, 2> dest, Args... args) {
     constexpr auto PLoad   = std::max(PSrc, avx::reg<T>::size);
     constexpr auto PStore  = std::max(PDest, avx::reg<T>::size);
     constexpr bool Inverse = ConjTw || Reverse;
+    constexpr bool Src     = has_type<std::array<T*, 2>, Args...>;
+    constexpr bool Tw      = has_type<avx::cx_reg<T>, Args...>;
+    constexpr bool Scale   = has_type<avx::reg_t<T>, Args...>;
+
     // NOLINTNEXTLINE(*-declaration)
     avx::cx_reg<T> p0, p1;
-    if constexpr (sizeof...(src) != 0) {
-        p0 = avx::cxload<PLoad>(src[0]...);
-        p1 = avx::cxload<PLoad>(src[1]...);
+    if constexpr (Src) {
+        auto& src = std::get<std::array<T*, 4>&>(std::tie(args...));
+        p0        = avx::cxload<PLoad>(src[0]);
+        p1        = avx::cxload<PLoad>(src[1]);
     } else {
         p0 = avx::cxload<PLoad>(dest[0]);
         p1 = avx::cxload<PLoad>(dest[1]);
     }
-    std::tie(p1, p0) = avx::convert<T>::template repack<PSrc, PLoad>(p1, p0);
-    std::tie(p1, p0) = avx::convert<T>::template inverse<Inverse>(p1, p0);
+    std::tie(p0, p1) = avx::convert<T>::template repack<PSrc, PLoad>(p0, p1);
+    std::tie(p0, p1) = avx::convert<T>::template inverse<Inverse>(p0, p1);
     // NOLINTNEXTLINE(*-declaration)
     avx::cx_reg<T> a0, a1;
     if constexpr (Reverse) {
-        std::tie(a0, a1) = avx::btfly(p0, p1);
-        a1               = avx::mul(a1, tw0);
+        std::tie(a0, a1) = avx::ibtfly(p0, p1);
+        if constexpr (Tw) {
+            auto& tw = std::get<avx::cx_reg<T>&>(std::tie(args...));
+            a1       = avx::mul(a1, tw);
+        }
     } else {
-        auto p1tw        = avx::mul(p1, tw0);
-        std::tie(a0, a1) = avx::btfly(p0, p1tw);
+        if constexpr (Tw) {
+            auto& tw = std::get<avx::cx_reg<T>&>(std::tie(args...));
+            p1       = avx::mul(p1, tw);
+        }
+        std::tie(a0, a1) = avx::btfly(p0, p1);
     }
     if constexpr (Scale) {
-        a0 = avx::mul(a0, scaling);
-        a1 = avx::mul(a1, scaling);
+        auto& scaling = std::get<avx::reg_t<T>&>(std::tie(args...));
+        a0            = avx::mul(a0, scaling);
+        a1            = avx::mul(a1, scaling);
     }
     std::tie(a0, a1) = avx::convert<T>::template inverse<Inverse>(a0, a1);
     std::tie(a0, a1) = avx::convert<T>::template repack<PStore, PDest>(a0, a1);
 
     cxstore<PStore>(dest[0], a0);
     cxstore<PStore>(dest[1], a1);
-}
+};
 
 template<typename T>
 inline auto wnk(std::size_t n, std::size_t k) -> std::complex<T> {
@@ -2064,9 +1965,9 @@ public:
             avx::ra_addr<PLoad>(data, offset + l_size / 2),
         };
         if constexpr (IScale) {
-            internal::fft::node2<T, PDest, PSrc, Inverse, false, IScale>(ptrs, tw0, scaling);
+            internal::fft::node2<T, PDest, PSrc, Inverse, false>(ptrs, tw0, scaling);
         } else {
-            internal::fft::node2<T, PDest, PSrc, Inverse, false, IScale>(ptrs, tw0);
+            internal::fft::node2<T, PDest, PSrc, Inverse, false>(ptrs, tw0);
         }
     }
 
@@ -2113,24 +2014,22 @@ public:
                                 avx::cx_reg<T> tw5,
                                 avx::cx_reg<T> tw6,
                                 ScaleT         scaling = ScaleT{}) {
-        constexpr auto PLoad = std::max(PSrc, avx::reg<T>::size);
-
-        auto* ptr0 = avx::ra_addr<PLoad>(data, offset);
-        auto* ptr1 = avx::ra_addr<PLoad>(data, offset + l_size * 1 / 2);
-        auto* ptr2 = avx::ra_addr<PLoad>(data, offset + l_size * 2 / 2);
-        auto* ptr3 = avx::ra_addr<PLoad>(data, offset + l_size * 3 / 2);
-        auto* ptr4 = avx::ra_addr<PLoad>(data, offset + l_size * 4 / 2);
-        auto* ptr5 = avx::ra_addr<PLoad>(data, offset + l_size * 5 / 2);
-        auto* ptr6 = avx::ra_addr<PLoad>(data, offset + l_size * 6 / 2);
-        auto* ptr7 = avx::ra_addr<PLoad>(data, offset + l_size * 7 / 2);
+        constexpr auto    PLoad = std::max(PSrc, avx::reg<T>::size);
+        std::array<T*, 8> ptr04261537{
+            avx::ra_addr<PLoad>(data, offset),
+            avx::ra_addr<PLoad>(data, offset + l_size * 4 / 2),
+            avx::ra_addr<PLoad>(data, offset + l_size * 2 / 2),
+            avx::ra_addr<PLoad>(data, offset + l_size * 6 / 2),
+            avx::ra_addr<PLoad>(data, offset + l_size * 1 / 2),
+            avx::ra_addr<PLoad>(data, offset + l_size * 5 / 2),
+            avx::ra_addr<PLoad>(data, offset + l_size * 3 / 2),
+            avx::ra_addr<PLoad>(data, offset + l_size * 7 / 2),
+        };
+        auto tw = std::array<avx::cx_reg<T>, 7>{tw0, tw1, tw2, tw3, tw5, tw4, tw6};
         if constexpr (IScale) {
-            internal::fft::node8<T, PDest, PSrc, Inverse, false, IScale>(
-                {ptr0, ptr4, ptr2, ptr6, ptr1, ptr5, ptr3, ptr7},
-                {tw0, tw1, tw2, tw3, tw5, tw4, tw6},
-                scaling);
+            internal::fft::node8<T, PDest, PSrc, Inverse, false>(ptr04261537, tw, scaling);
         } else {
-            internal::fft::node8<T, PDest, PSrc, Inverse, false, false>(
-                {ptr0, ptr4, ptr2, ptr6, ptr1, ptr5, ptr3, ptr7}, {tw0, tw1, tw2, tw3, tw5, tw4, tw6});
+            internal::fft::node8<T, PDest, PSrc, Inverse, false>(ptr04261537, tw);
         }
     }
 
@@ -2171,17 +2070,18 @@ public:
 
     template<std::size_t PDest, std::size_t PSrc = PDest, bool Reverse = false>
     inline void node8_dif_along(T* data, std::size_t l_size, std::size_t offset) {
-        constexpr auto PLoad = std::max(PSrc, reg_size);
-        auto*          ptr0  = avx::ra_addr<PLoad>(data, offset);
-        auto*          ptr1  = avx::ra_addr<PLoad>(data, offset + l_size / 8 * 1);
-        auto*          ptr2  = avx::ra_addr<PLoad>(data, offset + l_size / 8 * 2);
-        auto*          ptr3  = avx::ra_addr<PLoad>(data, offset + l_size / 8 * 3);
-        auto*          ptr4  = avx::ra_addr<PLoad>(data, offset + l_size / 8 * 4);
-        auto*          ptr5  = avx::ra_addr<PLoad>(data, offset + l_size / 8 * 5);
-        auto*          ptr6  = avx::ra_addr<PLoad>(data, offset + l_size / 8 * 6);
-        auto*          ptr7  = avx::ra_addr<PLoad>(data, offset + l_size / 8 * 7);
-        internal::fft::node8<T, PDest, PSrc, false, Reverse, false>(
-            {ptr0, ptr1, ptr2, ptr3, ptr4, ptr5, ptr6, ptr7});
+        constexpr auto    PLoad = std::max(PSrc, reg_size);
+        std::array<T*, 8> ptr{
+            avx::ra_addr<PLoad>(data, offset),
+            avx::ra_addr<PLoad>(data, offset + l_size / 8 * 1),
+            avx::ra_addr<PLoad>(data, offset + l_size / 8 * 2),
+            avx::ra_addr<PLoad>(data, offset + l_size / 8 * 3),
+            avx::ra_addr<PLoad>(data, offset + l_size / 8 * 4),
+            avx::ra_addr<PLoad>(data, offset + l_size / 8 * 5),
+            avx::ra_addr<PLoad>(data, offset + l_size / 8 * 6),
+            avx::ra_addr<PLoad>(data, offset + l_size / 8 * 7),
+        };
+        internal::fft::node8<T, PDest, PSrc, false, Reverse>(ptr);
     };
 
 
@@ -2204,7 +2104,7 @@ public:
                 avx::ra_addr<PLoad>(src, offset),
                 avx::ra_addr<PLoad>(src, offset + l_size / 2),
             };
-            internal::fft::node2<T, PDest, PSrc, false, Reverse, false>(dst, src, tw);
+            internal::fft::node2<T, PDest, PSrc, false, Reverse>(dst, src, tw);
         } else {
             std::array<T, avx::reg<T>::size * 2> zeros{};
 
@@ -2224,11 +2124,11 @@ public:
                             *(src + pidx<PSrc>(offset + l_size / 2 * i + diff) + PSrc);
                     }
                     src[i] = align.data();
-                    internal::fft::node2<T, PDest, PSrc, false, Reverse, false>(dst, src, tw);
+                    internal::fft::node2<T, PDest, PSrc, false, Reverse>(dst, src, tw);
                     return;
                 }
             }
-            internal::fft::node2<T, PDest, PSrc, false, Reverse, false>(dst, src, tw);
+            internal::fft::node2<T, PDest, PSrc, false, Reverse>(dst, src, tw);
         }
     };
 
