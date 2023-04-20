@@ -1,5 +1,6 @@
 #include "fft.hpp"
 #include "test_pcx.hpp"
+#include "vector.hpp"
 
 #include <iostream>
 #include <utility>
@@ -22,7 +23,7 @@ void test_que(pcx::fft_unit<float, 8192, 512>& unit,
               pcx::avx::cx_reg<float>          tw1,
               pcx::avx::cx_reg<float>          tw2,
               pcx::avx::reg_t<float>           scaling) {
-    unit.node4_dit_along<8,8,false,true>(data, l_size, offset, tw0, tw1, tw2, scaling);
+    unit.node4_dit_along<8, 8, false, true>(data, l_size, offset, tw0, tw1, tw2, scaling);
 }
 
 
@@ -379,7 +380,56 @@ int test_fftu_float(std::size_t size) {
     }
     return 0;
 }
+template<std::size_t PackSize = 8>
+int test_fftu_float_0(std::size_t size) {
+    constexpr float pi = 3.14159265358979323846;
 
+    auto depth = log2i(size);
+
+    auto vec     = pcx::vector<float, std::allocator<float>, PackSize>(size);
+    auto vec_out = pcx::vector<float, std::allocator<float>, PackSize>(size);
+
+    for (uint i = 0; i < size; ++i) {
+        vec[i] = std::exp(std::complex(0.F, 2 * pi * i / size * 13.37F));
+    }
+
+    for (std::size_t sub_size = 64; sub_size <= size; sub_size *= 2) {
+        vec_out = vec;
+
+        auto unit = pcx::fft_unit<float, pcx::dynamic_size, pcx::dynamic_size>(size, sub_size);
+
+        auto ffu   = fftu(vec);
+        auto eps_u = 1U << (depth - 1);
+
+        auto vec_short = pcx::vector<float, std::allocator<float>, PackSize>(size - 31);
+        auto vec_zero  = pcx::vector<float, std::allocator<float>, PackSize>(size);
+
+        vec_short = pcx::subrange(vec.begin(), vec_short.size());
+        pcx::subrange(vec_zero.begin(), vec_short.size())
+            .assign(pcx::subrange(vec.begin(), vec_short.size()));
+
+        auto vec_out_zero = vec_zero;
+        auto vec_out      = vec;
+        unit.unsorted(vec_out_zero);
+        unit.unsorted(vec_out, vec_short);
+        int ret = 0;
+        for (uint i = 0; i < size; ++i) {
+            auto val = std::complex<float>(vec_out_zero[i].value());
+            if (!equal_eps(val, vec_out[i].value(), eps_u)) {
+                std::cout << PackSize << " fftu " << size << ":" << sub_size << " #" << i << ": "
+                          << abs(val - vec_out[i].value()) << "  " << val << vec_out[i].value() << "\n";
+                ++ret;
+            }
+            if (ret > 16) {
+                return ret;
+            }
+        }
+        if (ret != 0) {
+            return ret;
+        }
+    }
+    return 0;
+}
 int main() {
     int ret = 0;
 
@@ -391,6 +441,7 @@ int main() {
         // ret += test_fft_float<1024>(1U << i);
         ret += test_fft_float(1U << i);
         ret += test_fftu_float(1U << i);
+        ret += test_fftu_float_0(1U << i);
         // ret += test_fftu_float<1024>(1U << i);
         if (ret > 0) {
             return ret;

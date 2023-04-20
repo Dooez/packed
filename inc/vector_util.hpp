@@ -213,8 +213,17 @@ constexpr auto ra_addr(T* data, std::size_t offset) -> T* {
     return data + offset + (offset / PackSize) * PackSize;
 }
 template<std::size_t PackSize, typename T>
+constexpr auto ra_addr(const T* data, std::size_t offset) -> const T* {
+    return data + offset + (offset / PackSize) * PackSize;
+}
+template<std::size_t PackSize, typename T>
     requires(PackSize < avx::reg<T>::size)
 constexpr auto ra_addr(T* data, std::size_t offset) -> T* {
+    return data + offset * 2;
+}
+template<std::size_t PackSize, typename T>
+    requires(PackSize < avx::reg<T>::size)
+constexpr auto ra_addr(const T* data, std::size_t offset) -> const T* {
     return data + offset * 2;
 }
 
