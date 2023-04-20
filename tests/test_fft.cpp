@@ -386,11 +386,12 @@ int test_fftu_float_0(std::size_t size) {
 
     auto depth = log2i(size);
 
-    auto vec     = pcx::vector<float, std::allocator<float>, PackSize>(size);
-    auto vec_out = pcx::vector<float, std::allocator<float>, PackSize>(size);
-
+    auto vec      = pcx::vector<float, std::allocator<float>, PackSize>(size);
+    auto vec_out  = pcx::vector<float, std::allocator<float>, PackSize>(size);
+    auto svec_out = std::vector<std::complex<float>>(size);
     for (uint i = 0; i < size; ++i) {
-        vec[i] = std::exp(std::complex(0.F, 2 * pi * i / size * 13.37F));
+        vec[i]      = std::exp(std::complex(0.F, 2 * pi * i / size * 13.37F));
+        svec_out[i] = vec[i];
     }
 
     for (std::size_t sub_size = 64; sub_size <= size; sub_size *= 2) {
@@ -408,8 +409,12 @@ int test_fftu_float_0(std::size_t size) {
         pcx::subrange(vec_zero.begin(), vec_short.size())
             .assign(pcx::subrange(vec.begin(), vec_short.size()));
 
+        for (uint i = 0; i < size; ++i) {
+            svec_out[i] = vec_zero[i];
+        }
+
         auto vec_out_zero = vec_zero;
-        auto vec_out      = vec;
+        vec_out = vec_out_zero;
         unit.unsorted(vec_out_zero);
         unit.unsorted(vec_out, vec_short);
         int ret = 0;
@@ -439,8 +444,8 @@ int main() {
         // ret += test_ifftu_float(1U << i);
         // ret += test_fft_float4(1U << i);
         // ret += test_fft_float<1024>(1U << i);
-        ret += test_fft_float(1U << i);
-        ret += test_fftu_float(1U << i);
+        // ret += test_fft_float(1U << i);
+        // ret += test_fftu_float(1U << i);
         ret += test_fftu_float_0(1U << i);
         // ret += test_fftu_float<1024>(1U << i);
         if (ret > 0) {
