@@ -1640,7 +1640,6 @@ public:
                 node4_dif_along<PTform, PSrc>(data, size, i_group * reg_size, tw0, tw1, tw2);
             }
         }
-        return twiddle_ptr;
         twiddle_ptr =
             unsorted_subtransform_recursive<PDest, PTform, First, BitReverse>(data, size / 4, twiddle_ptr);
         twiddle_ptr = unsorted_subtransform_recursive<PDest, PTform, false, BitReverse>(
@@ -1840,7 +1839,6 @@ public:
                     dest, src, size, data_size, i_group * reg_size, {tw0, tw1, tw2});
             }
         }
-        return twiddle_ptr;
         twiddle_ptr =
             unsorted_subtransform_recursive<PDest, PTform, First, BitReverse>(dest, size / 4, twiddle_ptr);
         twiddle_ptr = unsorted_subtransform_recursive<PDest, PTform, false, BitReverse>(
