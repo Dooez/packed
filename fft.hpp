@@ -759,8 +759,8 @@ public:
             }
         } else {
             if (log2i(size() / (reg_size * 4)) % 2 == 0) {
-                unsorted_subtransform_recursive_fill0<PDest, PDest, true, BitReversed>(
-                    dest, source, size(), source_size, twiddle_ptr);
+                unsorted_subtransform_recursive<PDest, PDest, true, BitReversed>(
+                    dest, size(), twiddle_ptr, source, source_size);
             } else if (size() / (reg_size * 4) > 8) {
                 constexpr auto PTform = std::max(PDest, reg_size);
                 for (std::size_t i_group = 0; i_group < size() / 8 / reg_size; ++i_group) {
@@ -1498,38 +1498,6 @@ public:
         }
     };
 
-    template<std::size_t PDest, std::size_t PSrc, bool First = false, bool BitReverse = true>
-    inline auto unsorted_subtransform_recursive(T* data, std::size_t size, const T* twiddle_ptr) -> const T* {
-        if (size <= sub_size()) {
-            return unsorted_subtransform<PDest, PSrc, First, BitReverse>(data, size, twiddle_ptr);
-        }
-        constexpr auto PTform = std::max(PSrc, reg_size);
-        if constexpr (First) {
-            twiddle_ptr += 6;
-            for (std::size_t i_group = 0; i_group < size / 4 / reg_size; ++i_group) {
-                node4_along<PTform, PSrc, false>(data, size, i_group * reg_size);
-            }
-        } else {
-            std::array<avx::cx_reg<T>, 3> tw{
-                {{avx::broadcast(twiddle_ptr++), avx::broadcast(twiddle_ptr++)},
-                 {avx::broadcast(twiddle_ptr++), avx::broadcast(twiddle_ptr++)},
-                 {avx::broadcast(twiddle_ptr++), avx::broadcast(twiddle_ptr++)}}
-            };
-            for (std::size_t i_group = 0; i_group < size / 4 / reg_size; ++i_group) {
-                node4_along<PTform, PSrc, false>(data, size, i_group * reg_size, tw);
-            }
-        }
-        twiddle_ptr =
-            unsorted_subtransform_recursive<PDest, PTform, First, BitReverse>(data, size / 4, twiddle_ptr);
-        twiddle_ptr = unsorted_subtransform_recursive<PDest, PTform, false, BitReverse>(
-            avx::ra_addr<PTform>(data, size / 4), size / 4, twiddle_ptr);
-        twiddle_ptr = unsorted_subtransform_recursive<PDest, PTform, false, BitReverse>(
-            avx::ra_addr<PTform>(data, size / 2), size / 4, twiddle_ptr);
-        twiddle_ptr = unsorted_subtransform_recursive<PDest, PTform, false, BitReverse>(
-            avx::ra_addr<PTform>(data, size / 4 * 3), size / 4, twiddle_ptr);
-        return twiddle_ptr;
-    };
-
     template<std::size_t PDest,
              std::size_t PSrc,
              bool        First      = false,
@@ -1700,31 +1668,33 @@ public:
         return twiddle_ptr;
     }
 
-    template<std::size_t PDest, std::size_t PSrc, bool First = false, bool BitReverse = true>
-    inline auto unsorted_subtransform_recursive_fill0(T*          dest,    //
-                                                      const T*    src,
-                                                      std::size_t size,
-                                                      std::size_t data_size,
-                                                      const T*    twiddle_ptr) -> const T* {
+    template<std::size_t PDest,
+             std::size_t PSrc,
+             bool        First      = false,
+             bool        BitReverse = true,
+             typename... Optional>
+    inline auto unsorted_subtransform_recursive(T*          dest,    //
+                                                std::size_t size,
+                                                const T*    twiddle_ptr,
+                                                Optional... optional) -> const T* {
         if (size <= sub_size()) {
             return unsorted_subtransform<PDest, PSrc, First, BitReverse>(
-                dest, size, twiddle_ptr, src, data_size);
+                dest, size, twiddle_ptr, optional...);
         }
         constexpr auto PTform = std::max(PSrc, reg_size);
         if constexpr (First) {
             twiddle_ptr += 6;
             for (std::size_t i_group = 0; i_group < size / 4 / reg_size; ++i_group) {
-                node4_along<PTform, PSrc, false>(dest, size, i_group * reg_size, src, data_size);
+                node4_along<PTform, PSrc, false>(dest, size, i_group * reg_size, optional...);
             }
         } else {
-            std::array<avx::reg_t<T>, 3> tw{
-                {avx::broadcast(twiddle_ptr++), avx::broadcast(twiddle_ptr++)},
-                {avx::broadcast(twiddle_ptr++), avx::broadcast(twiddle_ptr++)},
-                {avx::broadcast(twiddle_ptr++), avx::broadcast(twiddle_ptr++)},
+            std::array<avx::cx_reg<T>, 3> tw{
+                {{avx::broadcast(twiddle_ptr++), avx::broadcast(twiddle_ptr++)},
+                 {avx::broadcast(twiddle_ptr++), avx::broadcast(twiddle_ptr++)},
+                 {avx::broadcast(twiddle_ptr++), avx::broadcast(twiddle_ptr++)}}
             };
-
             for (std::size_t i_group = 0; i_group < size / 4 / reg_size; ++i_group) {
-                node4_along<PTform, PSrc, false>(dest, size, i_group * reg_size, src, data_size, tw);
+                node4_along<PTform, PSrc, false>(dest, size, i_group * reg_size, tw, optional...);
             }
         }
         twiddle_ptr =
@@ -1737,7 +1707,6 @@ public:
             avx::ra_addr<PTform>(dest, size / 4 * 3), size / 4, twiddle_ptr);
         return twiddle_ptr;
     };
-
     template<std::size_t PDest,
              std::size_t PSrc,
              bool        First      = false,
