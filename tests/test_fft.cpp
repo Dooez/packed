@@ -23,7 +23,7 @@ void test_que(pcx::fft_unit<float, 8192, 512>& unit,
               pcx::avx::cx_reg<float>          tw1,
               pcx::avx::cx_reg<float>          tw2,
               pcx::avx::reg_t<float>           scaling) {
-    unit.node4_dit_along<8, 8, false, true>(data, l_size, offset, tw0, tw1, tw2, scaling);
+    unit.node4_dit_along<8, 1, false, true>(data, l_size, offset, tw0, tw1, tw2, scaling);
 }
 
 
