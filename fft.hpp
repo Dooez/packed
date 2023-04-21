@@ -1432,13 +1432,14 @@ public:
             for (std::size_t i_group = 0; i_group < n_groups; ++i_group) {
                 std::size_t offset = i_group * reg_size;
 
-                const auto tw0 = avx::cxload<reg_size>(twiddle_ptr);
-                const auto tw1 = avx::cxload<reg_size>(twiddle_ptr + reg_size * 2);
-                const auto tw2 = avx::cxload<reg_size>(twiddle_ptr + reg_size * 4);
+                std::array<avx::cx_reg<T>, 3> tw{
+                    avx::cxload<reg_size>(twiddle_ptr),
+                    avx::cxload<reg_size>(twiddle_ptr + reg_size * 2),
+                    avx::cxload<reg_size>(twiddle_ptr + reg_size * 4),
+                };
                 twiddle_ptr += reg_size * 6;
-
                 for (std::size_t i = 0; i < group_size; ++i) {
-                    node4_dit_along<PTform, PTform, Inverse>(data, l_size, offset, tw0, tw1, tw2);
+                    node4_along<PTform, PTform, true, Inverse>(data, l_size * 2, offset, tw);
                     offset += l_size * 2;
                 }
             }
@@ -1455,14 +1456,14 @@ public:
                 for (std::size_t i_group = 0; i_group < n_groups; ++i_group) {
                     std::size_t offset = i_group * reg_size;
 
-                    const auto tw0 = avx::cxload<reg_size>(twiddle_ptr);
-                    const auto tw1 = avx::cxload<reg_size>(twiddle_ptr + reg_size * 2);
-                    const auto tw2 = avx::cxload<reg_size>(twiddle_ptr + reg_size * 4);
+                    std::array<avx::cx_reg<T>, 3> tw{
+                        avx::cxload<reg_size>(twiddle_ptr),
+                        avx::cxload<reg_size>(twiddle_ptr + reg_size * 2),
+                        avx::cxload<reg_size>(twiddle_ptr + reg_size * 4),
+                    };
                     twiddle_ptr += reg_size * 6;
-
                     for (std::size_t i = 0; i < group_size; ++i) {
-                        node4_dit_along<PDest, PTform, Inverse, Scale>(
-                            data, l_size, offset, tw0, tw1, tw2, scaling);
+                        node4_along<PDest, PTform, true, Inverse>(data, l_size * 2, offset, tw, scaling);
                         offset += l_size * 2;
                     }
                 }
@@ -1489,12 +1490,13 @@ public:
                 scaling = avx::broadcast(static_cast<T>(1. / static_cast<double>(size)));
             }
             for (std::size_t i_group = 0; i_group < n_groups; ++i_group) {
-                const auto tw0 = avx::cxload<reg_size>(twiddle_ptr);
-                const auto tw1 = avx::cxload<reg_size>(twiddle_ptr + reg_size * 2);
-                const auto tw2 = avx::cxload<reg_size>(twiddle_ptr + reg_size * 4);
+                std::array<avx::cx_reg<T>, 3> tw{
+                    avx::cxload<reg_size>(twiddle_ptr),
+                    avx::cxload<reg_size>(twiddle_ptr + reg_size * 2),
+                    avx::cxload<reg_size>(twiddle_ptr + reg_size * 4),
+                };
                 twiddle_ptr += reg_size * 6;
-                node4_dit_along<PDest, PTform, Inverse, Scale>(
-                    data, size / 2, i_group * reg_size, tw0, tw1, tw2, scaling);
+                node4_along<PDest, PTform, true, Inverse>(data, size, i_group * reg_size, tw, scaling);
             }
             return twiddle_ptr;
         }
@@ -1515,7 +1517,7 @@ public:
                 if constexpr (First) {
                     twiddle_ptr += 6;
                     for (std::size_t i = 0; i < l_size / reg_size / 4; ++i) {
-                        node4_along<PTform, PSrc>(data, l_size, i * reg_size);
+                        node4_along<PTform, PSrc, false>(data, l_size, i * reg_size);
                     }
                 } else {
                     std::array<avx::cx_reg<T>, 3> tw{
@@ -1524,7 +1526,7 @@ public:
                          {avx::broadcast(twiddle_ptr++), avx::broadcast(twiddle_ptr++)}}
                     };
                     for (std::size_t i = 0; i < l_size / reg_size / 4; ++i) {
-                        node4_along<PTform, PSrc>(data, l_size, i * reg_size, tw);
+                        node4_along<PTform, PSrc, false>(data, l_size, i * reg_size, tw);
                     }
                 }
                 l_size /= 4;
@@ -1545,7 +1547,7 @@ public:
             if constexpr (First) {
                 twiddle_ptr += 6;
                 for (std::size_t i = 0; i < l_size / reg_size / 4; ++i) {
-                    node4_along<PTform, PTform>(data, l_size, i * reg_size);
+                    node4_along<PTform, PTform, false>(data, l_size, i * reg_size);
                 }
                 ++i_group;
             }
@@ -1559,7 +1561,7 @@ public:
                 auto* group_ptr = avx::ra_addr<PTform>(data, i_group * l_size);
 
                 for (std::size_t i = 0; i < l_size / reg_size / 4; ++i) {
-                    node4_along<PTform, PTform>(group_ptr, l_size, i * reg_size, tw);
+                    node4_along<PTform, PTform, false>(group_ptr, l_size, i * reg_size, tw);
                 }
             }
             l_size /= 4;
@@ -1672,7 +1674,7 @@ public:
         if constexpr (First) {
             twiddle_ptr += 6;
             for (std::size_t i_group = 0; i_group < size / 4 / reg_size; ++i_group) {
-                node4_along<PTform, PSrc>(data, size, i_group * reg_size);
+                node4_along<PTform, PSrc, false>(data, size, i_group * reg_size);
             }
         } else {
             std::array<avx::cx_reg<T>, 3> tw{
@@ -1681,7 +1683,7 @@ public:
                  {avx::broadcast(twiddle_ptr++), avx::broadcast(twiddle_ptr++)}}
             };
             for (std::size_t i_group = 0; i_group < size / 4 / reg_size; ++i_group) {
-                node4_along<PTform, PSrc>(data, size, i_group * reg_size, tw);
+                node4_along<PTform, PSrc, false>(data, size, i_group * reg_size, tw);
             }
         }
         twiddle_ptr =
@@ -1710,7 +1712,7 @@ public:
             if constexpr (First) {
                 twiddle_ptr += 6;
                 for (std::size_t i = 0; i < l_size / reg_size / 4; ++i) {
-                    node4_along<PTform, PSrc>(dest, l_size, i * reg_size, src, data_size);
+                    node4_along<PTform, PSrc, false>(dest, l_size, i * reg_size, src, data_size);
                 }
             } else {
                 std::array<avx::reg_t<T>, 3> tw{
@@ -1720,7 +1722,7 @@ public:
                 };
 
                 for (std::size_t i = 0; i < l_size / reg_size / 4; ++i) {
-                    node4_along<PTform, PSrc>(dest, l_size, i * reg_size, src, data_size, tw);
+                    node4_along<PTform, PSrc, false>(dest, l_size, i * reg_size, src, data_size, tw);
                 }
             }
             l_size /= 4;
@@ -1740,7 +1742,7 @@ public:
             if constexpr (First) {
                 twiddle_ptr += 6;
                 for (std::size_t i = 0; i < l_size / reg_size / 4; ++i) {
-                    node4_along<PTform, PTform>(dest, l_size, i * reg_size);
+                    node4_along<PTform, PTform, false>(dest, l_size, i * reg_size);
                 }
                 ++i_group;
             }
@@ -1752,7 +1754,7 @@ public:
                 };
                 auto* group_ptr = avx::ra_addr<PTform>(dest, i_group * l_size);
                 for (std::size_t i = 0; i < l_size / reg_size / 4; ++i) {
-                    node4_along<PTform, PTform>(group_ptr, l_size, i * reg_size, tw);
+                    node4_along<PTform, PTform, false>(group_ptr, l_size, i * reg_size, tw);
                 }
             }
             l_size /= 4;
@@ -1871,7 +1873,7 @@ public:
         if constexpr (First) {
             twiddle_ptr += 6;
             for (std::size_t i_group = 0; i_group < size / 4 / reg_size; ++i_group) {
-                node4_along<PTform, PSrc>(dest, size, i_group * reg_size, src, data_size);
+                node4_along<PTform, PSrc, false>(dest, size, i_group * reg_size, src, data_size);
             }
         } else {
             std::array<avx::reg_t<T>, 3> tw{
@@ -1881,7 +1883,7 @@ public:
             };
 
             for (std::size_t i_group = 0; i_group < size / 4 / reg_size; ++i_group) {
-                node4_along<PTform, PSrc>(dest, size, i_group * reg_size, src, data_size, tw);
+                node4_along<PTform, PSrc, false>(dest, size, i_group * reg_size, src, data_size, tw);
             }
         }
         twiddle_ptr =
@@ -2024,13 +2026,13 @@ public:
                 auto* group_ptr = avx::ra_addr<PTform>(data, i_group * l_size * 2);
 
                 for (std::size_t i = 0; i < l_size / reg_size / 2; ++i) {
-                    node4_along<PTform, PTform, false, true>(group_ptr, l_size * 2, i * reg_size, tw);
+                    node4_along<PTform, PTform, false, false, true>(group_ptr, l_size * 2, i * reg_size, tw);
                 }
             }
             if constexpr (First) {
                 twiddle_ptr -= 6;
                 for (std::size_t i = 0; i < l_size / reg_size / 2; ++i) {
-                    node4_along<PTform, PTform, false, true>(data, l_size * 2, i * reg_size);
+                    node4_along<PTform, PTform, false, false, true>(data, l_size * 2, i * reg_size);
                 }
             }
             l_size *= 4;
@@ -2042,7 +2044,7 @@ public:
                 if constexpr (First) {
                     twiddle_ptr -= 6;
                     for (std::size_t i = 0; i < l_size / reg_size / 2; ++i) {
-                        node4_along<PDest, PTform, false, true>(data, l_size * 2, i * reg_size);
+                        node4_along<PDest, PTform, false, false, true>(data, l_size * 2, i * reg_size);
                     }
                 } else {
                     twiddle_ptr -= 6;
@@ -2052,7 +2054,7 @@ public:
                          {avx::broadcast(twiddle_ptr + 4), avx::broadcast(twiddle_ptr + 5)}}
                     };
                     for (std::size_t i = 0; i < l_size / reg_size / 2; ++i) {
-                        node4_along<PDest, PTform, false, true>(data, l_size * 2, i * reg_size, tw);
+                        node4_along<PDest, PTform, false, false, true>(data, l_size * 2, i * reg_size, tw);
                     }
                 }
                 l_size *= 4;
@@ -2092,7 +2094,7 @@ public:
         if constexpr (First) {
             twiddle_ptr -= 6;
             for (std::size_t i_group = 0; i_group < size / 4 / reg_size; ++i_group) {
-                node4_along<PTform, PSrc, false, true>(data, size, i_group * reg_size);
+                node4_along<PTform, PSrc, false, false, true>(data, size, i_group * reg_size);
             }
         } else {
             twiddle_ptr -= 6;
@@ -2102,7 +2104,7 @@ public:
                  {avx::broadcast(twiddle_ptr + 4), avx::broadcast(twiddle_ptr + 5)}}
             };
             for (std::size_t i_group = 0; i_group < size / 4 / reg_size; ++i_group) {
-                node4_along<PTform, PSrc, false, true>(data, size, i_group * reg_size, tw);
+                node4_along<PTform, PSrc, false, false, true>(data, size, i_group * reg_size, tw);
             }
         }
         return twiddle_ptr;
@@ -2124,33 +2126,6 @@ public:
             internal::fft::node2<T, PDest, PSrc, Inverse, false>(ptrs, tw0, scaling);
         } else {
             internal::fft::node2<T, PDest, PSrc, Inverse, false>(ptrs, tw0);
-        }
-    }
-
-    template<std::size_t PDest,
-             std::size_t PSrc    = PDest,
-             bool        Inverse = false,
-             bool        IScale  = false,
-             typename ScaleT     = decltype([] {})>
-    inline void node4_dit_along(float*             data,
-                                std::size_t        l_size,
-                                std::size_t        offset,
-                                avx::cx_reg<float> tw0,
-                                avx::cx_reg<float> tw1,
-                                avx::cx_reg<float> tw2,
-                                ScaleT             scaling = ScaleT{}) {
-        constexpr auto    PLoad = std::max(PSrc, reg_size);
-        std::array<T*, 4> dst{
-            avx::ra_addr<PLoad>(data, offset),
-            avx::ra_addr<PLoad>(data, offset + l_size / 2),
-            avx::ra_addr<PLoad>(data, offset + l_size),
-            avx::ra_addr<PLoad>(data, offset + l_size / 2 * 3),
-        };
-        std::array<avx::cx_reg<float>, 3> tw = {tw0, tw1, tw2};
-        if constexpr (IScale) {
-            internal::fft::node4<T, PDest, PSrc, Inverse, false, true>(dst, tw, scaling);
-        } else {
-            internal::fft::node4<T, PDest, PSrc, Inverse, false, true>(dst, tw);
         }
     }
 
@@ -2268,10 +2243,10 @@ public:
      * @param optional may be any combination of const T* source, std::array<avx::cx_reg<T>,3> twiddles, avx::reg_t<T> scaling
      */
     template<std::size_t PDest,
-             std::size_t PSrc      = PDest,
-             bool        ConjTw    = false,
-             bool        Reverse   = false,
-             bool        DecInTime = false,
+             std::size_t PSrc,
+             bool        DecInTime,
+             bool        ConjTw  = false,
+             bool        Reverse = false,
              typename... Optional>
     inline void node4_along(T* dest, std::size_t l_size, std::size_t offset, Optional... optional) {
         constexpr auto PLoad  = std::max(PSrc, avx::reg<T>::size);

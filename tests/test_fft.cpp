@@ -15,15 +15,13 @@
 //     unit.subtransform<1, 8>(v1.data(), v1.size());
 // }
 
-void test_que(pcx::fft_unit<float, 8192, 512>& unit,
-              float*                           data,
-              std::size_t                      l_size,
-              std::size_t                      offset,
-              pcx::avx::cx_reg<float>          tw0,
-              pcx::avx::cx_reg<float>          tw1,
-              pcx::avx::cx_reg<float>          tw2,
-              pcx::avx::reg_t<float>           scaling) {
-    unit.node4_dit_along<8, 1, false, true>(data, l_size, offset, tw0, tw1, tw2, scaling);
+void test_que(pcx::fft_unit<float, 8192, 512>&       unit,
+              float*                                 data,
+              std::size_t                            l_size,
+              std::size_t                            offset,
+              std::array<pcx::avx::cx_reg<float>, 3> tw,
+              pcx::avx::reg_t<float>                 scaling) {
+    unit.node4_along<8, 1, false, false, true>(data, l_size, offset, tw, scaling);
 }
 
 
