@@ -14,6 +14,7 @@
 #include <stdexcept>
 #include <string>
 #include <tuple>
+#include <utility>
 #include <xmmintrin.h>
 
 // NOLINTBEGIN (*magic-numbers)
@@ -46,7 +47,7 @@ struct order {
         }
         return order;
     }
-    static constexpr std::array<std::size_t, Size> get = [] {
+    static constexpr std::array<std::size_t, Size> data = [] {
         std::array<std::size_t, Size> order;
         for (uint i = 0; i < Size; ++i) {
             if constexpr (DecInTime) {
@@ -57,6 +58,17 @@ struct order {
         }
         return order;
     }();
+    static constexpr std::array<std::size_t, Size - 1> tw = []<std::size_t... N>(std::index_sequence<N...>) {
+        if constexpr (DecInTime) {
+            return std::array<std::size_t, sizeof...(N)>{(
+                N > 0
+                    ? (1U << log2i(N + 1)) - 1 + reverse_bit_order(1 + N - (1U << log2i(N + 1)), log2i(N + 1))
+                    : 0)...};
+        } else {
+            return std::array<std::size_t, sizeof...(N)>{N...};
+        }
+    }
+    (std::make_index_sequence<Size - 1>{});
 };
 
 template<typename T,
@@ -77,19 +89,22 @@ inline void node8(std::array<T*, 8> dest, Args... args) {
     constexpr bool Tw    = has_type<tw_type, Args...>;
     constexpr bool Scale = has_type<avx::reg_t<T>, Args...>;
 
+    constexpr auto& data_idx = order<8, DIT>::data;
+    constexpr auto& tw_idx   = order<8, DIT>::tw;
+
     if constexpr (Reverse) {
         avx::cx_reg<T> c4, c5, c6, c7;
         if constexpr (Src) {
             auto& src = std::get<src_type&>(std::tie(args...));
-            c4        = avx::cxload<PLoad>(src[order<8, DIT>::get[4]]);
-            c5        = avx::cxload<PLoad>(src[order<8, DIT>::get[5]]);
-            c6        = avx::cxload<PLoad>(src[order<8, DIT>::get[6]]);
-            c7        = avx::cxload<PLoad>(src[order<8, DIT>::get[7]]);
+            c4        = avx::cxload<PLoad>(src[data_idx[4]]);
+            c5        = avx::cxload<PLoad>(src[data_idx[5]]);
+            c6        = avx::cxload<PLoad>(src[data_idx[6]]);
+            c7        = avx::cxload<PLoad>(src[data_idx[7]]);
         } else {
-            c4 = avx::cxload<PLoad>(dest[order<8, DIT>::get[4]]);
-            c5 = avx::cxload<PLoad>(dest[order<8, DIT>::get[5]]);
-            c6 = avx::cxload<PLoad>(dest[order<8, DIT>::get[6]]);
-            c7 = avx::cxload<PLoad>(dest[order<8, DIT>::get[7]]);
+            c4 = avx::cxload<PLoad>(dest[data_idx[4]]);
+            c5 = avx::cxload<PLoad>(dest[data_idx[5]]);
+            c6 = avx::cxload<PLoad>(dest[data_idx[6]]);
+            c7 = avx::cxload<PLoad>(dest[data_idx[7]]);
         }
         std::tie(c4, c5, c6, c7) = avx::convert<T>::template repack<PSrc, PLoad>(c4, c5, c6, c7);
         std::tie(c4, c5, c6, c7) = avx::convert<T>::template inverse<Inverse>(c4, c5, c6, c7);
@@ -98,13 +113,13 @@ inline void node8(std::array<T*, 8> dest, Args... args) {
             auto& tw        = std::get<tw_type&>(std::tie(args...));
             auto [b4, b5tw] = avx::ibtfly(c4, c5);
             auto [b6, b7tw] = avx::ibtfly(c6, c7);
-            auto [b5, b7]   = avx::mul({b5tw, tw[5]}, {b7tw, tw[6]});
+            auto [b5, b7]   = avx::mul({b5tw, tw[tw_idx[5]]}, {b7tw, tw[tw_idx[6]]});
 
             std::tie(a4, a6) = avx::ibtfly(b4, b6);
             std::tie(a5, a7) = avx::ibtfly(b5, b7);
-            std::tie(a6, a7) = avx::mul({a6, tw[2]}, {a7, tw[2]});
+            std::tie(a6, a7) = avx::mul({a6, tw[tw_idx[2]]}, {a7, tw[tw_idx[2]]});
         } else {
-            static const T sq2 = std::sqrt(double{2}) / 2;
+            const T sq2 = std::sqrt(double{2}) / 2;
             auto [b4, b5_tw]   = avx::ibtfly(c4, c5);
             auto [b6, b7_tw]   = avx::ibtfly<2>(c6, c7);
             auto twsq2         = avx::broadcast(sq2);
@@ -119,15 +134,15 @@ inline void node8(std::array<T*, 8> dest, Args... args) {
         avx::cx_reg<T> c0, c1, c2, c3;
         if constexpr (Src) {
             auto& src = std::get<src_type&>(std::tie(args...));
-            c0        = avx::cxload<PLoad>(src[order<8, DIT>::get[0]]);
-            c1        = avx::cxload<PLoad>(src[order<8, DIT>::get[1]]);
-            c2        = avx::cxload<PLoad>(src[order<8, DIT>::get[2]]);
-            c3        = avx::cxload<PLoad>(src[order<8, DIT>::get[3]]);
+            c0        = avx::cxload<PLoad>(src[data_idx[0]]);
+            c1        = avx::cxload<PLoad>(src[data_idx[1]]);
+            c2        = avx::cxload<PLoad>(src[data_idx[2]]);
+            c3        = avx::cxload<PLoad>(src[data_idx[3]]);
         } else {
-            c0 = avx::cxload<PLoad>(dest[order<8, DIT>::get[0]]);
-            c1 = avx::cxload<PLoad>(dest[order<8, DIT>::get[1]]);
-            c2 = avx::cxload<PLoad>(dest[order<8, DIT>::get[2]]);
-            c3 = avx::cxload<PLoad>(dest[order<8, DIT>::get[3]]);
+            c0 = avx::cxload<PLoad>(dest[data_idx[0]]);
+            c1 = avx::cxload<PLoad>(dest[data_idx[1]]);
+            c2 = avx::cxload<PLoad>(dest[data_idx[2]]);
+            c3 = avx::cxload<PLoad>(dest[data_idx[3]]);
         }
         std::tie(c0, c1, c2, c3) = avx::convert<T>::template repack<PSrc, PLoad>(c0, c1, c2, c3);
         std::tie(c0, c1, c2, c3) = avx::convert<T>::template inverse<Inverse>(c0, c1, c2, c3);
@@ -137,15 +152,15 @@ inline void node8(std::array<T*, 8> dest, Args... args) {
             auto& tw        = std::get<tw_type&>(std::tie(args...));
             auto [b0, b1tw] = avx::ibtfly(c0, c1);
             auto [b2, b3tw] = avx::ibtfly(c2, c3);
-            auto [b1, b3]   = avx::mul({b1tw, tw[3]}, {b3tw, tw[4]});
+            auto [b1, b3]   = avx::mul({b1tw, tw[tw_idx[3]]}, {b3tw, tw[tw_idx[4]]});
 
             auto [a0, a2]    = avx::ibtfly(b0, b2);
             std::tie(a1, a3) = avx::ibtfly(b1, b3);
-            std::tie(a2, a3) = avx::mul({a2, tw[1]}, {a3, tw[1]});
+            std::tie(a2, a3) = avx::mul({a2, tw[tw_idx[1]]}, {a3, tw[tw_idx[1]]});
 
             std::tie(p0, p4) = avx::ibtfly(a0, a4);
             std::tie(p2, p6) = avx::ibtfly(a2, a6);
-            std::tie(p4, p6) = avx::mul({p4, tw[0]}, {p6, tw[0]});
+            std::tie(p4, p6) = avx::mul({p4, tw[tw_idx[0]]}, {p6, tw[tw_idx[0]]});
         } else {
             auto [b0, b1] = avx::ibtfly(c0, c1);
             auto [b2, b3] = avx::ibtfly<3>(c2, c3);
@@ -166,16 +181,16 @@ inline void node8(std::array<T*, 8> dest, Args... args) {
         std::tie(p0, p4, p2, p6) = avx::convert<T>::template inverse<Inverse>(p0, p4, p2, p6);
         std::tie(p0, p4, p2, p6) = avx::convert<T>::template repack<PStore, PDest>(p0, p4, p2, p6);
 
-        avx::cxstore<PStore>(dest[order<8, DIT>::get[0]], p0);
-        avx::cxstore<PStore>(dest[order<8, DIT>::get[4]], p4);
-        avx::cxstore<PStore>(dest[order<8, DIT>::get[2]], p2);
-        avx::cxstore<PStore>(dest[order<8, DIT>::get[6]], p6);
+        avx::cxstore<PStore>(dest[data_idx[0]], p0);
+        avx::cxstore<PStore>(dest[data_idx[4]], p4);
+        avx::cxstore<PStore>(dest[data_idx[2]], p2);
+        avx::cxstore<PStore>(dest[data_idx[6]], p6);
 
         auto [p1, p5] = avx::ibtfly(a1, a5);
         auto [p3, p7] = avx::ibtfly(a3, a7);
         if constexpr (Tw) {
             auto& tw         = std::get<tw_type&>(std::tie(args...));
-            std::tie(p5, p7) = avx::mul({p5, tw[0]}, {p7, tw[0]});
+            std::tie(p5, p7) = avx::mul({p5, tw[tw_idx[0]]}, {p7, tw[tw_idx[0]]});
         }
         if constexpr (Scale) {
             auto& scaling = std::get<avx::reg_t<T>&>(std::tie(args...));
@@ -187,23 +202,23 @@ inline void node8(std::array<T*, 8> dest, Args... args) {
         std::tie(p1, p5, p3, p7) = avx::convert<T>::template inverse<Inverse>(p1, p5, p3, p7);
         std::tie(p1, p5, p3, p7) = avx::convert<T>::template repack<PStore, PDest>(p1, p5, p3, p7);
 
-        avx::cxstore<PStore>(dest[order<8, DIT>::get[1]], p1);
-        avx::cxstore<PStore>(dest[order<8, DIT>::get[5]], p5);
-        avx::cxstore<PStore>(dest[order<8, DIT>::get[3]], p3);
-        avx::cxstore<PStore>(dest[order<8, DIT>::get[7]], p7);
+        avx::cxstore<PStore>(dest[data_idx[1]], p1);
+        avx::cxstore<PStore>(dest[data_idx[5]], p5);
+        avx::cxstore<PStore>(dest[data_idx[3]], p3);
+        avx::cxstore<PStore>(dest[data_idx[7]], p7);
     } else {
         avx::cx_reg<T> p1, p3, p5, p7;
         if constexpr (Src) {
             auto& src = std::get<src_type&>(std::tie(args...));
-            p5        = avx::cxload<PLoad>(src[order<8, DIT>::get[5]]);
-            p1        = avx::cxload<PLoad>(src[order<8, DIT>::get[1]]);
-            p7        = avx::cxload<PLoad>(src[order<8, DIT>::get[7]]);
-            p3        = avx::cxload<PLoad>(src[order<8, DIT>::get[3]]);
+            p5        = avx::cxload<PLoad>(src[data_idx[5]]);
+            p1        = avx::cxload<PLoad>(src[data_idx[1]]);
+            p7        = avx::cxload<PLoad>(src[data_idx[7]]);
+            p3        = avx::cxload<PLoad>(src[data_idx[3]]);
         } else {
-            p5 = avx::cxload<PLoad>(dest[order<8, DIT>::get[5]]);
-            p1 = avx::cxload<PLoad>(dest[order<8, DIT>::get[1]]);
-            p7 = avx::cxload<PLoad>(dest[order<8, DIT>::get[7]]);
-            p3 = avx::cxload<PLoad>(dest[order<8, DIT>::get[3]]);
+            p5 = avx::cxload<PLoad>(dest[data_idx[5]]);
+            p1 = avx::cxload<PLoad>(dest[data_idx[1]]);
+            p7 = avx::cxload<PLoad>(dest[data_idx[7]]);
+            p3 = avx::cxload<PLoad>(dest[data_idx[3]]);
         }
         std::tie(p5, p1, p7, p3) = avx::convert<T>::template repack<PSrc, PLoad>(p5, p1, p7, p3);
         std::tie(p5, p1, p7, p3) = avx::convert<T>::template inverse<Inverse>(p5, p1, p7, p3);
@@ -211,17 +226,18 @@ inline void node8(std::array<T*, 8> dest, Args... args) {
         avx::cx_reg<T> b1, b3, b5, b7;
         if constexpr (Tw) {
             auto& tw          = std::get<tw_type&>(std::tie(args...));
-            auto [p5tw, p7tw] = avx::mul({p5, tw[0]}, {p7, tw[0]});
+            auto [p5tw, p7tw] = avx::mul({p5, tw[tw_idx[0]]}, {p7, tw[tw_idx[0]]});
             auto [a1, a5]     = avx::btfly(p1, p5tw);
             auto [a3, a7]     = avx::btfly(p3, p7tw);
 
-            auto [a3tw, a7tw] = avx::mul({a3, tw[1]}, {a7, tw[2]});
+            auto [a3tw, a7tw] = avx::mul({a3, tw[tw_idx[1]]}, {a7, tw[tw_idx[2]]});
             std::tie(b1, b3)  = avx::btfly(a1, a3tw);
             std::tie(b5, b7)  = avx::btfly(a5, a7tw);
 
-            std::tie(b1, b3, b5, b7) = avx::mul({b1, tw[3]}, {b3, tw[4]}, {b5, tw[5]}, {b7, tw[6]});
+            std::tie(b1, b3, b5, b7) =
+                avx::mul({b1, tw[tw_idx[3]]}, {b3, tw[tw_idx[4]]}, {b5, tw[tw_idx[5]]}, {b7, tw[tw_idx[6]]});
         } else {
-            static const T sq2 = std::sqrt(double{2}) / 2;
+            const T sq2 = std::sqrt(double{2}) / 2;
             auto [a1, a5]      = avx::btfly(p1, p5);
             auto [a3, a7]      = avx::btfly(p3, p7);
 
@@ -236,15 +252,15 @@ inline void node8(std::array<T*, 8> dest, Args... args) {
         avx::cx_reg<T> p0, p2, p4, p6;
         if constexpr (Src) {
             auto& src = std::get<src_type&>(std::tie(args...));
-            p4        = avx::cxload<PLoad>(src[order<8, DIT>::get[4]]);
-            p0        = avx::cxload<PLoad>(src[order<8, DIT>::get[0]]);
-            p6        = avx::cxload<PLoad>(src[order<8, DIT>::get[6]]);
-            p2        = avx::cxload<PLoad>(src[order<8, DIT>::get[2]]);
+            p4        = avx::cxload<PLoad>(src[data_idx[4]]);
+            p0        = avx::cxload<PLoad>(src[data_idx[0]]);
+            p6        = avx::cxload<PLoad>(src[data_idx[6]]);
+            p2        = avx::cxload<PLoad>(src[data_idx[2]]);
         } else {
-            p4 = avx::cxload<PLoad>(dest[order<8, DIT>::get[4]]);
-            p0 = avx::cxload<PLoad>(dest[order<8, DIT>::get[0]]);
-            p6 = avx::cxload<PLoad>(dest[order<8, DIT>::get[6]]);
-            p2 = avx::cxload<PLoad>(dest[order<8, DIT>::get[2]]);
+            p4 = avx::cxload<PLoad>(dest[data_idx[4]]);
+            p0 = avx::cxload<PLoad>(dest[data_idx[0]]);
+            p6 = avx::cxload<PLoad>(dest[data_idx[6]]);
+            p2 = avx::cxload<PLoad>(dest[data_idx[2]]);
         }
         std::tie(p4, p0, p6, p2) = avx::convert<T>::template repack<PSrc, PLoad>(p4, p0, p6, p2);
         std::tie(p4, p0, p6, p2) = avx::convert<T>::template inverse<Inverse>(p4, p0, p6, p2);
@@ -252,11 +268,11 @@ inline void node8(std::array<T*, 8> dest, Args... args) {
         avx::cx_reg<T> c0, c1, c2, c3, b4, b6;
         if constexpr (Tw) {
             auto& tw          = std::get<tw_type&>(std::tie(args...));
-            auto [p4tw, p6tw] = avx::mul({p4, tw[0]}, {p6, tw[0]});
+            auto [p4tw, p6tw] = avx::mul({p4, tw[tw_idx[0]]}, {p6, tw[tw_idx[0]]});
             auto [a0, a4]     = avx::btfly(p0, p4tw);
             auto [a2, a6]     = avx::btfly(p2, p6tw);
 
-            auto [a2tw, a6tw] = avx::mul({a2, tw[1]}, {a6, tw[2]});
+            auto [a2tw, a6tw] = avx::mul({a2, tw[tw_idx[1]]}, {a6, tw[tw_idx[2]]});
             auto [b0, b2]     = avx::btfly(a0, a2tw);
             std::tie(b4, b6)  = avx::btfly(a4, a6tw);
 
@@ -282,10 +298,10 @@ inline void node8(std::array<T*, 8> dest, Args... args) {
         std::tie(c0, c1, c2, c3) = avx::convert<T>::template inverse<Inverse>(c0, c1, c2, c3);
         std::tie(c0, c1, c2, c3) = avx::convert<T>::template repack<PStore, PDest>(c0, c1, c2, c3);
 
-        cxstore<PStore>(dest[order<8, DIT>::get[0]], c0);
-        cxstore<PStore>(dest[order<8, DIT>::get[1]], c1);
-        cxstore<PStore>(dest[order<8, DIT>::get[2]], c2);
-        cxstore<PStore>(dest[order<8, DIT>::get[3]], c3);
+        cxstore<PStore>(dest[data_idx[0]], c0);
+        cxstore<PStore>(dest[data_idx[1]], c1);
+        cxstore<PStore>(dest[data_idx[2]], c2);
+        cxstore<PStore>(dest[data_idx[3]], c3);
 
         avx::cx_reg<T> c4, c5, c6, c7;
         if constexpr (Tw) {
@@ -305,10 +321,10 @@ inline void node8(std::array<T*, 8> dest, Args... args) {
         std::tie(c4, c5, c6, c7) = avx::convert<T>::template inverse<Inverse>(c4, c5, c6, c7);
         std::tie(c4, c5, c6, c7) = avx::convert<T>::template repack<PStore, PDest>(c4, c5, c6, c7);
 
-        cxstore<PStore>(dest[order<8, DIT>::get[4]], c4);
-        cxstore<PStore>(dest[order<8, DIT>::get[5]], c5);
-        cxstore<PStore>(dest[order<8, DIT>::get[6]], c6);
-        cxstore<PStore>(dest[order<8, DIT>::get[7]], c7);
+        cxstore<PStore>(dest[data_idx[4]], c4);
+        cxstore<PStore>(dest[data_idx[5]], c5);
+        cxstore<PStore>(dest[data_idx[6]], c6);
+        cxstore<PStore>(dest[data_idx[7]], c7);
     }
 };
 
@@ -352,19 +368,20 @@ inline void node4(std::array<T*, 4> dest, Args... args) {
     constexpr bool Tw    = has_type<tw_type, Args...>;
     constexpr bool Scale = has_type<avx::reg_t<T>, Args...>;
 
+    constexpr auto& data_idx = order<4, DIT>::data;
     // NOLINTNEXTLINE(*-declaration)
     avx::cx_reg<T> p0, p1, p2, p3;
     if constexpr (Src) {
         auto& src = std::get<src_type&>(std::tie(args...));
-        p2        = avx::cxload<PLoad>(src[order<4, DIT>::get[2]]);
-        p3        = avx::cxload<PLoad>(src[order<4, DIT>::get[3]]);
-        p0        = avx::cxload<PLoad>(src[order<4, DIT>::get[0]]);
-        p1        = avx::cxload<PLoad>(src[order<4, DIT>::get[1]]);
+        p2        = avx::cxload<PLoad>(src[data_idx[2]]);
+        p3        = avx::cxload<PLoad>(src[data_idx[3]]);
+        p0        = avx::cxload<PLoad>(src[data_idx[0]]);
+        p1        = avx::cxload<PLoad>(src[data_idx[1]]);
     } else {
-        p2 = avx::cxload<PLoad>(dest[order<4, DIT>::get[2]]);
-        p3 = avx::cxload<PLoad>(dest[order<4, DIT>::get[3]]);
-        p0 = avx::cxload<PLoad>(dest[order<4, DIT>::get[0]]);
-        p1 = avx::cxload<PLoad>(dest[order<4, DIT>::get[1]]);
+        p2 = avx::cxload<PLoad>(dest[data_idx[2]]);
+        p3 = avx::cxload<PLoad>(dest[data_idx[3]]);
+        p0 = avx::cxload<PLoad>(dest[data_idx[0]]);
+        p1 = avx::cxload<PLoad>(dest[data_idx[1]]);
     }
     std::tie(p2, p3, p0, p1) = avx::convert<T>::template repack<PSrc, PLoad>(p2, p3, p0, p1);
     std::tie(p2, p3, p0, p1) = avx::convert<T>::template inverse<Inverse>(p2, p3, p0, p1);
@@ -410,10 +427,10 @@ inline void node4(std::array<T*, 4> dest, Args... args) {
     std::tie(b0, b1, b2, b3) = avx::convert<T>::template inverse<Inverse>(b0, b1, b2, b3);
     std::tie(b0, b1, b2, b3) = avx::convert<T>::template repack<PStore, PDest>(b0, b1, b2, b3);
 
-    cxstore<PStore>(dest[order<4, DIT>::get[0]], b0);
-    cxstore<PStore>(dest[order<4, DIT>::get[1]], b1);
-    cxstore<PStore>(dest[order<4, DIT>::get[2]], b2);
-    cxstore<PStore>(dest[order<4, DIT>::get[3]], b3);
+    cxstore<PStore>(dest[data_idx[0]], b0);
+    cxstore<PStore>(dest[data_idx[1]], b1);
+    cxstore<PStore>(dest[data_idx[2]], b2);
+    cxstore<PStore>(dest[data_idx[3]], b3);
 };
 
 template<typename T, std::size_t PDest, std::size_t PSrc, bool ConjTw, bool Reverse, typename... Args>
@@ -666,7 +683,7 @@ public:
         } else if (size() / (reg_size * 4) > 8) {
             constexpr auto PTform = std::max(PData, reg_size);
             for (std::size_t i_group = 0; i_group < size() / 8 / reg_size; ++i_group) {
-                node8_dif_along<PTform, PData>(data, size(), i_group * reg_size);
+                node8_along<PTform, PData, false>(data, size(), i_group * reg_size);
             }
             twiddle_ptr = unsorted_subtransform_recursive<PData, PTform, true, BitReversed>(
                 data, size() / 8, twiddle_ptr);
@@ -713,7 +730,7 @@ public:
             } else if (size() / (reg_size * 4) > 8) {
                 constexpr auto PTform = std::max(PDest, reg_size);
                 for (std::size_t i_group = 0; i_group < size() / 8 / reg_size; ++i_group) {
-                    node8_dif_along<PTform, PDest>(dest, size(), i_group * reg_size);
+                    node8_along<PTform, PDest, false>(dest, size(), i_group * reg_size);
                 }
                 twiddle_ptr = unsorted_subtransform_recursive<PDest, PTform, true, BitReversed>(
                     dest, size() / 8, twiddle_ptr);
@@ -834,7 +851,7 @@ public:
             twiddle_ptr = unsorted_subtransform_recursive_inverse<PTform, PData, true, BitReversed>(
                 data, size() / 8, twiddle_ptr);
             for (std::size_t i_group = 0; i_group < size() / 8 / reg_size; ++i_group) {
-                node8_dif_along<PData, PTform, true>(data, size(), i_group * reg_size);
+                node8_along<PData, PTform, false, false, true>(data, size(), i_group * reg_size);
             }
         } else {
             constexpr auto PTform = std::max(PData, reg_size);
@@ -1401,28 +1418,29 @@ public:
                 scaling = avx::broadcast(static_cast<float>(1 / static_cast<double>(max_size)));
             }
 
-            const auto tw0 = avx::cxload<reg_size>(twiddle_ptr);
-            const auto tw1 = avx::cxload<reg_size>(twiddle_ptr + reg_size * 2);
-            const auto tw2 = avx::cxload<reg_size>(twiddle_ptr + reg_size * 4);
-            const auto tw3 = avx::cxload<reg_size>(twiddle_ptr + reg_size * 6);
-            const auto tw4 = avx::cxload<reg_size>(twiddle_ptr + reg_size * 8);
-            const auto tw5 = avx::cxload<reg_size>(twiddle_ptr + reg_size * 10);
-            const auto tw6 = avx::cxload<reg_size>(twiddle_ptr + reg_size * 12);
+
+            std::array<avx::cx_reg<T>, 7> tw{
+                avx::cxload<reg_size>(twiddle_ptr),
+                avx::cxload<reg_size>(twiddle_ptr + reg_size * 2),
+                avx::cxload<reg_size>(twiddle_ptr + reg_size * 4),
+                avx::cxload<reg_size>(twiddle_ptr + reg_size * 6),
+                avx::cxload<reg_size>(twiddle_ptr + reg_size * 8),
+                avx::cxload<reg_size>(twiddle_ptr + reg_size * 10),
+                avx::cxload<reg_size>(twiddle_ptr + reg_size * 12),
+            };
             twiddle_ptr += reg_size * 14;
 
             group_size /= 2;
             if (max_size / (reg_size * 2) == 4) {
                 for (std::size_t i = 0; i < group_size; ++i) {
-                    node8_dit_along<PDest, PTform, Inverse, Scale>(
-                        data, l_size, offset, tw0, tw1, tw2, tw3, tw4, tw5, tw6, scaling);
+                    node8_along<PDest, PTform, true, Inverse>(data, l_size * 4, offset, tw, scaling);
                     offset += l_size * 4;
                 }
                 return twiddle_ptr;
             }
 
             for (std::size_t i = 0; i < group_size; ++i) {
-                node8_dit_along<PTform, PTform, Inverse>(
-                    data, l_size, offset, tw0, tw1, tw2, tw3, tw4, tw5, tw6);
+                node8_along<PTform, PTform, true, Inverse>(data, l_size * 4, offset, tw);
                 offset += l_size * 4;
             }
 
@@ -1672,7 +1690,7 @@ public:
             cxstore<PTform>(ptr3, she3);
         }
         return twiddle_ptr;
-    }
+    };
 
     template<std::size_t PDest,
              std::size_t PSrc,
@@ -1713,6 +1731,7 @@ public:
             avx::ra_addr<PTform>(dest, size / 4 * 3), size / 4, twiddle_ptr);
         return twiddle_ptr;
     };
+
     template<std::size_t PDest,
              std::size_t PSrc,
              bool        First      = false,
@@ -1888,7 +1907,7 @@ public:
         }
 
         return twiddle_ptr;
-    }
+    };
 
     template<std::size_t PDest, std::size_t PSrc, bool First = false, bool BitReverse = true>
     inline auto unsorted_subtransform_recursive_inverse(T* data, std::size_t size, const T* twiddle_ptr)
@@ -1924,57 +1943,6 @@ public:
             }
         }
         return twiddle_ptr;
-    };
-
-    template<std::size_t PDest,
-             std::size_t PSrc    = PDest,
-             bool        Inverse = false,
-             bool        IScale  = false,
-             typename ScaleT     = uint>
-    inline void node8_dit_along(T*             data,
-                                std::size_t    l_size,
-                                std::size_t    offset,
-                                avx::cx_reg<T> tw0,
-                                avx::cx_reg<T> tw1,
-                                avx::cx_reg<T> tw2,
-                                avx::cx_reg<T> tw3,
-                                avx::cx_reg<T> tw4,
-                                avx::cx_reg<T> tw5,
-                                avx::cx_reg<T> tw6,
-                                ScaleT         scaling = ScaleT{}) {
-        constexpr auto    PLoad = std::max(PSrc, avx::reg<T>::size);
-        std::array<T*, 8> ptr04261537{
-            avx::ra_addr<PLoad>(data, offset),
-            avx::ra_addr<PLoad>(data, offset + l_size * 4 / 2),
-            avx::ra_addr<PLoad>(data, offset + l_size * 2 / 2),
-            avx::ra_addr<PLoad>(data, offset + l_size * 6 / 2),
-            avx::ra_addr<PLoad>(data, offset + l_size * 1 / 2),
-            avx::ra_addr<PLoad>(data, offset + l_size * 5 / 2),
-            avx::ra_addr<PLoad>(data, offset + l_size * 3 / 2),
-            avx::ra_addr<PLoad>(data, offset + l_size * 7 / 2),
-        };
-        auto tw = std::array<avx::cx_reg<T>, 7>{tw0, tw1, tw2, tw3, tw5, tw4, tw6};
-        if constexpr (IScale) {
-            internal::fft::node8<T, PDest, PSrc, Inverse, false>(ptr04261537, tw, scaling);
-        } else {
-            internal::fft::node8<T, PDest, PSrc, Inverse, false>(ptr04261537, tw);
-        }
-    }
-
-    template<std::size_t PDest, std::size_t PSrc = PDest, bool Reverse = false>
-    inline void node8_dif_along(T* data, std::size_t l_size, std::size_t offset) {
-        constexpr auto    PLoad = std::max(PSrc, reg_size);
-        std::array<T*, 8> ptr{
-            avx::ra_addr<PLoad>(data, offset),
-            avx::ra_addr<PLoad>(data, offset + l_size / 8 * 1),
-            avx::ra_addr<PLoad>(data, offset + l_size / 8 * 2),
-            avx::ra_addr<PLoad>(data, offset + l_size / 8 * 3),
-            avx::ra_addr<PLoad>(data, offset + l_size / 8 * 4),
-            avx::ra_addr<PLoad>(data, offset + l_size / 8 * 5),
-            avx::ra_addr<PLoad>(data, offset + l_size / 8 * 6),
-            avx::ra_addr<PLoad>(data, offset + l_size / 8 * 7),
-        };
-        internal::fft::node8<T, PDest, PSrc, false, Reverse>(ptr);
     };
 
     template<std::size_t PDest,
@@ -2134,7 +2102,7 @@ public:
         } else {
             internal::fft::node4<T, PDest, PSrc, ConjTw, Reverse, DecInTime>(dst, optional...);
         }
-    }
+    };
 
     /**
       * @brief
@@ -2240,72 +2208,6 @@ public:
             }
         } else {
             internal::fft::node8<T, PDest, PSrc, ConjTw, Reverse, DecInTime>(dst, optional...);
-        }
-    }
-    template<std::size_t PDest, std::size_t PSrc = PDest, bool Reverse = false>
-    inline void node8_dif_along_fill0(    //
-        T*          dest,
-        const T*    source,
-        std::size_t l_size,
-        std::size_t data_size,
-        std::size_t offset) {
-        constexpr auto    PLoad  = std::max(PSrc, reg_size);
-        constexpr auto    PStore = std::max(PDest, reg_size);
-        std::array<T*, 8> dst{
-            avx::ra_addr<PStore>(dest, offset),
-            avx::ra_addr<PStore>(dest, offset + l_size / 8 * 1),
-            avx::ra_addr<PStore>(dest, offset + l_size / 8 * 2),
-            avx::ra_addr<PStore>(dest, offset + l_size / 8 * 3),
-            avx::ra_addr<PStore>(dest, offset + l_size / 8 * 4),
-            avx::ra_addr<PStore>(dest, offset + l_size / 8 * 5),
-            avx::ra_addr<PStore>(dest, offset + l_size / 8 * 6),
-            avx::ra_addr<PStore>(dest, offset + l_size / 8 * 7),
-        };
-        if (offset + l_size / 8 * 7 + avx::reg<T>::size <= data_size) {
-            std::array<const T*, 8> src{
-                avx::ra_addr<PLoad>(source, offset),
-                avx::ra_addr<PLoad>(source, offset + l_size / 8 * 1),
-                avx::ra_addr<PLoad>(source, offset + l_size / 8 * 2),
-                avx::ra_addr<PLoad>(source, offset + l_size / 8 * 3),
-                avx::ra_addr<PLoad>(source, offset + l_size / 8 * 4),
-                avx::ra_addr<PLoad>(source, offset + l_size / 8 * 5),
-                avx::ra_addr<PLoad>(source, offset + l_size / 8 * 6),
-                avx::ra_addr<PLoad>(source, offset + l_size / 8 * 7),
-            };
-            internal::fft::node8<T, PDest, PSrc, false, Reverse>(dst, src);
-        } else {
-            std::array<T, avx::reg<T>::size * 2> zeros{};
-
-            std::array<const T*, 8> src{
-                zeros.data(),
-                zeros.data(),
-                zeros.data(),
-                zeros.data(),
-                zeros.data(),
-                zeros.data(),
-                zeros.data(),
-                zeros.data(),
-            };
-            for (uint i = 0; i < 8; ++i) {
-                auto l_offset = offset + l_size / 8 * i;
-
-                std::ptrdiff_t diff = data_size - l_offset - 1;
-                if (diff >= static_cast<int>(avx::reg<T>::size)) {
-                    src[i] = avx::ra_addr<PLoad>(source, l_offset);
-                } else if (diff >= 0) {
-                    std::array<T, avx::reg<T>::size * 2> align{};
-                    for (; diff >= 0; --diff) {
-                        align[diff]                     = *(source + pidx<PSrc>(l_offset + diff));
-                        align[diff + avx::reg<T>::size] = *(source + pidx<PSrc>(l_offset + diff) + PSrc);
-                    }
-                    src[i] = align.data();
-                    internal::fft::node8<T, PDest, PSrc, false, Reverse>(dst, src);
-                    return;
-                } else {
-                    break;
-                }
-            }
-            internal::fft::node8<T, PDest, PSrc, false, Reverse>(dst, src);
         }
     };
 
