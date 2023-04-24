@@ -360,7 +360,6 @@ public:
         *this = pcx::subrange(other.begin(), other.end());
     }
 
-    
 private:
     [[no_unique_address]] allocator_type m_allocator{};
 

@@ -192,6 +192,8 @@ struct reg<double> {
 template<typename T>
 using reg_t = typename reg<T>::type;
 
+// TODO: add optional conj and complex unity rotation as parameters;
+// update arithmetic to accomodate. Hard evaluation should only be performed on store.
 template<typename T>
 struct cx_reg {
     typename reg<T>::type real;
@@ -335,6 +337,14 @@ inline auto unpack_128(cx_reg<T> a, cx_reg<T> b) -> std::tuple<cx_reg<T>, cx_reg
     auto imag_lo = unpacklo_128(a.imag, b.imag);
 
     return {cx_reg<float>({real_lo, imag_lo}), cx_reg<float>({real_hi, imag_hi})};
+};
+
+inline auto xor_(reg_t<float> a, reg_t<float> b) -> reg_t<float> {
+    return _mm256_xor_ps(a, b);
+};
+
+inline auto xor_(reg_t<double> a, reg_t<double> b) -> reg_t<double> {
+    return _mm256_xor_pd(a, b);
 };
 
 template<typename T>

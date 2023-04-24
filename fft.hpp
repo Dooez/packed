@@ -119,12 +119,12 @@ inline void node8(std::array<T*, 8> dest, Args... args) {
             std::tie(a5, a7) = avx::ibtfly(b5, b7);
             std::tie(a6, a7) = avx::mul({a6, tw[tw_idx[2]]}, {a7, tw[tw_idx[2]]});
         } else {
-            const T sq2 = std::sqrt(double{2}) / 2;
-            auto [b4, b5_tw]   = avx::ibtfly(c4, c5);
-            auto [b6, b7_tw]   = avx::ibtfly<2>(c6, c7);
-            auto twsq2         = avx::broadcast(sq2);
-            b5_tw              = avx::mul(b5_tw, twsq2);
-            b7_tw              = avx::mul(b7_tw, twsq2);
+            const T sq2      = std::sqrt(double{2}) / 2;
+            auto [b4, b5_tw] = avx::ibtfly(c4, c5);
+            auto [b6, b7_tw] = avx::ibtfly<2>(c6, c7);
+            auto twsq2       = avx::broadcast(sq2);
+            b5_tw            = avx::mul(b5_tw, twsq2);
+            b7_tw            = avx::mul(b7_tw, twsq2);
 
             std::tie(a4, a6) = avx::ibtfly<3>(b4, b6);
             auto b5 = avx::cx_reg<T>{avx::add(b5_tw.real, b5_tw.imag), avx::sub(b5_tw.imag, b5_tw.real)};
@@ -237,9 +237,9 @@ inline void node8(std::array<T*, 8> dest, Args... args) {
             std::tie(b1, b3, b5, b7) =
                 avx::mul({b1, tw[tw_idx[3]]}, {b3, tw[tw_idx[4]]}, {b5, tw[tw_idx[5]]}, {b7, tw[tw_idx[6]]});
         } else {
-            const T sq2 = std::sqrt(double{2}) / 2;
-            auto [a1, a5]      = avx::btfly(p1, p5);
-            auto [a3, a7]      = avx::btfly(p3, p7);
+            const T sq2   = std::sqrt(double{2}) / 2;
+            auto [a1, a5] = avx::btfly(p1, p5);
+            auto [a3, a7] = avx::btfly(p3, p7);
 
             std::tie(b1, b3) = avx::btfly(a1, a3);
             std::tie(b5, b7) = avx::btfly<3>(a5, a7);
@@ -498,11 +498,17 @@ inline auto wnk(std::size_t n, std::size_t k) -> std::complex<T> {
 }    // namespace fft
 }    // namespace internal
 
+enum class fft_output {
+    normal,
+    bit_reversed,
+    unsorted
+};
 
 template<typename T,
          std::size_t Size    = pcx::dynamic_size,
          std::size_t SubSize = pcx::default_pack_size<T>,
-         typename Allocator  = pcx::aligned_allocator<T, std::align_val_t(64)>>
+         typename Allocator  = pcx::aligned_allocator<T, std::align_val_t(64)>,
+         fft_output Output   = fft_output::normal>
     requires(std::same_as<T, float> || std::same_as<T, double>) &&
             (pcx::power_of_two<Size> || (Size == pcx::dynamic_size)) &&
             (pcx::power_of_two<SubSize> && SubSize >= pcx::default_pack_size<T> ||
@@ -569,9 +575,30 @@ public:
     }
 
     template<typename VAllocator, std::size_t VPackSize>
-    void operator()(pcx::vector<T, VAllocator, VPackSize>& vector) {
+    void operator()(pcx::vector<T, VAllocator, VPackSize>& vector)
+        requires(Output == fft_output::normal)
+    {
         assert(size() == vector.size());
         fft_internal<VPackSize>(vector.data());
+    };
+
+    template<typename VAllocator, std::size_t VPackSize>
+    void operator()(pcx::vector<T, VAllocator, VPackSize>& vector)
+        requires(Output == fft_output::unsorted || Output == fft_output::bit_reversed)
+    {
+        assert(size() == vector.size());
+        fftu_internal<VPackSize>(vector.data());
+    };
+
+    template<typename VAllocator, std::size_t VPackSize, bool Const, std::size_t SSize, std::size_t PSrc>
+    void operator()(pcx::vector<T, VAllocator, VPackSize>& dest, pcx::subrange<T, Const, SSize, PSrc> src)
+    // requires(Output == fft_output::unsorted || Output == fft_output::bit_reversed)
+    {
+        assert(size() == dest.size());
+        assert(src.aligned());
+        assert(src.size() <= size());
+
+        fftu_internal<VPackSize>(dest.data(), &(*src.begin()));
     };
 
     template<typename VAllocator>
