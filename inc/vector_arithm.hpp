@@ -201,7 +201,7 @@ inline auto div(reg_t<T> lhs, cx_reg<T, Conj> rhs) -> cx_reg<T, false> {
     auto     real_   = avx::mul(lhs, rhs.real);
     reg_t<T> imag_;
     if constexpr (Conj) {
-        auto imag_ = avx::mul(lhs, rhs.imag);
+        imag_ = avx::mul(lhs, rhs.imag);
     } else {
         reg_t<T> zero;
         if constexpr (std::same_as<T, float>) {
@@ -209,7 +209,7 @@ inline auto div(reg_t<T> lhs, cx_reg<T, Conj> rhs) -> cx_reg<T, false> {
         } else {
             zero = _mm256_setzero_pd();
         }
-        auto imag_ = avx::sub(zero, avx::mul(lhs, rhs.imag));
+        imag_ = avx::mul(lhs, avx::sub(zero, rhs.imag));
     }
     rhs_abs = avx::fmadd(rhs.imag, rhs.imag, rhs_abs);
 
@@ -351,11 +351,11 @@ namespace internal {
 struct expression_traits {
     /**
      * @brief Extracts simd vector from iterator.
-     * 
+     *
      * @tparam PackSize    required pack size
      * @param iterator     must be aligned
-     * @param offset       must be a multiple of SIMD vector size 
-     * @return constexpr auto 
+     * @param offset       must be a multiple of SIMD vector size
+     * @return constexpr auto
      */
     template<std::size_t PackSize, typename I>
     [[nodiscard]] static constexpr auto cx_reg(const I& iterator, std::size_t offset) {
@@ -366,13 +366,13 @@ struct expression_traits {
     /**
      * @brief Extracts simd vector from iterator.
      *
-     * @tparam PackSize required pack size 
+     * @tparam PackSize required pack size
      * @param iterator  must be aligned
      * @param offset    must be a multiple of SIMD vector size
      */
     template<std::size_t PackSize, typename T, bool Const, std::size_t IPackSize>
     [[nodiscard]] static constexpr auto cx_reg(const iterator<T, Const, IPackSize>& iterator,
-                                               std::size_t offset) {
+                                               std::size_t                          offset) {
         constexpr auto PLoad = std::max(avx::reg<T>::size, IPackSize);
 
         auto addr      = avx::ra_addr<IPackSize>(&(*iterator), offset);
