@@ -1,9 +1,12 @@
 #ifndef VECTOR_UTIL_HPP
 #define VECTOR_UTIL_HPP
 
+#include "vector_arithm.hpp"
+
 #include <algorithm>
 #include <array>
 #include <complex>
+#include <concepts>
 #include <cstring>
 #include <immintrin.h>
 #include <new>
@@ -194,11 +197,16 @@ using reg_t = typename reg<T>::type;
 
 // TODO: add optional conj and complex unity rotation as parameters;
 // update arithmetic to accomodate. Hard evaluation should only be performed on store.
-template<typename T>
+template<typename T, bool Conj = false>
 struct cx_reg {
     typename reg<T>::type real;
     typename reg<T>::type imag;
 };
+
+template<typename T, bool Conj>
+auto conj(cx_reg<T, Conj> reg) -> cx_reg<T, !Conj> {
+    return {reg.real, reg.imag};
+}
 
 /**
      * @brief Register aligned adress
@@ -237,7 +245,7 @@ inline auto load(const double* source) -> reg<double>::type {
     return _mm256_loadu_pd(source);
 }
 template<std::size_t PackSize, typename T>
-inline auto cxload(const T* ptr) -> cx_reg<T> {
+inline auto cxload(const T* ptr) -> cx_reg<T, false> {
     return {load(ptr), load(ptr + PackSize)};
 }
 
@@ -249,7 +257,7 @@ inline auto broadcast(const double* source) -> reg<double>::type {
 }
 
 template<typename T>
-inline auto broadcast(std::complex<T> source) -> cx_reg<T> {
+inline auto broadcast(std::complex<T> source) -> cx_reg<T, false> {
     const auto& value = reinterpret_cast<const T(&)[2]>(source);
     return {avx::broadcast(&(value[0])), avx::broadcast(&(value[1]))};
 }
@@ -264,14 +272,25 @@ inline void store(float* dest, reg<float>::type reg) {
 inline void store(double* dest, reg<double>::type reg) {
     return _mm256_storeu_pd(dest, reg);
 }
-template<std::size_t PackSize, typename T>
-inline void cxstore(T* ptr, cx_reg<T> reg) {
+
+template<std::size_t PackSize, typename T, bool Conj>
+inline void cxstore(T* ptr, cx_reg<T, Conj> reg) {
     store(ptr, reg.real);
-    store(ptr + PackSize, reg.imag);
+    if constexpr (Conj) {
+        if constexpr (std::same_as<T, float>) {
+            auto zero = _mm256_setzero_ps();
+            store(ptr + PackSize, _mm256_sub_ps(zero, reg.imag));
+        } else {
+            auto zero = _mm256_setzero_pd();
+            store(ptr + PackSize, _mm256_sub_pd(zero, reg.imag));
+        }
+    } else {
+        store(ptr + PackSize, reg.imag);
+    }
 }
 
-template<std::size_t PackSize, typename T>
-inline auto cxloadstore(T* ptr, cx_reg<T> reg) -> cx_reg<T> {
+template<std::size_t PackSize, typename T, bool Conj>
+inline auto cxloadstore(T* ptr, cx_reg<T, Conj> reg) -> cx_reg<T, false> {
     auto tmp = cxload<PackSize>(ptr);
     cxstore<PackSize>(ptr, reg);
     return tmp;
@@ -310,33 +329,35 @@ inline auto unpackhi_128(reg<double>::type a, reg<double>::type b) -> reg<double
     return _mm256_permute2f128_pd(a, b, 0b00110001);
 };
 
-inline auto unpack_ps(cx_reg<float> a, cx_reg<float> b) -> std::tuple<cx_reg<float>, cx_reg<float>> {
+template<bool Conj>
+inline auto unpack_ps(cx_reg<float, Conj> a, cx_reg<float, Conj> b)
+    -> std::tuple<cx_reg<float, Conj>, cx_reg<float, Conj>> {
     auto real_lo = unpacklo_ps(a.real, b.real);
     auto real_hi = unpackhi_ps(a.real, b.real);
     auto imag_lo = unpacklo_ps(a.imag, b.imag);
     auto imag_hi = unpackhi_ps(a.imag, b.imag);
 
-    return {cx_reg<float>({real_lo, imag_lo}), cx_reg<float>({real_hi, imag_hi})};
+    return {cx_reg<float, Conj>({real_lo, imag_lo}), cx_reg<float, Conj>({real_hi, imag_hi})};
 };
 
-template<typename T>
-inline auto unpack_pd(cx_reg<T> a, cx_reg<T> b) -> std::tuple<cx_reg<T>, cx_reg<T>> {
+template<typename T, bool Conj>
+inline auto unpack_pd(cx_reg<T, Conj> a, cx_reg<T, Conj> b) -> std::tuple<cx_reg<T, Conj>, cx_reg<T, Conj>> {
     auto real_lo = unpacklo_pd(a.real, b.real);
     auto real_hi = unpackhi_pd(a.real, b.real);
     auto imag_lo = unpacklo_pd(a.imag, b.imag);
     auto imag_hi = unpackhi_pd(a.imag, b.imag);
 
-    return {cx_reg<float>({real_lo, imag_lo}), cx_reg<float>({real_hi, imag_hi})};
+    return {cx_reg<T, Conj>({real_lo, imag_lo}), cx_reg<T, Conj>({real_hi, imag_hi})};
 };
 
-template<typename T>
-inline auto unpack_128(cx_reg<T> a, cx_reg<T> b) -> std::tuple<cx_reg<T>, cx_reg<T>> {
+template<typename T, bool Conj>
+inline auto unpack_128(cx_reg<T, Conj> a, cx_reg<T, Conj> b) -> std::tuple<cx_reg<T, Conj>, cx_reg<T, Conj>> {
     auto real_hi = unpackhi_128(a.real, b.real);
     auto real_lo = unpacklo_128(a.real, b.real);
     auto imag_hi = unpackhi_128(a.imag, b.imag);
     auto imag_lo = unpacklo_128(a.imag, b.imag);
 
-    return {cx_reg<float>({real_lo, imag_lo}), cx_reg<float>({real_hi, imag_hi})};
+    return {cx_reg<T, Conj>({real_lo, imag_lo}), cx_reg<T, Conj>({real_hi, imag_hi})};
 };
 
 inline auto xor_(reg_t<float> a, reg_t<float> b) -> reg_t<float> {
@@ -352,42 +373,6 @@ struct convert;
 
 template<>
 struct convert<float> {
-    static inline auto packed_to_interleaved(auto... args) {
-        auto tup = std::make_tuple(args...);
-
-        auto unpack_ps = [](cx_reg<float> reg) {
-            auto real = unpacklo_ps(reg.real, reg.imag);
-            auto imag = unpackhi_ps(reg.real, reg.imag);
-            return cx_reg<float>({real, imag});
-        };
-        auto unpack_128 = [](cx_reg<float> reg) {
-            auto real = unpacklo_128(reg.real, reg.imag);
-            auto imag = unpackhi_128(reg.real, reg.imag);
-            return cx_reg<float>({real, imag});
-        };
-
-        auto tmp = internal::apply_for_each(unpack_ps, tup);
-        return internal::apply_for_each(unpack_128, tmp);
-    }
-
-    static inline auto interleaved_to_packed(auto... args) {
-        auto tup = std::make_tuple(args...);
-
-        auto pack_128 = [](cx_reg<float> reg) {
-            auto real = unpacklo_128(reg.real, reg.imag);
-            auto imag = unpackhi_128(reg.real, reg.imag);
-            return cx_reg<float>({real, imag});
-        };
-        auto pack_ps = [](cx_reg<float> reg) {
-            auto real = _mm256_shuffle_ps(reg.real, reg.imag, 0b10001000);
-            auto imag = _mm256_shuffle_ps(reg.real, reg.imag, 0b11011101);
-            return cx_reg<float>({real, imag});
-        };
-
-        auto tmp = internal::apply_for_each(pack_128, tup);
-        return internal::apply_for_each(pack_ps, tmp);
-    }
-
     static constexpr auto swap_12 = [](cx_reg<float> reg) {
         auto real = _mm256_shuffle_ps(reg.real, reg.real, 0b11011000);
         auto imag = _mm256_shuffle_ps(reg.imag, reg.imag, 0b11011000);
