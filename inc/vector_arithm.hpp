@@ -13,78 +13,119 @@ namespace pcx {
 
 namespace avx {
 
-inline auto add(reg<float>::type lhs, reg<float>::type rhs) -> reg<float>::type {
+inline auto add(reg_t<float> lhs, reg_t<float> rhs) -> reg_t<float> {
     return _mm256_add_ps(lhs, rhs);
 }
-inline auto add(reg<double>::type lhs, reg<double>::type rhs) -> reg<double>::type {
+inline auto add(reg_t<double> lhs, reg_t<double> rhs) -> reg_t<double> {
     return _mm256_add_pd(lhs, rhs);
 }
 
-inline auto sub(reg<float>::type lhs, reg<float>::type rhs) -> reg<float>::type {
+inline auto sub(reg_t<float> lhs, reg_t<float> rhs) -> reg_t<float> {
     return _mm256_sub_ps(lhs, rhs);
 }
-inline auto sub(reg<double>::type lhs, reg<double>::type rhs) -> reg<double>::type {
+inline auto sub(reg_t<double> lhs, reg_t<double> rhs) -> reg_t<double> {
     return _mm256_sub_pd(lhs, rhs);
 }
 
-inline auto mul(reg<float>::type lhs, reg<float>::type rhs) -> reg<float>::type {
+inline auto mul(reg_t<float> lhs, reg_t<float> rhs) -> reg_t<float> {
     return _mm256_mul_ps(lhs, rhs);
 }
-inline auto mul(reg<double>::type lhs, reg<double>::type rhs) -> reg<double>::type {
+inline auto mul(reg_t<double> lhs, reg_t<double> rhs) -> reg_t<double> {
     return _mm256_mul_pd(lhs, rhs);
 }
 
-inline auto div(reg<float>::type lhs, reg<float>::type rhs) -> reg<float>::type {
+inline auto div(reg_t<float> lhs, reg_t<float> rhs) -> reg_t<float> {
     return _mm256_div_ps(lhs, rhs);
 }
-inline auto div(reg<double>::type lhs, reg<double>::type rhs) -> reg<double>::type {
+inline auto div(reg_t<double> lhs, reg_t<double> rhs) -> reg_t<double> {
     return _mm256_div_pd(lhs, rhs);
 }
 
-inline auto fmadd(reg<float>::type a, reg<float>::type b, reg<float>::type c) -> reg<float>::type {
+inline auto fmadd(reg_t<float> a, reg_t<float> b, reg_t<float> c) -> reg_t<float> {
     return _mm256_fmadd_ps(a, b, c);
 }
-inline auto fmadd(reg<double>::type a, reg<double>::type b, reg<double>::type c) -> reg<double>::type {
+inline auto fmadd(reg_t<double> a, reg_t<double> b, reg_t<double> c) -> reg_t<double> {
     return _mm256_fmadd_pd(a, b, c);
 }
 
-inline auto fnmadd(reg<float>::type a, reg<float>::type b, reg<float>::type c) -> reg<float>::type {
+inline auto fnmadd(reg_t<float> a, reg_t<float> b, reg_t<float> c) -> reg_t<float> {
     return _mm256_fnmadd_ps(a, b, c);
 }
-inline auto fnmadd(reg<double>::type a, reg<double>::type b, reg<double>::type c) -> reg<double>::type {
+inline auto fnmadd(reg_t<double> a, reg_t<double> b, reg_t<double> c) -> reg_t<double> {
     return _mm256_fnmadd_pd(a, b, c);
 }
 
-inline auto fmsub(reg<float>::type a, reg<float>::type b, reg<float>::type c) -> reg<float>::type {
+inline auto fmsub(reg_t<float> a, reg_t<float> b, reg_t<float> c) -> reg_t<float> {
     return _mm256_fmsub_ps(a, b, c);
 }
-inline auto fmsub(reg<double>::type a, reg<double>::type b, reg<double>::type c) -> reg<double>::type {
+inline auto fmsub(reg_t<double> a, reg_t<double> b, reg_t<double> c) -> reg_t<double> {
     return _mm256_fmsub_pd(a, b, c);
 }
 
-inline auto fnmsub(reg<float>::type a, reg<float>::type b, reg<float>::type c) -> reg<float>::type {
+inline auto fnmsub(reg_t<float> a, reg_t<float> b, reg_t<float> c) -> reg_t<float> {
     return _mm256_fnmsub_ps(a, b, c);
 }
-inline auto fnmsub(reg<double>::type a, reg<double>::type b, reg<double>::type c) -> reg<double>::type {
+inline auto fnmsub(reg_t<double> a, reg_t<double> b, reg_t<double> c) -> reg_t<double> {
     return _mm256_fnmsub_pd(a, b, c);
 }
 
-template<typename T>
-inline auto add(cx_reg<T> lhs, cx_reg<T> rhs) -> cx_reg<T> {
+template<typename T, bool Conj>
+inline auto add(cx_reg<T, Conj> lhs, cx_reg<T, Conj> rhs) -> cx_reg<T, Conj> {
     return {add(lhs.real, rhs.real), add(lhs.imag, rhs.imag)};
 }
 template<typename T>
-inline auto sub(cx_reg<T> lhs, cx_reg<T> rhs) -> cx_reg<T> {
+inline auto add(cx_reg<T, true> lhs, cx_reg<T, false> rhs) -> cx_reg<T, false> {
+    return {add(lhs.real, rhs.real), sub(rhs.imag, lhs.imag)};
+}
+template<typename T>
+inline auto add(cx_reg<T, false> lhs, cx_reg<T, true> rhs) -> cx_reg<T, false> {
+    return {add(lhs.real, rhs.real), sub(lhs.imag, rhs.imag)};
+}
+
+template<typename T>
+inline auto sub(cx_reg<T, false> lhs, cx_reg<T, false> rhs) -> cx_reg<T, false> {
     return {sub(lhs.real, rhs.real), sub(lhs.imag, rhs.imag)};
 }
 template<typename T>
-inline auto mul(cx_reg<T> lhs, cx_reg<T> rhs) -> cx_reg<T> {
+inline auto sub(cx_reg<T, true> lhs, cx_reg<T, false> rhs) -> cx_reg<T, true> {
+    return {sub(lhs.real, rhs.real), add(lhs.imag, rhs.imag)};
+}
+template<typename T>
+inline auto sub(cx_reg<T, false> lhs, cx_reg<T, true> rhs) -> cx_reg<T, false> {
+    return {sub(lhs.real, rhs.real), add(lhs.imag, rhs.imag)};
+}
+template<typename T>
+inline auto sub(cx_reg<T, true> lhs, cx_reg<T, true> rhs) -> cx_reg<T, false> {
+    return {sub(lhs.real, rhs.real), sub(rhs.imag, lhs.imag)};
+}
+
+template<typename T>
+inline auto mul(cx_reg<T, false> lhs, cx_reg<T, false> rhs) -> cx_reg<T, false> {
     auto real = mul(lhs.real, rhs.real);
     auto imag = mul(lhs.real, rhs.imag);
     return {fnmadd(lhs.imag, rhs.imag, real), fmadd(lhs.imag, rhs.real, imag)};
 }
 template<typename T>
-inline auto div(cx_reg<T> lhs, cx_reg<T> rhs) -> cx_reg<T> {
+inline auto mul(cx_reg<T, true> lhs, cx_reg<T, false> rhs) -> cx_reg<T, false> {
+    auto real = mul(lhs.real, rhs.real);
+    auto imag = mul(lhs.real, rhs.imag);
+    return {fmadd(lhs.imag, rhs.imag, real), fnmadd(lhs.imag, rhs.real, imag)};
+}
+template<typename T>
+inline auto mul(cx_reg<T, false> lhs, cx_reg<T, true> rhs) -> cx_reg<T, false> {
+    auto real = mul(lhs.real, rhs.real);
+    auto imag = mul(lhs.real, rhs.imag);
+    return {fmadd(lhs.imag, rhs.imag, real), fmsub(lhs.imag, rhs.real, imag)};
+}
+template<typename T>
+inline auto mul(cx_reg<T, true> lhs, cx_reg<T, true> rhs) -> cx_reg<T, false> {
+    auto real = mul(lhs.real, rhs.real);
+    auto imag = mul(lhs.real, rhs.imag);
+    return {fnmadd(lhs.imag, rhs.imag, real), fnmsub(lhs.imag, rhs.real, imag)};
+}
+
+template<typename T>
+inline auto div(cx_reg<T, false> lhs, cx_reg<T, false> rhs) -> cx_reg<T, false> {
     auto rhs_abs = avx::mul(rhs.real, rhs.real);
     auto real_   = avx::mul(lhs.real, rhs.real);
     auto imag_   = avx::mul(lhs.real, rhs.imag);
@@ -95,44 +136,100 @@ inline auto div(cx_reg<T> lhs, cx_reg<T> rhs) -> cx_reg<T> {
 
     return {avx::div(real_, rhs_abs), avx::div(imag_, rhs_abs)};
 }
-
 template<typename T>
-inline auto add(typename reg<T>::type lhs, cx_reg<T> rhs) -> cx_reg<T> {
+inline auto div(cx_reg<T, true> lhs, cx_reg<T, false> rhs) -> cx_reg<T, false> {
+    auto rhs_abs = avx::mul(rhs.real, rhs.real);
+    auto real_   = avx::mul(lhs.real, rhs.real);
+    auto imag_   = avx::mul(lhs.real, rhs.imag);
+
+    rhs_abs = avx::fmadd(rhs.imag, rhs.imag, rhs_abs);
+    real_   = avx::fnmadd(lhs.imag, rhs.imag, real_);
+    imag_   = avx::fnmsub(lhs.imag, rhs.real, imag_);
+
+    return {avx::div(real_, rhs_abs), avx::div(imag_, rhs_abs)};
+}
+template<typename T>
+inline auto div(cx_reg<T, false> lhs, cx_reg<T, true> rhs) -> cx_reg<T, false> {
+    auto rhs_abs = avx::mul(rhs.real, rhs.real);
+    auto real_   = avx::mul(lhs.real, rhs.real);
+    auto imag_   = avx::mul(lhs.real, rhs.imag);
+
+    rhs_abs = avx::fmadd(rhs.imag, rhs.imag, rhs_abs);
+    real_   = avx::fnmadd(lhs.imag, rhs.imag, real_);
+    imag_   = avx::fmadd(lhs.imag, rhs.real, imag_);
+
+    return {avx::div(real_, rhs_abs), avx::div(imag_, rhs_abs)};
+}
+template<typename T>
+inline auto div(cx_reg<T, true> lhs, cx_reg<T, true> rhs) -> cx_reg<T, false> {
+    auto rhs_abs = avx::mul(rhs.real, rhs.real);
+    auto real_   = avx::mul(lhs.real, rhs.real);
+    auto imag_   = avx::mul(lhs.real, rhs.imag);
+
+    rhs_abs = avx::fmadd(rhs.imag, rhs.imag, rhs_abs);
+    real_   = avx::fmadd(lhs.imag, rhs.imag, real_);
+    imag_   = avx::fnmadd(lhs.imag, rhs.real, imag_);
+
+    return {avx::div(real_, rhs_abs), avx::div(imag_, rhs_abs)};
+}
+
+template<typename T, bool Conj>
+inline auto add(reg_t<T> lhs, cx_reg<T, Conj> rhs) -> cx_reg<T, Conj> {
     return {add(lhs, rhs.real), rhs.imag};
 }
-template<typename T>
-inline auto sub(typename reg<T>::type lhs, cx_reg<T> rhs) -> cx_reg<T> {
-    return {sub(lhs, rhs.real), rhs.imag};
+template<typename T, bool Conj>
+inline auto sub(reg_t<T> lhs, cx_reg<T, Conj> rhs) -> cx_reg<T, false> {
+    if constexpr (Conj) {
+        return {sub(lhs, rhs.real), rhs.imag};
+    } else {
+        reg_t<T> zero;
+        if constexpr (std::same_as<T, float>) {
+            zero = _mm256_setzero_ps();
+        } else {
+            zero = _mm256_setzero_pd();
+        }
+        return {sub(lhs, rhs.real), sub(zero, rhs.imag)};
+    }
 }
-template<typename T>
-inline auto mul(typename reg<T>::type lhs, cx_reg<T> rhs) -> cx_reg<T> {
+template<typename T, bool Conj>
+inline auto mul(reg_t<T> lhs, cx_reg<T, Conj> rhs) -> cx_reg<T, Conj> {
     return {avx::mul(lhs, rhs.real), avx::mul(lhs, rhs.imag)};
 }
-template<typename T>
-inline auto div(typename reg<T>::type lhs, cx_reg<T> rhs) -> cx_reg<T> {
-    auto rhs_abs = avx::mul(rhs.real, rhs.real);
-    auto real_   = avx::mul(lhs, rhs.real);
-    auto imag_   = avx::mul(lhs, rhs.imag);
-
+template<typename T, bool Conj>
+inline auto div(reg_t<T> lhs, cx_reg<T, Conj> rhs) -> cx_reg<T, false> {
+    auto     rhs_abs = avx::mul(rhs.real, rhs.real);
+    auto     real_   = avx::mul(lhs, rhs.real);
+    reg_t<T> imag_;
+    if constexpr (Conj) {
+        auto imag_ = avx::mul(lhs, rhs.imag);
+    } else {
+        reg_t<T> zero;
+        if constexpr (std::same_as<T, float>) {
+            zero = _mm256_setzero_ps();
+        } else {
+            zero = _mm256_setzero_pd();
+        }
+        auto imag_ = avx::sub(zero, avx::mul(lhs, rhs.imag));
+    }
     rhs_abs = avx::fmadd(rhs.imag, rhs.imag, rhs_abs);
 
     return {avx::div(real_, rhs_abs), avx::div(imag_, rhs_abs)};
 }
 
-template<typename T>
-inline auto add(cx_reg<T> lhs, typename reg<T>::type rhs) -> cx_reg<T> {
+template<typename T, bool Conj>
+inline auto add(cx_reg<T, Conj> lhs, reg_t<T> rhs) -> cx_reg<T, Conj> {
     return {add(lhs.real, rhs), lhs.imag};
 }
-template<typename T>
-inline auto sub(cx_reg<T> lhs, typename reg<T>::type rhs) -> cx_reg<T> {
+template<typename T, bool Conj>
+inline auto sub(cx_reg<T, Conj> lhs, reg_t<T> rhs) -> cx_reg<T, Conj> {
     return {sub(lhs.real, rhs), lhs.imag};
 }
-template<typename T>
-inline auto mul(cx_reg<T> lhs, typename reg<T>::type rhs) -> cx_reg<T> {
+template<typename T, bool Conj>
+inline auto mul(cx_reg<T, Conj> lhs, reg_t<T> rhs) -> cx_reg<T, Conj> {
     return {avx::mul(lhs.real, rhs), avx::mul(lhs.imag, rhs)};
 }
-template<typename T>
-inline auto div(cx_reg<T> lhs, typename reg<T>::type rhs) -> cx_reg<T> {
+template<typename T, bool Conj>
+inline auto div(cx_reg<T, Conj> lhs, reg_t<T> rhs) -> cx_reg<T, Conj> {
     return {avx::div(lhs.real, rhs), avx::div(lhs.imag, rhs)};
 }
 
@@ -271,12 +368,11 @@ struct expression_traits {
      *
      * @tparam PackSize required pack size 
      * @param iterator  must be aligned
-     * @param offset    must be a multiple of simd vector size
-     * @return avx::cx_reg<T>
+     * @param offset    must be a multiple of SIMD vector size
      */
     template<std::size_t PackSize, typename T, bool Const, std::size_t IPackSize>
     [[nodiscard]] static constexpr auto cx_reg(const iterator<T, Const, IPackSize>& iterator,
-                                               std::size_t offset) -> avx::cx_reg<T> {
+                                               std::size_t offset) {
         constexpr auto PLoad = std::max(avx::reg<T>::size, IPackSize);
 
         auto addr      = avx::ra_addr<IPackSize>(&(*iterator), offset);
@@ -306,12 +402,18 @@ concept vector_expression =    //
                                      std::complex<typename E::real_type>>;
 
         { expression_traits::aligned(expression.begin(), idx) } -> std::same_as<bool>;
-
-        {
-            expression_traits::cx_reg<avx::reg<typename E::real_type>::size>(expression.begin(), idx)
-            } -> std::same_as<avx::cx_reg<typename E::real_type>>;
-    };
-
+    } &&
+    (
+        requires(E expression, std::size_t idx) {
+            {
+                expression_traits::cx_reg<avx::reg<typename E::real_type>::size>(expression.begin(), idx)
+                } -> std::same_as<avx::cx_reg<typename E::real_type, false>>;
+        } ||
+        requires(E expression, std::size_t idx) {
+            {
+                expression_traits::cx_reg<avx::reg<typename E::real_type>::size>(expression.begin(), idx)
+                } -> std::same_as<avx::cx_reg<typename E::real_type, true>>;
+        });
 
 template<typename E1, typename E2>
 concept compatible_expression = vector_expression<E1> && vector_expression<E2> &&
@@ -468,7 +570,7 @@ public:
         [[nodiscard]] auto operator[](difference_type idx) const -> value_type {
             return value_type(*(m_lhs + idx)) + value_type(*(m_rhs + idx));
         }
-        [[nodiscard]] auto cx_reg(std::size_t idx) const -> avx::cx_reg<real_type> {
+        [[nodiscard]] auto cx_reg(std::size_t idx) const {
             const auto lhs = expression_traits::cx_reg<pack_size>(m_lhs, idx);
             const auto rhs = expression_traits::cx_reg<pack_size>(m_rhs, idx);
 
@@ -625,7 +727,7 @@ public:
         [[nodiscard]] auto operator[](difference_type idx) const -> value_type {
             return value_type(*(m_lhs + idx)) - value_type(*(m_rhs + idx));
         }
-        [[nodiscard]] auto cx_reg(std::size_t idx) const -> avx::cx_reg<real_type> {
+        [[nodiscard]] auto cx_reg(std::size_t idx) const {
             const auto lhs = expression_traits::cx_reg<pack_size>(m_lhs, idx);
             const auto rhs = expression_traits::cx_reg<pack_size>(m_rhs, idx);
 
@@ -782,7 +884,7 @@ public:
         [[nodiscard]] auto operator[](difference_type idx) const -> value_type {
             return value_type(*(m_lhs + idx)) * value_type(*(m_rhs + idx));
         }
-        [[nodiscard]] auto cx_reg(std::size_t idx) const -> avx::cx_reg<real_type> {
+        [[nodiscard]] auto cx_reg(std::size_t idx) const {
             const auto lhs = expression_traits::cx_reg<pack_size>(m_lhs, idx);
             const auto rhs = expression_traits::cx_reg<pack_size>(m_rhs, idx);
 
@@ -939,7 +1041,7 @@ public:
         [[nodiscard]] auto operator[](difference_type idx) const -> value_type {
             return value_type(*(m_lhs + idx)) / value_type(*(m_rhs + idx));
         }
-        [[nodiscard]] auto cx_reg(std::size_t idx) const -> avx::cx_reg<real_type> {
+        [[nodiscard]] auto cx_reg(std::size_t idx) const {
             const auto lhs = expression_traits::cx_reg<pack_size>(m_lhs, idx);
             const auto rhs = expression_traits::cx_reg<pack_size>(m_rhs, idx);
 
@@ -1096,7 +1198,7 @@ public:
         [[nodiscard]] auto operator[](difference_type idx) const -> value_type {
             return m_scalar + value_type(*(m_vector + idx));
         }
-        [[nodiscard]] auto cx_reg(std::size_t idx) const -> avx::cx_reg<real_type> {
+        [[nodiscard]] auto cx_reg(std::size_t idx) const {
             const auto scalar = avx::broadcast(m_scalar);
             const auto vector = expression_traits::cx_reg<pack_size>(m_vector, idx);
 
@@ -1246,7 +1348,7 @@ public:
         [[nodiscard]] auto operator[](difference_type idx) const -> value_type {
             return m_scalar - value_type(*(m_vector + idx));
         }
-        [[nodiscard]] auto cx_reg(std::size_t idx) const -> avx::cx_reg<real_type> {
+        [[nodiscard]] auto cx_reg(std::size_t idx) const {
             const auto scalar = avx::broadcast(m_scalar);
             const auto vector = expression_traits::cx_reg<pack_size>(m_vector, idx);
 
@@ -1398,7 +1500,7 @@ public:
         [[nodiscard]] auto operator[](difference_type idx) const -> value_type {
             return m_scalar * value_type(*(m_vector + idx));
         }
-        [[nodiscard]] auto cx_reg(std::size_t idx) const -> avx::cx_reg<real_type> {
+        [[nodiscard]] auto cx_reg(std::size_t idx) const {
             const auto scalar = avx::broadcast(m_scalar);
             const auto vector = expression_traits::cx_reg<pack_size>(m_vector, idx);
 
@@ -1548,7 +1650,7 @@ public:
         [[nodiscard]] auto operator[](difference_type idx) const -> value_type {
             return m_scalar / value_type(*(m_vector + idx));
         }
-        [[nodiscard]] auto cx_reg(std::size_t idx) const -> avx::cx_reg<real_type> {
+        [[nodiscard]] auto cx_reg(std::size_t idx) const {
             const auto scalar = avx::broadcast(m_scalar);
             const auto vector = expression_traits::cx_reg<pack_size>(m_vector, idx);
 
