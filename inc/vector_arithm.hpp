@@ -1808,11 +1808,9 @@ public:
         [[nodiscard]] auto operator[](difference_type idx) const -> value_type {
             return std::conj(value_type(*(m_vector + idx)));
         }
-        [[nodiscard]] auto cx_reg(std::size_t idx) const -> avx::cx_reg<real_type> {
-            const auto minus  = avx::broadcast(real_type{-0});
+        [[nodiscard]] auto cx_reg(std::size_t idx) const {
             const auto vector = expression_traits::cx_reg<pack_size>(m_vector, idx);
-
-            return {vector.real, avx::xor_(minus, vector.imag)};
+            return avx::conj(vector);
         }
 
         [[nodiscard]] constexpr bool aligned(std::size_t offset = 0) const noexcept {

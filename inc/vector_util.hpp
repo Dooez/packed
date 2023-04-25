@@ -373,22 +373,22 @@ struct convert;
 
 template<>
 struct convert<float> {
-    static constexpr auto swap_12 = [](cx_reg<float> reg) {
+    static constexpr auto swap_12 = []<bool Conj>(cx_reg<float, Conj> reg) {
         auto real = _mm256_shuffle_ps(reg.real, reg.real, 0b11011000);
         auto imag = _mm256_shuffle_ps(reg.imag, reg.imag, 0b11011000);
-        return cx_reg<float>({real, imag});
+        return cx_reg<float, Conj>({real, imag});
     };
 
-    static constexpr auto swap_24 = [](cx_reg<float> reg) {
+    static constexpr auto swap_24 = []<bool Conj>(cx_reg<float, Conj> reg) {
         auto real = _mm256_permute4x64_pd(_mm256_castps_pd(reg.real), 0b11011000);
         auto imag = _mm256_permute4x64_pd(_mm256_castps_pd(reg.imag), 0b11011000);
-        return cx_reg<float>({_mm256_castpd_ps(real), _mm256_castpd_ps(imag)});
+        return cx_reg<float, Conj>({_mm256_castpd_ps(real), _mm256_castpd_ps(imag)});
     };
 
-    static constexpr auto swap_48 = [](cx_reg<float> reg) {
+    static constexpr auto swap_48 = []<bool Conj>(cx_reg<float, Conj> reg) {
         auto real = unpacklo_128(reg.real, reg.imag);
         auto imag = unpackhi_128(reg.real, reg.imag);
-        return cx_reg<float>({real, imag});
+        return cx_reg<float, Conj>({real, imag});
     };
 
 
@@ -400,10 +400,10 @@ struct convert<float> {
             return tup;
         } else if constexpr (PackFrom == 1) {
             if constexpr (PackTo >= 8) {
-                auto pack_1 = [](cx_reg<float> reg) {
+                auto pack_1 = []<bool Conj>(cx_reg<float, Conj> reg) {
                     auto real = _mm256_shuffle_ps(reg.real, reg.imag, 0b10001000);
                     auto imag = _mm256_shuffle_ps(reg.real, reg.imag, 0b11011101);
-                    return cx_reg<float>({real, imag});
+                    return cx_reg<float, Conj>({real, imag});
                 };
 
                 auto tmp = internal::apply_for_each(swap_48, tup);
@@ -416,10 +416,10 @@ struct convert<float> {
             }
         } else if constexpr (PackFrom == 2) {
             if constexpr (PackTo >= 8) {
-                auto pack_1 = [](cx_reg<float> reg) {
+                auto pack_1 = []<bool Conj>(cx_reg<float, Conj> reg) {
                     auto real = unpacklo_pd(reg.real, reg.imag);
                     auto imag = unpackhi_pd(reg.real, reg.imag);
-                    return cx_reg<float>({real, imag});
+                    return cx_reg<float, Conj>({real, imag});
                 };
                 auto tmp = internal::apply_for_each(swap_48, tup);
                 return internal::apply_for_each(pack_1, tmp);
@@ -444,10 +444,10 @@ struct convert<float> {
                 auto tmp = internal::apply_for_each(swap_48, tup);
                 return internal::apply_for_each(swap_24, tmp);
             } else if constexpr (PackTo == 1) {
-                auto pack_0 = [](cx_reg<float> reg) {
+                auto pack_0 = []<bool Conj>(cx_reg<float, Conj> reg) {
                     auto real = unpacklo_ps(reg.real, reg.imag);
                     auto imag = unpackhi_ps(reg.real, reg.imag);
-                    return cx_reg<float>({real, imag});
+                    return cx_reg<float, Conj>({real, imag});
                 };
                 auto tmp = internal::apply_for_each(pack_0, tup);
                 return internal::apply_for_each(swap_48, tmp);
@@ -459,17 +459,17 @@ struct convert<float> {
     static inline auto split(auto... args) {
         auto tup = std::make_tuple(args...);
         if constexpr (PackFrom == 1) {
-            auto split = [](cx_reg<float> reg) {
+            auto split = []<bool Conj>(cx_reg<float, Conj> reg) {
                 auto real = _mm256_shuffle_ps(reg.real, reg.imag, 0b10001000);
                 auto imag = _mm256_shuffle_ps(reg.real, reg.imag, 0b11011101);
-                return cx_reg<float>({real, imag});
+                return cx_reg<float, Conj>({real, imag});
             };
             return internal::apply_for_each(split, tup);
         } else if constexpr (PackFrom == 2) {
-            auto split = [](cx_reg<float> reg) {
+            auto split = []<bool Conj>(cx_reg<float, Conj> reg) {
                 auto real = unpacklo_pd(reg.real, reg.imag);
                 auto imag = unpackhi_pd(reg.real, reg.imag);
-                return cx_reg<float>({real, imag});
+                return cx_reg<float, Conj>({real, imag});
             };
             return internal::apply_for_each(split, tup);
         } else if constexpr (PackFrom == 4) {
@@ -483,17 +483,17 @@ struct convert<float> {
     static inline auto combine(auto... args) {
         auto tup = std::make_tuple(args...);
         if constexpr (PackTo == 1) {
-            auto combine = [](cx_reg<float> reg) {
+            auto combine = []<bool Conj>(cx_reg<float, Conj> reg) {
                 auto real = unpacklo_ps(reg.real, reg.imag);
                 auto imag = unpackhi_ps(reg.real, reg.imag);
-                return cx_reg<float>({real, imag});
+                return cx_reg<float, Conj>({real, imag});
             };
             return internal::apply_for_each(combine, tup);
         } else if constexpr (PackTo == 2) {
-            auto combine = [](cx_reg<float> reg) {
+            auto combine = []<bool Conj>(cx_reg<float, Conj> reg) {
                 auto real = unpacklo_pd(reg.real, reg.imag);
                 auto imag = unpackhi_pd(reg.real, reg.imag);
-                return cx_reg<float>({real, imag});
+                return cx_reg<float, Conj>({real, imag});
             };
             return internal::apply_for_each(combine, tup);
         } else if constexpr (PackTo == 4) {
@@ -520,16 +520,16 @@ struct convert<float> {
 
 template<>
 struct convert<double> {
-    static constexpr auto swap_12 = [](cx_reg<double> reg) {
+    static constexpr auto swap_12 = []<bool Conj>(cx_reg<double, Conj> reg) {
         auto real = _mm256_permute4x64_pd(reg.real, 0b11011000);
         auto imag = _mm256_permute4x64_pd(reg.imag, 0b11011000);
-        return cx_reg<double>({real, imag});
+        return cx_reg<double, Conj>({real, imag});
     };
 
-    static constexpr auto swap_24 = [](cx_reg<float> reg) {
+    static constexpr auto swap_24 = []<bool Conj>(cx_reg<double, Conj> reg) {
         auto real = unpacklo_128(reg.real, reg.imag);
         auto imag = unpackhi_128(reg.real, reg.imag);
-        return cx_reg<double>({real, imag});
+        return cx_reg<double, Conj>({real, imag});
     };
 
     template<std::size_t PackFrom, std::size_t PackTo>
@@ -540,10 +540,10 @@ struct convert<double> {
             return tup;
         } else if constexpr (PackFrom == 1) {
             if constexpr (PackTo >= 4) {
-                auto pack_1 = [](cx_reg<float> reg) {
+                auto pack_1 = []<bool Conj>(cx_reg<double, Conj> reg) {
                     auto real = unpacklo_pd(reg.real, reg.imag);
                     auto imag = unpackhi_pd(reg.real, reg.imag);
-                    return cx_reg<float>({real, imag});
+                    return cx_reg<double, Conj>({real, imag});
                 };
                 auto tmp = internal::apply_for_each(pack_1, tup);
                 return internal::apply_for_each(swap_12, tmp);
@@ -560,10 +560,10 @@ struct convert<double> {
             if constexpr (PackTo == 2) {
                 return internal::apply_for_each(swap_24, tup);
             } else if constexpr (PackTo == 1) {
-                auto pack_1 = [](cx_reg<float> reg) {
+                auto pack_1 = []<bool Conj>(cx_reg<double, Conj> reg) {
                     auto real = unpacklo_pd(reg.real, reg.imag);
                     auto imag = unpackhi_pd(reg.real, reg.imag);
-                    return cx_reg<float>({real, imag});
+                    return cx_reg<double, Conj>({real, imag});
                 };
                 auto tmp = internal::apply_for_each(pack_1, tup);
                 return internal::apply_for_each(swap_24, tmp);
