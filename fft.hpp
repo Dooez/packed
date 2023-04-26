@@ -24,11 +24,6 @@ template<typename T, typename... U>
 concept has_type = (std::same_as<T, U> || ...);
 namespace fft {
 
-enum class decimation : bool {
-    in_time      = true,
-    in_frequency = false
-};
-
 template<std::size_t Size, bool DecInTime>
 struct order {
     static constexpr auto reverse_bit_order(uint64_t num, uint64_t depth) -> uint64_t {
@@ -525,27 +520,33 @@ private:
     using subsize_t = std::conditional_t<SubSize == pcx::dynamic_size, std::size_t, decltype([]() {})>;
     using sort_allocator_type =
         typename std::allocator_traits<allocator_type>::template rebind_alloc<std::size_t>;
+    static constexpr bool sorted = Output == fft_output::normal;
+
+    using sort_t    = std::conditional_t<sorted,    //
+                                      std::vector<std::size_t, sort_allocator_type>,
+                                      decltype([]() {})>;
+    using twiddle_t = std::conditional_t<sorted,
+                                         pcx::vector<real_type, allocator_type, reg_size>,
+                                         std::vector<real_type, allocator_type>>;
+
 
 public:
     explicit fft_unit(allocator_type allocator = allocator_type())
         requires(Size != pcx::dynamic_size) && (SubSize != pcx::dynamic_size)
     : m_sort(get_sort(size(), static_cast<sort_allocator_type>(allocator)))
-    , m_twiddles(get_twiddles(size(), sub_size(), allocator))
-    , m_twiddles_unsorted(get_twiddles_unsorted(size(), sub_size(), allocator)){};
+    , m_twiddles(get_twiddles(size(), sub_size(), allocator)){};
 
     explicit fft_unit(std::size_t sub_size = 1, allocator_type allocator = allocator_type())
         requires(Size != pcx::dynamic_size) && (SubSize == pcx::dynamic_size)
     : m_sub_size(check_sub_size(sub_size))
     , m_sort(get_sort(size(), static_cast<sort_allocator_type>(allocator)))
-    , m_twiddles(get_twiddles(size(), sub_size, allocator))
-    , m_twiddles_unsorted(get_twiddles_unsorted(size(), sub_size, allocator)){};
+    , m_twiddles(get_twiddles(size(), sub_size, allocator)){};
 
     explicit fft_unit(std::size_t fft_size, allocator_type allocator = allocator_type())
         requires(Size == pcx::dynamic_size) && (SubSize != pcx::dynamic_size)
     : m_size(check_size(fft_size))
     , m_sort(get_sort(size(), static_cast<sort_allocator_type>(allocator)))
-    , m_twiddles(get_twiddles(size(), sub_size(), allocator))
-    , m_twiddles_unsorted(get_twiddles_unsorted(size(), sub_size(), allocator)){};
+    , m_twiddles(get_twiddles(size(), sub_size(), allocator)){};
 
     explicit fft_unit(std::size_t    fft_size,
                       std::size_t    sub_size  = 1,
@@ -554,8 +555,7 @@ public:
     : m_size(check_size(fft_size))
     , m_sub_size(check_sub_size(sub_size))
     , m_sort(get_sort(size(), static_cast<sort_allocator_type>(allocator)))
-    , m_twiddles(get_twiddles(size(), sub_size, allocator))
-    , m_twiddles_unsorted(get_twiddles_unsorted(size(), sub_size, allocator)){};
+    , m_twiddles(get_twiddles(size(), sub_size, allocator)){};
 
     fft_unit(const fft_unit& other)     = default;
     fft_unit(fft_unit&& other) noexcept = default;
@@ -576,7 +576,7 @@ public:
     template<typename VAllocator, std::size_t DataPackSize>
     void operator()(pcx::vector<T, VAllocator, DataPackSize>& vector) {
         assert(size() == vector.size());
-        if constexpr ((Output == fft_output::unsorted || Output == fft_output::bit_reversed)) {
+        if constexpr (!sorted) {
             fftu_internal<DataPackSize>(vector.data());
         } else {
             fft_internal<DataPackSize>(vector.data());
@@ -588,7 +588,7 @@ public:
                     const pcx::vector<T, AllocatorSrc, PackSizeSrc>& source) {
         assert(size() == dest.size());
         assert(source.size() <= size());
-        if constexpr ((Output == fft_output::unsorted || Output == fft_output::bit_reversed)) {
+        if constexpr (!sorted) {
             if (source.size() < size()) {
                 fftu_internal<PackSizeDst, PackSizeSrc>(dest.data(), source.data(), source.size());
             } else {
@@ -614,7 +614,7 @@ public:
         assert(source.aligned());
         assert(source.size() <= size());
         const auto* src = &(*source.begin());
-        if constexpr ((Output == fft_output::unsorted || Output == fft_output::bit_reversed)) {
+        if constexpr (!sorted) {
             if (source.size() < size()) {
                 fftu_internal<PackSizeDst, PackSizeSrc>(dest.data(), src, source.size());
             } else {
@@ -629,25 +629,24 @@ public:
         }
     };
 
+    template<typename VAllocator, std::size_t VPackSize>
+    void ifft(pcx::vector<T, VAllocator, VPackSize>& vector) {
+        assert(size() == vector.size());
+        if constexpr (!sorted) {
+            ifftu_internal<VPackSize>(vector.data());
+        } else {
+            ifft_internal<VPackSize>(vector.data());
+        }
+    };
+
     template<typename VAllocator>
     void operator()(std::vector<std::complex<T>, VAllocator>& vector) {
         assert(size() == vector.size());
-        if constexpr ((Output == fft_output::unsorted || Output == fft_output::bit_reversed)) {
+        if constexpr (!sorted) {
             fftu_internal<1>(reinterpret_cast<T*>(vector.data()));
         } else {
             fft_internal<1>(reinterpret_cast<T*>(vector.data()));
         }
-    };
-
-    template<typename VAllocator, std::size_t VPackSize>
-    void ifft(pcx::vector<T, VAllocator, VPackSize>& vector) {
-        assert(size() == vector.size());
-        ifft_internal<VPackSize>(vector.data());
-    };
-    template<typename VAllocator>
-    void ifft(std::vector<std::complex<T>, VAllocator>& vector) {
-        assert(size() == vector.size());
-        ifft_internal<1>(reinterpret_cast<T*>(vector.data()));
     };
 
     template<typename VAllocator>
@@ -661,12 +660,21 @@ public:
         }
     };
 
+    template<typename VAllocator>
+    void ifft(std::vector<std::complex<T>, VAllocator>& vector) {
+        assert(size() == vector.size());
+        if constexpr (!sorted) {
+            ifftu_internal<1>(reinterpret_cast<T*>(vector.data()));
+        } else {
+            ifft_internal<1>(reinterpret_cast<T*>(vector.data()));
+        }
+    };
+
 private:
-    [[no_unique_address]] size_t                           m_size;
-    [[no_unique_address]] subsize_t                        m_sub_size;
-    const std::vector<std::size_t, sort_allocator_type>    m_sort;
-    const pcx::vector<real_type, allocator_type, reg_size> m_twiddles;
-    const std::vector<real_type, allocator_type>           m_twiddles_unsorted;
+    [[no_unique_address]] const size_t    m_size;
+    [[no_unique_address]] const subsize_t m_sub_size;
+    [[no_unique_address]] const sort_t    m_sort;
+    const twiddle_t                       m_twiddles;
 
     [[nodiscard]] constexpr auto sub_size() const -> std::size_t {
         if constexpr (SubSize == pcx::dynamic_size) {
@@ -700,7 +708,7 @@ public:
 
     template<std::size_t PData>
     void fftu_internal(float* data) {
-        auto* twiddle_ptr = m_twiddles_unsorted.data();
+        auto* twiddle_ptr = m_twiddles.data();
         if (log2i(size() / (reg_size * 4)) % 2 == 0) {
             unsorted_subtransform_recursive<PData, PData, true>(data, size(), twiddle_ptr);
         } else if (size() / (reg_size * 4) > 8) {
@@ -708,8 +716,7 @@ public:
             for (std::size_t i_group = 0; i_group < size() / 8 / reg_size; ++i_group) {
                 node8_along<PTform, PData, false>(data, size(), i_group * reg_size);
             }
-            twiddle_ptr = unsorted_subtransform_recursive<PData, PTform, true>(
-                data, size() / 8, twiddle_ptr);
+            twiddle_ptr = unsorted_subtransform_recursive<PData, PTform, true>(data, size() / 8, twiddle_ptr);
             twiddle_ptr = unsorted_subtransform_recursive<PData, PTform, false>(
                 avx::ra_addr<PTform>(data, size() / 8 * 1), size() / 8, twiddle_ptr);
             twiddle_ptr = unsorted_subtransform_recursive<PData, PTform, false>(
@@ -736,8 +743,7 @@ public:
             for (std::size_t i_group = 0; i_group < size() / 2 / reg_size; ++i_group) {
                 node2_along<PTform, PData>(data, size(), i_group * reg_size);
             }
-            twiddle_ptr = unsorted_subtransform_recursive<PData, PTform, true>(
-                data, size() / 2, twiddle_ptr);
+            twiddle_ptr = unsorted_subtransform_recursive<PData, PTform, true>(data, size() / 2, twiddle_ptr);
             unsorted_subtransform_recursive<PData, PTform, false>(
                 avx::ra_addr<PTform>(data, size() / 2), size() / 2, twiddle_ptr);
         }
@@ -745,18 +751,17 @@ public:
 
     template<std::size_t PDest, std::size_t PSrc>
     void fftu_internal(float* dest, const float* source, std::size_t source_size = 0) {
-        auto* twiddle_ptr = m_twiddles_unsorted.data();
+        auto* twiddle_ptr = m_twiddles.data();
         if (source_size == 0) {
             if (log2i(size() / (reg_size * 4)) % 2 == 0) {
-                unsorted_subtransform_recursive<PDest, PDest, true>(
-                    dest, size(), twiddle_ptr, source);
+                unsorted_subtransform_recursive<PDest, PDest, true>(dest, size(), twiddle_ptr, source);
             } else if (size() / (reg_size * 4) > 8) {
                 constexpr auto PTform = std::max(PDest, reg_size);
                 for (std::size_t i_group = 0; i_group < size() / 8 / reg_size; ++i_group) {
                     node8_along<PTform, PDest, false>(dest, size(), i_group * reg_size);
                 }
-                twiddle_ptr = unsorted_subtransform_recursive<PDest, PTform, true>(
-                    dest, size() / 8, twiddle_ptr);
+                twiddle_ptr =
+                    unsorted_subtransform_recursive<PDest, PTform, true>(dest, size() / 8, twiddle_ptr);
                 twiddle_ptr = unsorted_subtransform_recursive<PDest, PTform, false>(
                     avx::ra_addr<PTform>(dest, size() / 8 * 1), size() / 8, twiddle_ptr);
                 twiddle_ptr = unsorted_subtransform_recursive<PDest, PTform, false>(
@@ -799,8 +804,8 @@ public:
                     cxstore<PTform>(ptr1, a1);
                 }
 
-                twiddle_ptr = unsorted_subtransform_recursive<PDest, PTform, true>(
-                    dest, size() / 2, twiddle_ptr);
+                twiddle_ptr =
+                    unsorted_subtransform_recursive<PDest, PTform, true>(dest, size() / 2, twiddle_ptr);
                 unsorted_subtransform_recursive<PDest, PTform, false>(
                     avx::ra_addr<PTform>(dest, size() / 2), size() / 2, twiddle_ptr);
             }
@@ -813,8 +818,8 @@ public:
                 for (std::size_t i_group = 0; i_group < size() / 8 / reg_size; ++i_group) {
                     node8_along<PTform, PSrc, false>(dest, size(), i_group * reg_size, source, source_size);
                 }
-                twiddle_ptr = unsorted_subtransform_recursive<PDest, PTform, true>(
-                    dest, size() / 8, twiddle_ptr);
+                twiddle_ptr =
+                    unsorted_subtransform_recursive<PDest, PTform, true>(dest, size() / 8, twiddle_ptr);
                 twiddle_ptr = unsorted_subtransform_recursive<PDest, PTform, false>(
                     avx::ra_addr<PTform>(dest, size() / 8 * 1), size() / 8, twiddle_ptr);
                 twiddle_ptr = unsorted_subtransform_recursive<PDest, PTform, false>(
@@ -840,8 +845,8 @@ public:
                 for (std::size_t i_group = 0; i_group < size() / 2 / reg_size; ++i_group) {
                     node2_along<PTform, PSrc>(dest, size(), i_group * reg_size, tw0, source, source_size);
                 }
-                twiddle_ptr = unsorted_subtransform_recursive<PDest, PTform, true>(
-                    dest, size() / 2, twiddle_ptr);
+                twiddle_ptr =
+                    unsorted_subtransform_recursive<PDest, PTform, true>(dest, size() / 2, twiddle_ptr);
                 unsorted_subtransform_recursive<PDest, PTform, false>(
                     avx::ra_addr<PTform>(dest, size() / 2), size() / 2, twiddle_ptr);
             }
@@ -849,11 +854,10 @@ public:
     }
 
     template<std::size_t PData>
-    void fftu_internal_inverse(float* data) {
-        auto* twiddle_ptr = &(*m_twiddles_unsorted.end());
+    void ifftu_internal(float* data) {
+        auto* twiddle_ptr = &(*m_twiddles.end());
         if (log2i(size() / (reg_size * 4)) % 2 == 0) {
-            unsorted_subtransform_recursive_inverse<PData, PData, true>(
-                data, size(), twiddle_ptr);
+            unsorted_subtransform_recursive_inverse<PData, PData, true>(data, size(), twiddle_ptr);
         } else if (size() / (reg_size * 4) > 8) {
             constexpr auto PTform = std::max(PData, reg_size);
 
@@ -871,8 +875,8 @@ public:
                 avx::ra_addr<PTform>(data, size() / 8 * 2), size() / 8, twiddle_ptr);
             twiddle_ptr = unsorted_subtransform_recursive_inverse<PTform, PData, false>(
                 avx::ra_addr<PTform>(data, size() / 8 * 1), size() / 8, twiddle_ptr);
-            twiddle_ptr = unsorted_subtransform_recursive_inverse<PTform, PData, true>(
-                data, size() / 8, twiddle_ptr);
+            twiddle_ptr =
+                unsorted_subtransform_recursive_inverse<PTform, PData, true>(data, size() / 8, twiddle_ptr);
             for (std::size_t i_group = 0; i_group < size() / 8 / reg_size; ++i_group) {
                 node8_along<PData, PTform, false, false, true>(data, size(), i_group * reg_size);
             }
@@ -881,8 +885,8 @@ public:
 
             twiddle_ptr = unsorted_subtransform_recursive_inverse<PData, PTform, false>(
                 avx::ra_addr<PTform>(data, size() / 2), size() / 2, twiddle_ptr);
-            twiddle_ptr = unsorted_subtransform_recursive_inverse<PData, PTform, true>(
-                data, size() / 2, twiddle_ptr);
+            twiddle_ptr =
+                unsorted_subtransform_recursive_inverse<PData, PTform, true>(data, size() / 2, twiddle_ptr);
 
             twiddle_ptr -= 2;
 
@@ -1748,10 +1752,7 @@ public:
         return twiddle_ptr;
     };
 
-    template<std::size_t PDest,
-             std::size_t PSrc,
-             bool        First      = false,
-             bool        Scale      = true>
+    template<std::size_t PDest, std::size_t PSrc, bool First = false, bool Scale = true>
     inline auto unsorted_subtransform_inverse(float* data, std::size_t size, const float* twiddle_ptr)
         -> const float* {
         constexpr auto PTform = std::max(PSrc, reg_size);
@@ -1928,8 +1929,7 @@ public:
     inline auto unsorted_subtransform_recursive_inverse(T* data, std::size_t size, const T* twiddle_ptr)
         -> const T* {
         if (size <= sub_size()) {
-            return unsorted_subtransform_inverse<PDest, PSrc, First, true>(
-                data, size, twiddle_ptr);
+            return unsorted_subtransform_inverse<PDest, PSrc, First, true>(data, size, twiddle_ptr);
         }
         constexpr auto PTform = std::max(PSrc, reg_size);
 
@@ -1939,8 +1939,8 @@ public:
             avx::ra_addr<PTform>(data, size / 2), size / 4, twiddle_ptr);
         twiddle_ptr = unsorted_subtransform_recursive_inverse<PDest, PTform, false>(
             avx::ra_addr<PTform>(data, size / 4), size / 4, twiddle_ptr);
-        twiddle_ptr = unsorted_subtransform_recursive_inverse<PDest, PTform, First>(
-            data, size / 4, twiddle_ptr);
+        twiddle_ptr =
+            unsorted_subtransform_recursive_inverse<PDest, PTform, First>(data, size / 4, twiddle_ptr);
         if constexpr (First) {
             twiddle_ptr -= 6;
             for (std::size_t i_group = 0; i_group < size / 4 / reg_size; ++i_group) {
@@ -2278,7 +2278,9 @@ private:
     }
 
     static auto get_sort(std::size_t fft_size, sort_allocator_type allocator)
-        -> std::vector<std::size_t, sort_allocator_type> {
+        -> std::vector<std::size_t, sort_allocator_type>
+        requires(sorted)
+    {
         const auto packed_sort_size = fft_size / reg_size / reg_size;
         const auto order            = log2i(packed_sort_size);
         auto       sort             = std::vector<std::size_t, sort_allocator_type>(allocator);
@@ -2298,9 +2300,15 @@ private:
         }
         return sort;
     }
-
+    static auto get_sort(std::size_t fft_size, sort_allocator_type allocator)
+        requires(!sorted)
+    {
+        return sort_t{};
+    };
     static auto get_twiddles(std::size_t fft_size, std::size_t sub_size, allocator_type allocator)
-        -> pcx::vector<real_type, allocator_type, reg_size> {
+        -> pcx::vector<real_type, allocator_type, reg_size>
+        requires(sorted)
+    {
         auto       wnk   = internal::fft::wnk<T>;
         const auto depth = log2i(fft_size);
 
@@ -2387,8 +2395,10 @@ private:
         return twiddles;
     }
 
-    static auto get_twiddles_unsorted(std::size_t fft_size, std::size_t sub_size, allocator_type allocator)
-        -> std::vector<T, allocator_type> {
+    static auto get_twiddles(std::size_t fft_size, std::size_t sub_size, allocator_type allocator)
+        -> std::vector<T, allocator_type>
+        requires(!sorted)
+    {
         constexpr auto wnk = internal::fft::wnk<T>;
 
         auto twiddles = std::vector<T, allocator_type>(allocator);

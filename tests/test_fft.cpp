@@ -329,7 +329,7 @@ int test_fftu_float(std::size_t size) {
         }
 
         ret = 0;
-        unit.fftu_internal_inverse<PackSize>(vec_out.data());
+        unit.ifftu_internal<PackSize>(vec_out.data());
         for (uint i = 0; i < size; ++i) {
             auto val = std::complex<float>(vec[i].value());
             if (!equal_eps(val, vec_out[i].value(), 1U << (depth))) {
@@ -361,7 +361,7 @@ int test_fftu_float(std::size_t size) {
 
         vec_out = vec;
         unit_u.fftu_internal<PackSize>(vec_out.data());
-        unit_u.fftu_internal_inverse<PackSize>(vec_out.data());
+        unit_u.ifftu_internal<PackSize>(vec_out.data());
         for (uint i = 0; i < size; ++i) {
             auto val = std::complex<float>(vec[i].value());
             if (!equal_eps(val, vec_out[i].value(), 1U << (depth))) {
