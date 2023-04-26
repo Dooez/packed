@@ -7,8 +7,8 @@
 
 // NOLINTBEGIN
 
-void test_que(pcx::fft_unit<float>& unit, std::vector<std::complex<float>>& v1) {
-    unit.unsorted(v1);
+void test_que(pcx::fft_unit<float, pcx::fft_output::unsorted>& unit, std::vector<std::complex<float>>& v1) {
+    unit(v1);
 }
 
 // void test_que(pcx::fft_unit<float, 8192, 512>& unit, pcx::vector<float>& v1) {
@@ -206,7 +206,7 @@ int test_fft_float(std::size_t size) {
     auto ff = fft(vec);
 
     for (std::size_t sub_size = size; sub_size <= size * 2; sub_size *= 2) {
-        auto unit = pcx::fft_unit<float, pcx::dynamic_size, pcx::dynamic_size>(size, sub_size);
+        auto unit = pcx::fft_unit<float, pcx::fft_output::normal>(size, sub_size);
 
         vec_out = vec;
 
@@ -305,12 +305,13 @@ int test_fftu_float(std::size_t size) {
     for (std::size_t sub_size = 64; sub_size <= size; sub_size *= 2) {
         vec_out = vec;
 
-        auto unit = pcx::fft_unit<float, pcx::dynamic_size, pcx::dynamic_size>(size, sub_size);
+        auto unit = pcx::fft_unit<float, pcx::fft_output::bit_reversed>(size, sub_size);
+        auto unit_u = pcx::fft_unit<float, pcx::fft_output::unsorted>(size, sub_size);
 
         auto ffu   = fftu(vec);
         auto eps_u = 1U << (depth - 1);
         vec_out    = vec;
-        unit.unsorted(vec_out);
+        unit(vec_out);
         int ret = 0;
         for (uint i = 0; i < size; ++i) {
             auto val = std::complex<float>(ffu[i].value());
@@ -347,7 +348,7 @@ int test_fftu_float(std::size_t size) {
         for (uint i = 0; i < size; ++i) {
             svec_out[i] = vec[i];
         }
-        unit.unsorted(svec_out);
+        unit(svec_out);
         for (uint i = 0; i < size; ++i) {
             auto val = std::complex<float>(ffu[i].value());
             if (!equal_eps(val, svec_out[i], eps_u)) {
@@ -359,8 +360,8 @@ int test_fftu_float(std::size_t size) {
 
 
         vec_out = vec;
-        unit.fftu_internal<PackSize, false>(vec_out.data());
-        unit.fftu_internal_inverse<PackSize, false>(vec_out.data());
+        unit_u.fftu_internal<PackSize>(vec_out.data());
+        unit_u.fftu_internal_inverse<PackSize>(vec_out.data());
         for (uint i = 0; i < size; ++i) {
             auto val = std::complex<float>(vec[i].value());
             if (!equal_eps(val, vec_out[i].value(), 1U << (depth))) {
@@ -395,7 +396,7 @@ int test_fftu_float_0(std::size_t size) {
     for (std::size_t sub_size = 64; sub_size <= size; sub_size *= 2) {
         vec_out = vec;
 
-        auto unit = pcx::fft_unit<float, pcx::dynamic_size, pcx::dynamic_size>(size, sub_size);
+        auto unit = pcx::fft_unit<float, pcx::fft_output::bit_reversed>(size, sub_size);
 
         auto ffu   = fftu(vec);
         auto eps_u = 1U << (depth - 1);
@@ -415,8 +416,8 @@ int test_fftu_float_0(std::size_t size) {
 
             auto vec_out_zero = vec_zero;
             vec_out           = vec_out_zero;
-            unit.unsorted(vec_out_zero);
-            unit.unsorted(vec_out, vec_short);
+            unit(vec_out_zero);
+            unit(vec_out, vec_short);
             int ret = 0;
             for (uint i = 0; i < size; ++i) {
                 auto val = std::complex<float>(vec_out_zero[i].value());

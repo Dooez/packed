@@ -505,10 +505,10 @@ enum class fft_output {
 };
 
 template<typename T,
+         fft_output  Output  = fft_output::normal,
          std::size_t Size    = pcx::dynamic_size,
-         std::size_t SubSize = pcx::default_pack_size<T>,
-         typename Allocator  = pcx::aligned_allocator<T, std::align_val_t(64)>,
-         fft_output Output   = fft_output::normal>
+         std::size_t SubSize = pcx::dynamic_size,
+         typename Allocator  = pcx::aligned_allocator<T, std::align_val_t(64)>>
     requires(std::same_as<T, float> || std::same_as<T, double>) &&
             (pcx::power_of_two<Size> || (Size == pcx::dynamic_size)) &&
             (pcx::power_of_two<SubSize> && SubSize >= pcx::default_pack_size<T> ||
@@ -518,7 +518,6 @@ public:
     using real_type      = T;
     using allocator_type = Allocator;
 
-    // static constexpr auto pack_size = default_pack_size<T>;
     static constexpr std::size_t reg_size = 32 / sizeof(real_type);
 
 private:
@@ -574,62 +573,70 @@ public:
         }
     }
 
-    template<typename VAllocator, std::size_t VPackSize>
-    void operator()(pcx::vector<T, VAllocator, VPackSize>& vector)
-        requires(Output == fft_output::normal)
-    {
+    template<typename VAllocator, std::size_t DataPackSize>
+    void operator()(pcx::vector<T, VAllocator, DataPackSize>& vector) {
         assert(size() == vector.size());
-        fft_internal<VPackSize>(vector.data());
+        if constexpr ((Output == fft_output::unsorted || Output == fft_output::bit_reversed)) {
+            fftu_internal<DataPackSize>(vector.data());
+        } else {
+            fft_internal<DataPackSize>(vector.data());
+        }
     };
 
-    template<typename VAllocator, std::size_t VPackSize>
-    void operator()(pcx::vector<T, VAllocator, VPackSize>& vector)
-        requires(Output == fft_output::unsorted || Output == fft_output::bit_reversed)
-    {
-        assert(size() == vector.size());
-        fftu_internal<VPackSize>(vector.data());
-    };
-
-    template<typename VAllocator, std::size_t VPackSize, bool Const, std::size_t SSize, std::size_t PSrc>
-    void operator()(pcx::vector<T, VAllocator, VPackSize>& dest, pcx::subrange<T, Const, SSize, PSrc> src)
-    // requires(Output == fft_output::unsorted || Output == fft_output::bit_reversed)
-    {
+    template<typename AllocatorDst, std::size_t PackSizeDst, typename AllocatorSrc, std::size_t PackSizeSrc>
+    void operator()(pcx::vector<T, AllocatorDst, PackSizeDst>&       dest,
+                    const pcx::vector<T, AllocatorSrc, PackSizeSrc>& source) {
         assert(size() == dest.size());
-        assert(src.aligned());
-        assert(src.size() <= size());
+        assert(source.size() <= size());
+        if constexpr ((Output == fft_output::unsorted || Output == fft_output::bit_reversed)) {
+            if (source.size() < size()) {
+                fftu_internal<PackSizeDst, PackSizeSrc>(dest.data(), source.data(), source.size());
+            } else {
+                fftu_internal<PackSizeDst, PackSizeSrc>(dest.data(), source.data());
+            }
+        } else {
+            if (dest.data() == source.data()) {
+                fft_internal<PackSizeDst>(dest.data());
+            } else {
+                fft_internal<PackSizeDst, PackSizeSrc>(dest.data(), source.data());
+            }
+        }
+    };
 
-        fftu_internal<VPackSize>(dest.data(), &(*src.begin()));
+    template<typename VAllocator,
+             std::size_t PackSizeDst,
+             bool        Const,
+             std::size_t SSize,
+             std::size_t PackSizeSrc>
+    void operator()(pcx::vector<T, VAllocator, PackSizeDst>&    dest,
+                    pcx::subrange<T, Const, SSize, PackSizeSrc> source) {
+        assert(size() == dest.size());
+        assert(source.aligned());
+        assert(source.size() <= size());
+        const auto* src = &(*source.begin());
+        if constexpr ((Output == fft_output::unsorted || Output == fft_output::bit_reversed)) {
+            if (source.size() < size()) {
+                fftu_internal<PackSizeDst, PackSizeSrc>(dest.data(), src, source.size());
+            } else {
+                fftu_internal<PackSizeDst, PackSizeSrc>(dest.data(), src);
+            }
+        } else {
+            if (dest.data() == src) {
+                fft_internal<PackSizeDst, PackSizeSrc>(dest.data());
+            } else {
+                fft_internal<PackSizeDst, PackSizeSrc>(dest.data(), src);
+            }
+        }
     };
 
     template<typename VAllocator>
     void operator()(std::vector<std::complex<T>, VAllocator>& vector) {
         assert(size() == vector.size());
-        fft_internal<1>(reinterpret_cast<T*>(vector.data()));
-    };
-
-    template<typename VAllocator, std::size_t VPackSize>
-    void unsorted(pcx::vector<T, VAllocator, VPackSize>& vector) {
-        if (size() != vector.size()) {
-            throw(std::string("Size, which is ") + std::to_string(size()) + "not equal vector.size() " +
-                  std::to_string(vector.size()));
+        if constexpr ((Output == fft_output::unsorted || Output == fft_output::bit_reversed)) {
+            fftu_internal<1>(reinterpret_cast<T*>(vector.data()));
+        } else {
+            fft_internal<1>(reinterpret_cast<T*>(vector.data()));
         }
-        fftu_internal<VPackSize>(vector.data());
-    };
-    template<typename VAllocator>
-    void unsorted(std::vector<std::complex<T>, VAllocator>& vector) {
-        assert(size() == vector.size());
-        fftu_internal<1>(reinterpret_cast<T*>(vector.data()));
-    };
-
-    template<typename VAllocator1, std::size_t VPackSize1, typename VAllocator2, std::size_t VPackSize2>
-    void unsorted(pcx::vector<T, VAllocator1, VPackSize1>&       dest,
-                  const pcx::vector<T, VAllocator2, VPackSize2>& source) {
-        if (size() != dest.size()) {
-            throw(std::string("Size, which is ") + std::to_string(size()) + "not equal dest.size() " +
-                  std::to_string(dest.size()));
-        }
-        fftu_internal<VPackSize1, VPackSize2>(
-            dest.data(), source.data(), source.size() < size() ? source.size() : 0);
     };
 
     template<typename VAllocator, std::size_t VPackSize>
@@ -651,17 +658,6 @@ public:
             fft_internal<1>(reinterpret_cast<T*>(dest.data()));
         } else {
             fft_internal<1, 1>(reinterpret_cast<T*>(dest.data()), reinterpret_cast<const T*>(source.data()));
-        }
-    };
-
-    template<typename VAllocator, std::size_t VPackSize>
-    void operator()(pcx::vector<T, VAllocator, VPackSize>&       dest,
-                    const pcx::vector<T, VAllocator, VPackSize>& source) {
-        assert(size() == dest.size() && size() == source.size());
-        if (&dest == &source) {
-            fft_internal<VPackSize>(dest.data());
-        } else {
-            fft_internal<VPackSize, VPackSize>(dest.data(), source.data());
         }
     };
 
@@ -702,31 +698,31 @@ public:
         subtransform_recursive<PDest, PTform>(dest, size());
     };
 
-    template<std::size_t PData, bool BitReversed = true>
+    template<std::size_t PData>
     void fftu_internal(float* data) {
         auto* twiddle_ptr = m_twiddles_unsorted.data();
         if (log2i(size() / (reg_size * 4)) % 2 == 0) {
-            unsorted_subtransform_recursive<PData, PData, true, BitReversed>(data, size(), twiddle_ptr);
+            unsorted_subtransform_recursive<PData, PData, true>(data, size(), twiddle_ptr);
         } else if (size() / (reg_size * 4) > 8) {
             constexpr auto PTform = std::max(PData, reg_size);
             for (std::size_t i_group = 0; i_group < size() / 8 / reg_size; ++i_group) {
                 node8_along<PTform, PData, false>(data, size(), i_group * reg_size);
             }
-            twiddle_ptr = unsorted_subtransform_recursive<PData, PTform, true, BitReversed>(
+            twiddle_ptr = unsorted_subtransform_recursive<PData, PTform, true>(
                 data, size() / 8, twiddle_ptr);
-            twiddle_ptr = unsorted_subtransform_recursive<PData, PTform, false, BitReversed>(
+            twiddle_ptr = unsorted_subtransform_recursive<PData, PTform, false>(
                 avx::ra_addr<PTform>(data, size() / 8 * 1), size() / 8, twiddle_ptr);
-            twiddle_ptr = unsorted_subtransform_recursive<PData, PTform, false, BitReversed>(
+            twiddle_ptr = unsorted_subtransform_recursive<PData, PTform, false>(
                 avx::ra_addr<PTform>(data, size() / 8 * 2), size() / 8, twiddle_ptr);
-            twiddle_ptr = unsorted_subtransform_recursive<PData, PTform, false, BitReversed>(
+            twiddle_ptr = unsorted_subtransform_recursive<PData, PTform, false>(
                 avx::ra_addr<PTform>(data, size() / 8 * 3), size() / 8, twiddle_ptr);
-            twiddle_ptr = unsorted_subtransform_recursive<PData, PTform, false, BitReversed>(
+            twiddle_ptr = unsorted_subtransform_recursive<PData, PTform, false>(
                 avx::ra_addr<PTform>(data, size() / 8 * 4), size() / 8, twiddle_ptr);
-            twiddle_ptr = unsorted_subtransform_recursive<PData, PTform, false, BitReversed>(
+            twiddle_ptr = unsorted_subtransform_recursive<PData, PTform, false>(
                 avx::ra_addr<PTform>(data, size() / 8 * 5), size() / 8, twiddle_ptr);
-            twiddle_ptr = unsorted_subtransform_recursive<PData, PTform, false, BitReversed>(
+            twiddle_ptr = unsorted_subtransform_recursive<PData, PTform, false>(
                 avx::ra_addr<PTform>(data, size() / 8 * 6), size() / 8, twiddle_ptr);
-            twiddle_ptr = unsorted_subtransform_recursive<PData, PTform, false, BitReversed>(
+            twiddle_ptr = unsorted_subtransform_recursive<PData, PTform, false>(
                 avx::ra_addr<PTform>(data, size() / 8 * 7), size() / 8, twiddle_ptr);
         } else {
             constexpr auto PTform = std::max(PData, reg_size);
@@ -740,40 +736,40 @@ public:
             for (std::size_t i_group = 0; i_group < size() / 2 / reg_size; ++i_group) {
                 node2_along<PTform, PData>(data, size(), i_group * reg_size);
             }
-            twiddle_ptr = unsorted_subtransform_recursive<PData, PTform, true, BitReversed>(
+            twiddle_ptr = unsorted_subtransform_recursive<PData, PTform, true>(
                 data, size() / 2, twiddle_ptr);
-            unsorted_subtransform_recursive<PData, PTform, false, BitReversed>(
+            unsorted_subtransform_recursive<PData, PTform, false>(
                 avx::ra_addr<PTform>(data, size() / 2), size() / 2, twiddle_ptr);
         }
     }
 
-    template<std::size_t PDest, std::size_t PSrc, bool BitReversed = true>
+    template<std::size_t PDest, std::size_t PSrc>
     void fftu_internal(float* dest, const float* source, std::size_t source_size = 0) {
         auto* twiddle_ptr = m_twiddles_unsorted.data();
         if (source_size == 0) {
             if (log2i(size() / (reg_size * 4)) % 2 == 0) {
-                unsorted_subtransform_recursive<PDest, PDest, true, BitReversed>(
+                unsorted_subtransform_recursive<PDest, PDest, true>(
                     dest, size(), twiddle_ptr, source);
             } else if (size() / (reg_size * 4) > 8) {
                 constexpr auto PTform = std::max(PDest, reg_size);
                 for (std::size_t i_group = 0; i_group < size() / 8 / reg_size; ++i_group) {
                     node8_along<PTform, PDest, false>(dest, size(), i_group * reg_size);
                 }
-                twiddle_ptr = unsorted_subtransform_recursive<PDest, PTform, true, BitReversed>(
+                twiddle_ptr = unsorted_subtransform_recursive<PDest, PTform, true>(
                     dest, size() / 8, twiddle_ptr);
-                twiddle_ptr = unsorted_subtransform_recursive<PDest, PTform, false, BitReversed>(
+                twiddle_ptr = unsorted_subtransform_recursive<PDest, PTform, false>(
                     avx::ra_addr<PTform>(dest, size() / 8 * 1), size() / 8, twiddle_ptr);
-                twiddle_ptr = unsorted_subtransform_recursive<PDest, PTform, false, BitReversed>(
+                twiddle_ptr = unsorted_subtransform_recursive<PDest, PTform, false>(
                     avx::ra_addr<PTform>(dest, size() / 8 * 2), size() / 8, twiddle_ptr);
-                twiddle_ptr = unsorted_subtransform_recursive<PDest, PTform, false, BitReversed>(
+                twiddle_ptr = unsorted_subtransform_recursive<PDest, PTform, false>(
                     avx::ra_addr<PTform>(dest, size() / 8 * 3), size() / 8, twiddle_ptr);
-                twiddle_ptr = unsorted_subtransform_recursive<PDest, PTform, false, BitReversed>(
+                twiddle_ptr = unsorted_subtransform_recursive<PDest, PTform, false>(
                     avx::ra_addr<PTform>(dest, size() / 8 * 4), size() / 8, twiddle_ptr);
-                twiddle_ptr = unsorted_subtransform_recursive<PDest, PTform, false, BitReversed>(
+                twiddle_ptr = unsorted_subtransform_recursive<PDest, PTform, false>(
                     avx::ra_addr<PTform>(dest, size() / 8 * 5), size() / 8, twiddle_ptr);
-                twiddle_ptr = unsorted_subtransform_recursive<PDest, PTform, false, BitReversed>(
+                twiddle_ptr = unsorted_subtransform_recursive<PDest, PTform, false>(
                     avx::ra_addr<PTform>(dest, size() / 8 * 6), size() / 8, twiddle_ptr);
-                twiddle_ptr = unsorted_subtransform_recursive<PDest, PTform, false, BitReversed>(
+                twiddle_ptr = unsorted_subtransform_recursive<PDest, PTform, false>(
                     avx::ra_addr<PTform>(dest, size() / 8 * 7), size() / 8, twiddle_ptr);
             } else {
                 constexpr auto PTform = std::max(PDest, reg_size);
@@ -803,35 +799,35 @@ public:
                     cxstore<PTform>(ptr1, a1);
                 }
 
-                twiddle_ptr = unsorted_subtransform_recursive<PDest, PTform, true, BitReversed>(
+                twiddle_ptr = unsorted_subtransform_recursive<PDest, PTform, true>(
                     dest, size() / 2, twiddle_ptr);
-                unsorted_subtransform_recursive<PDest, PTform, false, BitReversed>(
+                unsorted_subtransform_recursive<PDest, PTform, false>(
                     avx::ra_addr<PTform>(dest, size() / 2), size() / 2, twiddle_ptr);
             }
         } else {
             if (log2i(size() / (reg_size * 4)) % 2 == 0) {
-                unsorted_subtransform_recursive<PDest, PDest, true, BitReversed>(
+                unsorted_subtransform_recursive<PDest, PDest, true>(
                     dest, size(), twiddle_ptr, source, source_size);
             } else if (size() / (reg_size * 4) > 8) {
                 constexpr auto PTform = std::max(PDest, reg_size);
                 for (std::size_t i_group = 0; i_group < size() / 8 / reg_size; ++i_group) {
                     node8_along<PTform, PSrc, false>(dest, size(), i_group * reg_size, source, source_size);
                 }
-                twiddle_ptr = unsorted_subtransform_recursive<PDest, PTform, true, BitReversed>(
+                twiddle_ptr = unsorted_subtransform_recursive<PDest, PTform, true>(
                     dest, size() / 8, twiddle_ptr);
-                twiddle_ptr = unsorted_subtransform_recursive<PDest, PTform, false, BitReversed>(
+                twiddle_ptr = unsorted_subtransform_recursive<PDest, PTform, false>(
                     avx::ra_addr<PTform>(dest, size() / 8 * 1), size() / 8, twiddle_ptr);
-                twiddle_ptr = unsorted_subtransform_recursive<PDest, PTform, false, BitReversed>(
+                twiddle_ptr = unsorted_subtransform_recursive<PDest, PTform, false>(
                     avx::ra_addr<PTform>(dest, size() / 8 * 2), size() / 8, twiddle_ptr);
-                twiddle_ptr = unsorted_subtransform_recursive<PDest, PTform, false, BitReversed>(
+                twiddle_ptr = unsorted_subtransform_recursive<PDest, PTform, false>(
                     avx::ra_addr<PTform>(dest, size() / 8 * 3), size() / 8, twiddle_ptr);
-                twiddle_ptr = unsorted_subtransform_recursive<PDest, PTform, false, BitReversed>(
+                twiddle_ptr = unsorted_subtransform_recursive<PDest, PTform, false>(
                     avx::ra_addr<PTform>(dest, size() / 8 * 4), size() / 8, twiddle_ptr);
-                twiddle_ptr = unsorted_subtransform_recursive<PDest, PTform, false, BitReversed>(
+                twiddle_ptr = unsorted_subtransform_recursive<PDest, PTform, false>(
                     avx::ra_addr<PTform>(dest, size() / 8 * 5), size() / 8, twiddle_ptr);
-                twiddle_ptr = unsorted_subtransform_recursive<PDest, PTform, false, BitReversed>(
+                twiddle_ptr = unsorted_subtransform_recursive<PDest, PTform, false>(
                     avx::ra_addr<PTform>(dest, size() / 8 * 6), size() / 8, twiddle_ptr);
-                twiddle_ptr = unsorted_subtransform_recursive<PDest, PTform, false, BitReversed>(
+                twiddle_ptr = unsorted_subtransform_recursive<PDest, PTform, false>(
                     avx::ra_addr<PTform>(dest, size() / 8 * 7), size() / 8, twiddle_ptr);
             } else {
                 constexpr auto PTform = std::max(PDest, reg_size);
@@ -844,38 +840,38 @@ public:
                 for (std::size_t i_group = 0; i_group < size() / 2 / reg_size; ++i_group) {
                     node2_along<PTform, PSrc>(dest, size(), i_group * reg_size, tw0, source, source_size);
                 }
-                twiddle_ptr = unsorted_subtransform_recursive<PDest, PTform, true, BitReversed>(
+                twiddle_ptr = unsorted_subtransform_recursive<PDest, PTform, true>(
                     dest, size() / 2, twiddle_ptr);
-                unsorted_subtransform_recursive<PDest, PTform, false, BitReversed>(
+                unsorted_subtransform_recursive<PDest, PTform, false>(
                     avx::ra_addr<PTform>(dest, size() / 2), size() / 2, twiddle_ptr);
             }
         }
     }
 
-    template<std::size_t PData, bool BitReversed = true>
+    template<std::size_t PData>
     void fftu_internal_inverse(float* data) {
         auto* twiddle_ptr = &(*m_twiddles_unsorted.end());
         if (log2i(size() / (reg_size * 4)) % 2 == 0) {
-            unsorted_subtransform_recursive_inverse<PData, PData, true, BitReversed>(
+            unsorted_subtransform_recursive_inverse<PData, PData, true>(
                 data, size(), twiddle_ptr);
         } else if (size() / (reg_size * 4) > 8) {
             constexpr auto PTform = std::max(PData, reg_size);
 
-            twiddle_ptr = unsorted_subtransform_recursive_inverse<PTform, PData, false, BitReversed>(
+            twiddle_ptr = unsorted_subtransform_recursive_inverse<PTform, PData, false>(
                 avx::ra_addr<PTform>(data, size() / 8 * 7), size() / 8, twiddle_ptr);
-            twiddle_ptr = unsorted_subtransform_recursive_inverse<PTform, PData, false, BitReversed>(
+            twiddle_ptr = unsorted_subtransform_recursive_inverse<PTform, PData, false>(
                 avx::ra_addr<PTform>(data, size() / 8 * 6), size() / 8, twiddle_ptr);
-            twiddle_ptr = unsorted_subtransform_recursive_inverse<PTform, PData, false, BitReversed>(
+            twiddle_ptr = unsorted_subtransform_recursive_inverse<PTform, PData, false>(
                 avx::ra_addr<PTform>(data, size() / 8 * 5), size() / 8, twiddle_ptr);
-            twiddle_ptr = unsorted_subtransform_recursive_inverse<PTform, PData, false, BitReversed>(
+            twiddle_ptr = unsorted_subtransform_recursive_inverse<PTform, PData, false>(
                 avx::ra_addr<PTform>(data, size() / 8 * 4), size() / 8, twiddle_ptr);
-            twiddle_ptr = unsorted_subtransform_recursive_inverse<PTform, PData, false, BitReversed>(
+            twiddle_ptr = unsorted_subtransform_recursive_inverse<PTform, PData, false>(
                 avx::ra_addr<PTform>(data, size() / 8 * 3), size() / 8, twiddle_ptr);
-            twiddle_ptr = unsorted_subtransform_recursive_inverse<PTform, PData, false, BitReversed>(
+            twiddle_ptr = unsorted_subtransform_recursive_inverse<PTform, PData, false>(
                 avx::ra_addr<PTform>(data, size() / 8 * 2), size() / 8, twiddle_ptr);
-            twiddle_ptr = unsorted_subtransform_recursive_inverse<PTform, PData, false, BitReversed>(
+            twiddle_ptr = unsorted_subtransform_recursive_inverse<PTform, PData, false>(
                 avx::ra_addr<PTform>(data, size() / 8 * 1), size() / 8, twiddle_ptr);
-            twiddle_ptr = unsorted_subtransform_recursive_inverse<PTform, PData, true, BitReversed>(
+            twiddle_ptr = unsorted_subtransform_recursive_inverse<PTform, PData, true>(
                 data, size() / 8, twiddle_ptr);
             for (std::size_t i_group = 0; i_group < size() / 8 / reg_size; ++i_group) {
                 node8_along<PData, PTform, false, false, true>(data, size(), i_group * reg_size);
@@ -883,9 +879,9 @@ public:
         } else {
             constexpr auto PTform = std::max(PData, reg_size);
 
-            twiddle_ptr = unsorted_subtransform_recursive_inverse<PData, PTform, false, BitReversed>(
+            twiddle_ptr = unsorted_subtransform_recursive_inverse<PData, PTform, false>(
                 avx::ra_addr<PTform>(data, size() / 2), size() / 2, twiddle_ptr);
-            twiddle_ptr = unsorted_subtransform_recursive_inverse<PData, PTform, true, BitReversed>(
+            twiddle_ptr = unsorted_subtransform_recursive_inverse<PData, PTform, true>(
                 data, size() / 2, twiddle_ptr);
 
             twiddle_ptr -= 2;
@@ -1549,11 +1545,7 @@ public:
         }
     };
 
-    template<std::size_t PDest,
-             std::size_t PSrc,
-             bool        First      = false,
-             bool        BitReverse = true,
-             typename... Optional>
+    template<std::size_t PDest, std::size_t PSrc, bool First = false, typename... Optional>
     inline auto unsorted_subtransform(float*       dest,
                                       std::size_t  size,
                                       const float* twiddle_ptr,
@@ -1692,7 +1684,7 @@ public:
             auto [e2, e3] = avx::btfly(shd2, shd3tw);
 
             reg_t she0, she1, she2, she3;
-            if constexpr (BitReverse) {
+            if constexpr (Output == fft_output::bit_reversed) {
                 if constexpr (PDest < 4) {
                     std::tie(she0, she1) = avx::unpack_ps(e0, e1);
                     std::tie(she2, she3) = avx::unpack_ps(e2, e3);
@@ -1721,16 +1713,14 @@ public:
 
     template<std::size_t PDest,
              std::size_t PSrc,
-             bool        First      = false,
-             bool        BitReverse = true,
+             bool        First = false,
              typename... Optional>
     inline auto unsorted_subtransform_recursive(T*          dest,    //
                                                 std::size_t size,
                                                 const T*    twiddle_ptr,
                                                 Optional... optional) -> const T* {
         if (size <= sub_size()) {
-            return unsorted_subtransform<PDest, PSrc, First, BitReverse>(
-                dest, size, twiddle_ptr, optional...);
+            return unsorted_subtransform<PDest, PSrc, First>(dest, size, twiddle_ptr, optional...);
         }
         constexpr auto PTform = std::max(PSrc, reg_size);
         if constexpr (First) {
@@ -1748,13 +1738,12 @@ public:
                 node4_along<PTform, PSrc, false>(dest, size, i_group * reg_size, tw, optional...);
             }
         }
-        twiddle_ptr =
-            unsorted_subtransform_recursive<PDest, PTform, First, BitReverse>(dest, size / 4, twiddle_ptr);
-        twiddle_ptr = unsorted_subtransform_recursive<PDest, PTform, false, BitReverse>(
+        twiddle_ptr = unsorted_subtransform_recursive<PDest, PTform, First>(dest, size / 4, twiddle_ptr);
+        twiddle_ptr = unsorted_subtransform_recursive<PDest, PTform, false>(
             avx::ra_addr<PTform>(dest, size / 4), size / 4, twiddle_ptr);
-        twiddle_ptr = unsorted_subtransform_recursive<PDest, PTform, false, BitReverse>(
+        twiddle_ptr = unsorted_subtransform_recursive<PDest, PTform, false>(
             avx::ra_addr<PTform>(dest, size / 2), size / 4, twiddle_ptr);
-        twiddle_ptr = unsorted_subtransform_recursive<PDest, PTform, false, BitReverse>(
+        twiddle_ptr = unsorted_subtransform_recursive<PDest, PTform, false>(
             avx::ra_addr<PTform>(dest, size / 4 * 3), size / 4, twiddle_ptr);
         return twiddle_ptr;
     };
@@ -1762,8 +1751,7 @@ public:
     template<std::size_t PDest,
              std::size_t PSrc,
              bool        First      = false,
-             bool        Scale      = true,
-             bool        BitReverse = true>
+             bool        Scale      = true>
     inline auto unsorted_subtransform_inverse(float* data, std::size_t size, const float* twiddle_ptr)
         -> const float* {
         constexpr auto PTform = std::max(PSrc, reg_size);
@@ -1783,12 +1771,12 @@ public:
             auto she3 = avx::cxload<PTform>(ptr3);
 
             reg_t e0, e1, e2, e3;
-            if constexpr (BitReverse) {
+            if constexpr (Output == fft_output::bit_reversed) {
                 std::tie(she0, she1, she2, she3) =
                     avx::convert<float>::repack<PSrc, PTform>(she0, she1, she2, she3);
             }
             std::tie(she0, she1, she2, she3) = avx::convert<float>::inverse<true>(she0, she1, she2, she3);
-            if constexpr (BitReverse) {
+            if constexpr (Output == fft_output::bit_reversed) {
                 std::tie(e0, e1) = avx::unpack_128(she0, she1);
                 std::tie(e2, e3) = avx::unpack_128(she2, she3);
             } else {
@@ -1799,7 +1787,7 @@ public:
             auto tw7 = avx::cxload<reg_size>(twiddle_ptr);
             auto tw8 = avx::cxload<reg_size>(twiddle_ptr + reg_size * 2);
 
-            if constexpr (BitReverse) {
+            if constexpr (Output == fft_output::bit_reversed) {
                 std::tie(e0, e1) = avx::unpack_ps(e0, e1);
                 std::tie(e2, e3) = avx::unpack_ps(e2, e3);
                 std::tie(e0, e1) = avx::unpack_pd(e0, e1);
@@ -1936,22 +1924,22 @@ public:
         return twiddle_ptr;
     };
 
-    template<std::size_t PDest, std::size_t PSrc, bool First = false, bool BitReverse = true>
+    template<std::size_t PDest, std::size_t PSrc, bool First = false>
     inline auto unsorted_subtransform_recursive_inverse(T* data, std::size_t size, const T* twiddle_ptr)
         -> const T* {
         if (size <= sub_size()) {
-            return unsorted_subtransform_inverse<PDest, PSrc, First, true, BitReverse>(
+            return unsorted_subtransform_inverse<PDest, PSrc, First, true>(
                 data, size, twiddle_ptr);
         }
         constexpr auto PTform = std::max(PSrc, reg_size);
 
-        twiddle_ptr = unsorted_subtransform_recursive_inverse<PDest, PTform, false, BitReverse>(
+        twiddle_ptr = unsorted_subtransform_recursive_inverse<PDest, PTform, false>(
             avx::ra_addr<PTform>(data, size / 4 * 3), size / 4, twiddle_ptr);
-        twiddle_ptr = unsorted_subtransform_recursive_inverse<PDest, PTform, false, BitReverse>(
+        twiddle_ptr = unsorted_subtransform_recursive_inverse<PDest, PTform, false>(
             avx::ra_addr<PTform>(data, size / 2), size / 4, twiddle_ptr);
-        twiddle_ptr = unsorted_subtransform_recursive_inverse<PDest, PTform, false, BitReverse>(
+        twiddle_ptr = unsorted_subtransform_recursive_inverse<PDest, PTform, false>(
             avx::ra_addr<PTform>(data, size / 4), size / 4, twiddle_ptr);
-        twiddle_ptr = unsorted_subtransform_recursive_inverse<PDest, PTform, First, BitReverse>(
+        twiddle_ptr = unsorted_subtransform_recursive_inverse<PDest, PTform, First>(
             data, size / 4, twiddle_ptr);
         if constexpr (First) {
             twiddle_ptr -= 6;

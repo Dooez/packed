@@ -20,7 +20,7 @@ public:
     , m_kernel(fft_size, allocator)
     , m_tmp(fft_size, allocator)
     , m_overlap(g.size() - 1) {
-        m_fft.unsorted(m_kernel, g);
+        m_fft(m_kernel, g);
         m_kernel = m_kernel / static_cast<T>(fft_size);
     };
 
@@ -53,9 +53,9 @@ public:
     }
 
 private:
-    fft_unit<T, pcx::dynamic_size, pcx::dynamic_size, allocator_type> m_fft;
-    pcx::vector<T, allocator_type>                                    m_kernel;
-    pcx::vector<T, allocator_type>                                    m_tmp;
-    std::size_t                                                       m_overlap;
+    fft_unit<T, pcx::fft_output::unsorted, pcx::dynamic_size, pcx::dynamic_size, allocator_type> m_fft;
+    pcx::vector<T, allocator_type>                                                               m_kernel;
+    pcx::vector<T, allocator_type>                                                               m_tmp;
+    std::size_t                                                                                  m_overlap;
 };
 }    // namespace pcx
