@@ -1,9 +1,11 @@
-Checks: '*, -altera*, -fuchsia*, -llvm-*, -llvmlibc-*,
+Checks: '*, -altera*, -fuchsia*, -llvm-*, -llvmlibc-*, -cert-*,
   -bugprone-easily-swappable-parameters,
   -cppcoreguidelines-owning-memory,
-  -modernize-use-trailing-return-type, 
+  -modernize-use-trailing-return-type,
   -readability-identifier-length,
   -readability-const-return-type,
+  -readability-named-parameter,
+  -hicpp-named-parameter,
   -cppcoreguidelines-pro-type-reinterpret-cast'
 CheckOptions:
     - key: readability-magic-numbers.IgnorePowersOf2IntegerValues

@@ -681,13 +681,13 @@ public:
     , m_size(end - begin){};
 
     template<typename VAllocator>
-    subrange(vector<real_type, VAllocator, pack_size>& vector) noexcept
+    explicit subrange(vector<real_type, VAllocator, pack_size>& vector) noexcept
         requires(Size == pcx::dynamic_size)
     : m_begin(vector.begin())
     , m_size(vector.size()){};
 
     template<typename VAllocator>
-    subrange(const vector<real_type, VAllocator, pack_size>& vector) noexcept
+    explicit subrange(const vector<real_type, VAllocator, pack_size>& vector) noexcept
         requires(Size == pcx::dynamic_size) && Const
     : m_begin(vector.begin())
     , m_size(vector.size()){};
@@ -842,7 +842,7 @@ public:
         *(m_ptr + PackSize) = *(other.m_ptr + PackSize);
         return *this;
     }
-    cx_ref& operator=(cx_ref&& other)
+    cx_ref& operator=(cx_ref&& other) noexcept
         requires(!Const)
     {
         *m_ptr              = *other.m_ptr;
@@ -876,14 +876,14 @@ public:
         *(m_ptr + PackSize) = tmp.imag();
         return *this;
     }
-
+    // NOLINTNEXTLINE(*explicit*)
     [[nodiscard]] operator value_type() const {
         return value_type(*m_ptr, *(m_ptr + PackSize));
     }
     [[nodiscard]] value_type value() const {
         return *this;
     }
-
+    // NOLINTNEXTLINE(google-runtime-operator)
     [[nodiscard]] auto operator&() const noexcept -> pointer {
         return m_ptr;
     }

@@ -53,7 +53,7 @@ public:
     aligned_allocator() = default;
 
     template<typename U>
-    aligned_allocator(const aligned_allocator<U, Alignment>&) noexcept {};
+    explicit aligned_allocator(const aligned_allocator<U, Alignment>&) noexcept {};
 
     aligned_allocator(const aligned_allocator&)     = default;
     aligned_allocator(aligned_allocator&&) noexcept = default;
@@ -67,7 +67,7 @@ public:
         return reinterpret_cast<value_type*>(::operator new[](n * sizeof(value_type), Alignment));
     }
 
-    void deallocate(value_type* p, std::size_t n) {
+    void deallocate(value_type* p, std::size_t) {
         ::operator delete[](reinterpret_cast<void*>(p), Alignment);
     }
 
@@ -195,7 +195,7 @@ struct reg<double> {
 template<typename T>
 using reg_t = typename reg<T>::type;
 
-// TODO: add optional conj and complex unity rotation as parameters;
+// TODO(dooez): add optional conj and complex unity rotation as parameters;
 // update arithmetic to accomodate. Hard evaluation should only be performed on store.
 template<typename T, bool Conj = false>
 struct cx_reg {
@@ -209,15 +209,15 @@ auto conj(cx_reg<T, Conj> reg) -> cx_reg<T, !Conj> {
 }
 
 /**
-     * @brief Register aligned adress
-     *
-     * @tparam PackSize
-     * @tparam T
-     * @param data Base address. Must be aligned by avx register size.
-     * @param offset New address offset. Must be a multiple of avx register size.
-     * If data in-pack index I is non-zero, offset must be less then PackSize - I;
-     * @return T*
-     */
+* @brief Register aligned adress
+*
+* @tparam PackSize
+* @tparam T
+* @param data Base address. Must be aligned by avx register size.
+* @param offset New address offset. Must be a multiple of avx register size.
+* If data in-pack index I is non-zero, offset must be less then PackSize - I;
+* @return T*
+*/
 template<std::size_t PackSize, typename T>
 constexpr auto ra_addr(T* data, std::size_t offset) -> T* {
     return data + offset + (offset / PackSize) * PackSize;
@@ -257,13 +257,12 @@ inline auto broadcast(const double* source) -> reg<double>::type {
 }
 
 template<typename T>
-inline auto broadcast(std::complex<T> source) -> cx_reg<T, false> {
-    const auto& value = reinterpret_cast<const T(&)[2]>(source);
-    return {avx::broadcast(&(value[0])), avx::broadcast(&(value[1]))};
-}
-template<typename T>
 inline auto broadcast(T source) -> typename reg<T>::type {
     return avx::broadcast(&source);
+}
+template<typename T>
+inline auto broadcast(std::complex<T> source) -> cx_reg<T, false> {
+    return {avx::broadcast(source.real()), avx::broadcast(source.imag())};
 }
 
 inline void store(float* dest, reg<float>::type reg) {
@@ -360,14 +359,6 @@ inline auto unpack_128(cx_reg<T, Conj> a, cx_reg<T, Conj> b) -> std::tuple<cx_re
     return {cx_reg<T, Conj>({real_lo, imag_lo}), cx_reg<T, Conj>({real_hi, imag_hi})};
 };
 
-inline auto xor_(reg_t<float> a, reg_t<float> b) -> reg_t<float> {
-    return _mm256_xor_ps(a, b);
-};
-
-inline auto xor_(reg_t<double> a, reg_t<double> b) -> reg_t<double> {
-    return _mm256_xor_pd(a, b);
-};
-
 template<typename T>
 struct convert;
 
@@ -390,7 +381,6 @@ struct convert<float> {
         auto imag = unpackhi_128(reg.real, reg.imag);
         return cx_reg<float, Conj>({real, imag});
     };
-
 
     template<std::size_t PackFrom, std::size_t PackTo>
         requires(PackFrom > 0) && (PackTo > 0)

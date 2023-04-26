@@ -2,7 +2,7 @@
 
 namespace pcx {
 
-template<typename T, typename Allocator = pcx::aligned_allocator<T, std::align_val_t(64)>>
+template<typename T, typename Allocator = pcx::aligned_allocator<T>>
 class fconv_unit {
     using real_type      = T;
     using allocator_type = Allocator;
@@ -11,7 +11,6 @@ public:
     fconv_unit() = delete;
 
     fconv_unit(pcx::vector<T> g,
-               std::size_t    f_size,
                std::size_t    fft_size,
                allocator_type allocator = allocator_type{})
     : m_fft(fft_size, 2048, allocator)

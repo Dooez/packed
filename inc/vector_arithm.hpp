@@ -319,6 +319,7 @@ inline auto btfly(cx_reg<T> lhs, cx_reg<T> rhs) {
 }
 
 template<typename... Args>
+// NOLINTNEXTLINE(*-c-arrays)
 inline auto mul(const cx_reg<Args> (&... args)[2]) {
     auto tup      = std::make_tuple(args...);
     auto real_mul = [](auto opearands) {
