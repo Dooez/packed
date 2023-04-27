@@ -360,9 +360,9 @@ struct expression_traits {
      */
     template<std::size_t PackSize, typename I>
     [[nodiscard]] static constexpr auto cx_reg(const I& iterator, std::size_t offset) {
-        auto data      = iterator.cx_reg(offset);
-        std::tie(data) = avx::convert<typename I::real_type>::template repack<I::pack_size, PackSize>(data);
-        return data;
+        auto data    = iterator.cx_reg(offset);
+        auto [data_] = avx::convert<typename I::real_type>::template repack<I::pack_size, PackSize>(data);
+        return data_;
     }
     /**
      * @brief Extracts simd vector from iterator.
@@ -1120,7 +1120,7 @@ class scalar_add : public std::ranges::view_base {
 public:
     using real_type = typename E::real_type;
 
-    static constexpr auto pack_size = std::min(E::pack_size, avx::reg<real_type>::size);
+    static constexpr auto pack_size = avx::reg<real_type>::size;
     class iterator {
         friend class scalar_add;
 
@@ -1270,7 +1270,7 @@ class scalar_sub : public std::ranges::view_base {
 public:
     using real_type = typename E::real_type;
 
-    static constexpr auto pack_size = std::min(E::pack_size, avx::reg<real_type>::size);
+    static constexpr auto pack_size = avx::reg<real_type>::size;
     class iterator {
         friend class scalar_sub;
 
@@ -1422,7 +1422,9 @@ class scalar_mul : public std::ranges::view_base {
 public:
     using real_type = typename E::real_type;
 
-    static constexpr auto pack_size = std::min(E::pack_size, avx::reg<real_type>::size);
+    static constexpr auto pack_size = std::same_as<S, std::complex<real_type>>
+                                          ? avx::reg<real_type>::size
+                                          : std::min(E::pack_size, avx::reg<real_type>::size);
     class iterator {
         friend class scalar_mul;
 
@@ -1572,7 +1574,7 @@ class scalar_div : public std::ranges::view_base {
 public:
     using real_type = typename E::real_type;
 
-    static constexpr auto pack_size = std::min(E::pack_size, avx::reg<real_type>::size);
+    static constexpr auto pack_size = avx::reg<real_type>::size;
     class iterator {
         friend class scalar_div;
 
@@ -1985,7 +1987,7 @@ inline auto operator/(const vector<T, Allocator, PackSize>& vector, const E& exp
     return subrange(vector.begin(), vector.size()) / expression;
 };
 
-template<typename T, typename Allocator, std::size_t PackSize, typename E>
+template<typename T, typename Allocator, std::size_t PackSize>
     requires packed_floating_point<T, PackSize> &&
              requires(subrange<T, false, pcx::dynamic_size, PackSize> subrange) { conj(subrange); }
 inline auto conj(const vector<T, Allocator, PackSize>& vector) {
