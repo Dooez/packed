@@ -21,7 +21,7 @@ public:
     , m_tmp(fft_size, allocator)
     , m_overlap(g.size() - 1) {
         m_fft(m_kernel, g);
-        m_kernel = m_kernel / static_cast<T>(fft_size);
+        // m_kernel = m_kernel / static_cast<T>(fft_size);
     };
 
     fxcorr_unit(const fxcorr_unit& other)     = default;
@@ -40,7 +40,7 @@ public:
             m_fft(m_tmp, subrange(vec.begin() + offset, m_fft.size()));
             m_tmp = m_tmp * conj(m_kernel);
             m_fft.ifft(m_tmp);
-            subrange(vec.begin() + offset, step).assign(m_tmp);
+            subrange(vec.begin() + offset, step).assign(subrange(m_tmp.begin(), step));
         }
         while (offset < vec.size()) {
             m_fft(m_tmp, subrange(vec.begin() + offset, vec.end()));

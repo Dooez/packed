@@ -611,7 +611,7 @@ public:
     void operator()(pcx::vector<T, VAllocator, PackSizeDst>&    dest,
                     pcx::subrange<T, Const, SSize, PackSizeSrc> source) {
         assert(size() == dest.size());
-        assert(source.aligned());
+        assert(source.begin().aligned());
         assert(source.size() <= size());
         const auto* src = &(*source.begin());
         if constexpr (!sorted) {
