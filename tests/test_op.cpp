@@ -96,7 +96,9 @@ int test_bin_ops(std::size_t length) {
         [](auto&& a, auto&& b) { return a + b; },
         [](auto&& a, auto&& b) { return a - b; },
         [](auto&& a, auto&& b) { return a * b; },
-        [](auto&& a, auto&& b) { return a / b; });
+        [](auto&& a, auto&& b) { return a / b; }
+        //
+    );
 
     auto check_vector = [&]<std::size_t N>(auto&& ops) {
         auto& op = std::get<N>(ops);
@@ -116,11 +118,27 @@ int test_bin_ops(std::size_t length) {
         return 0;
     };
 
+    auto check_subr = [&]<std::size_t N>(auto&& ops) {
+        auto& op = std::get<N>(ops);
+        pcx::subrange<T, false, pcx::dynamic_size, PackSize>(pcx_res).assign(op(pcx_lhs, pcx_rhs));
+        for (uint i = 0; i < length; ++i) {
+            auto v   = pcx_res[i].value();
+            auto res = op(std_lhs[i], std_rhs[i]);
+            if (!equal_eps(res, pcx_res[i].value())) {
+                std::cout << "Values not equal after subrange vector•vector operation " << N <<    //
+                    " for pack size " << PackSize << ".\n";
+                std::cout << "Length: " << length << " Index: " << i <<    //
+                    ". Expected value: " << res <<                         //
+                    ". Acquired value: " << pcx_res[i].value() << ".\n";
+                return 1;
+            }
+        }
+        return 0;
+    };
     auto check_cx_scalar = [&]<std::size_t N>(auto&& ops) {
         auto& op = std::get<N>(ops);
         pcx_res  = op(pcx_lhs, cx_scalar);
         for (uint i = 0; i < length; ++i) {
-            auto v   = pcx_res[i].value();
             auto res = op(std_lhs[i], cx_scalar);
             if (!equal_eps(res, pcx_res[i].value())) {
                 std::cout << "Values not equal after vector•cx_scalar operation " << N <<    //
@@ -178,6 +196,7 @@ int test_bin_ops(std::size_t length) {
     auto check_cx = [&]<typename... Ops>(const std::tuple<Ops...>& ops) {
         auto check_all_impl = [&]<std::size_t... N>(auto&& ops, std::index_sequence<N...>) {
             return (check_vector.template operator()<N>(ops) + ...) +
+                   (check_subr.template operator()<N>(ops) + ...) +
                    (check_cx_scalar.template operator()<N>(ops) + ...);
         };
         return check_all_impl(ops, std::index_sequence_for<Ops...>{});
@@ -223,17 +242,21 @@ int test_subrange(std::size_t length) {
 
 int main() {
     int res = 0;
-    for (uint i = 1; i < 64; ++i) {
-        // res += test_bin_ops<float, 1>(i);
-        // res += test_bin_ops<float, 2>(i);
-        // res += test_bin_ops<float, 4>(i);
+    for (uint i = 1; i < 32; ++i) {
+        res += test_bin_ops<float, 1>(i);
+        res += test_bin_ops<float, 2>(i);
+        res += test_bin_ops<float, 4>(i);
         res += test_bin_ops<float, 8>(i);
         res += test_bin_ops<float, 16>(i);
+        res += test_bin_ops<float, 32>(i);
 
-        // res += test_bin_ops<double, 4>(i);
+        res += test_bin_ops<double, 1>(i);
+        res += test_bin_ops<double, 2>(i);
+        res += test_bin_ops<double, 4>(i);
+        res += test_bin_ops<double, 8>(i);
 
-        res += test_subrange<float>(i);
-        res += test_subrange<double>(i);
+        // res += test_subrange<float>(i);
+        // res += test_subrange<double>(i);
         if (res > 0) {
             std::cout << i << "\n";
             return i;

@@ -189,20 +189,20 @@ public:
         auto it_expr = other.begin();
 
         if (it_expr.aligned()) {
-            constexpr auto reg_size = 32 / sizeof(T);
-            constexpr auto PStore   = std::max(reg_size, pack_size);
+            constexpr auto reg_size   = 32 / sizeof(T);
+            constexpr auto store_size = std::max(reg_size, pack_size);
 
-            auto aligned_size = (end().align_lower() - it_this) / reg_size;
+            auto aligned_size = (end().align_lower() - it_this) / store_size;
             auto ptr          = &(*it_this);
             for (uint i = 0; i < aligned_size; ++i) {
-                for (uint i_reg = 0; i_reg < pack_size; i_reg += reg_size) {
-                    auto offset = i * reg_size + i_reg;
+                for (uint i_reg = 0; i_reg < store_size; i_reg += reg_size) {
+                    auto offset = i * store_size + i_reg;
                     auto data   = internal::expression_traits::cx_reg<pack_size>(it_expr, offset);
-                    avx::cxstore<PStore>(avx::ra_addr<pack_size>(ptr, offset), data);
+                    avx::cxstore<store_size>(avx::ra_addr<store_size>(ptr, offset), data);
                 }
             }
-            it_this += aligned_size;
-            it_expr += aligned_size;
+            it_this += aligned_size * store_size;
+            it_expr += aligned_size * store_size;
         }
         while (it_this < end()) {
             *it_this = *it_expr;
@@ -618,7 +618,7 @@ public:
         return (lhs.m_ptr - rhs.m_ptr) >> 1U;
     }
 
-    [[nodiscard]] bool aligned(difference_type) const noexcept {
+    [[nodiscard]] bool aligned(difference_type = 0) const noexcept {
         return true;
     }
     /**
@@ -775,20 +775,20 @@ public:
         }
 
         if (it_this.aligned() && it_expr.aligned()) {
-            constexpr auto reg_size = 32 / sizeof(T);
-            constexpr auto PStore   = std::max(reg_size, pack_size);
+            constexpr auto reg_size   = 32 / sizeof(T);
+            constexpr auto store_size = std::max(reg_size, pack_size);
 
-            auto aligned_size = (end().align_lower() - it_this) / reg_size;
+            auto aligned_size = (end().align_lower() - it_this) / store_size;
             auto ptr          = &(*it_this);
             for (uint i = 0; i < aligned_size; ++i) {
-                for (uint i_reg = 0; i_reg < pack_size; i_reg += reg_size) {
-                    auto offset = i * reg_size + i_reg;
+                for (uint i_reg = 0; i_reg < store_size; i_reg += reg_size) {
+                    auto offset = i * store_size + i_reg;
                     auto data   = internal::expression_traits::cx_reg<pack_size>(it_expr, offset);
-                    avx::cxstore<PStore>(avx::ra_addr<pack_size>(ptr, offset), data);
+                    avx::cxstore<store_size>(avx::ra_addr<store_size>(ptr, offset), data);
                 }
             }
-            it_this += aligned_size;
-            it_expr += aligned_size;
+            it_this += aligned_size * store_size;
+            it_expr += aligned_size * store_size;
         }
         while (it_this < end()) {
             *it_this = *it_expr;

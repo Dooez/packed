@@ -556,15 +556,24 @@ struct convert<double> {
                 return internal::apply_for_each(swap_12, tup);
             }
         } else if constexpr (PackFrom >= 4) {
+            auto conj = []<bool Conj>(cx_reg<double, Conj> reg) {
+                if constexpr (Conj) {
+                    auto zero = _mm256_setzero_ps();
+                    return cx_reg<double, false>{reg.real, _mm256_sub_ps(zero, reg.imag)};
+                } else {
+                    return reg;
+                }
+            };
+            auto tup_ = internal::apply_for_each(conj, tup);
             if constexpr (PackTo == 2) {
-                return internal::apply_for_each(swap_24, tup);
+                return internal::apply_for_each(swap_24, tup_);
             } else if constexpr (PackTo == 1) {
                 auto pack_1 = []<bool Conj>(cx_reg<double, Conj> reg) {
                     auto real = unpacklo_pd(reg.real, reg.imag);
                     auto imag = unpackhi_pd(reg.real, reg.imag);
                     return cx_reg<double, Conj>({real, imag});
                 };
-                auto tmp = internal::apply_for_each(pack_1, tup);
+                auto tmp = internal::apply_for_each(pack_1, tup_);
                 return internal::apply_for_each(swap_24, tmp);
             }
         }
