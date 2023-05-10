@@ -1,4 +1,8 @@
+#include "fft.hpp"
 #include "fxcorr.hpp"
+#include "vector_util.hpp"
+
+#include <memory>
 
 void fill_bark(auto& vector, std::size_t offset) {
     vector[offset + 0] = 1;
@@ -24,7 +28,15 @@ int main() {
     pcx::vector<float> f(size );
     fill_bark(f, 35);
 
-    auto xcr = pcx::fxcorr_unit(g, 256);
+    using fft_t   = pcx::fft_unit<float, pcx::fft_output::unsorted, pcx::dynamic_size, 2048>;
+    auto fft_unit = std::make_shared<fft_t>(8192);
+
+    auto pseudo_factory = pcx::internal::pseudo_vector_factory<float, std::allocator<float>>(8192);
+
+    auto fxcorr = pcx::fxcorr_unit(g, fft_unit, [&] { return pseudo_factory(); });
+
+
+    auto xcr = pcx::fxcorr_unit(g, size*2);
     xcr(f);
     for (auto v: f) {
         std::cout << std::to_string(abs(v.value())) << "\n";
