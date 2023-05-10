@@ -33,19 +33,19 @@ private:
 
 
 /**
- * @brief 
- * 
- * @tparam T 
- * @tparam Allocator 
- * @tparam FFTUnit 
+ * @brief
+ *
+ * @tparam T
+ * @tparam Allocator
+ * @tparam FFTUnit
  * @tparam TMPFactory A type with operator() returning a pointer_t. Dereferencing pointer_t must return pcx::vector<T, ...>&.
    Size of the returned vector must be equal to fft size;
  */
 template<typename T,
          typename Allocator = pcx::aligned_allocator<T>,
-         typename FFTUnit =
-             pcx::fft_unit<T, pcx::fft_output::unsorted, pcx::dynamic_size, pcx::dynamic_size, Allocator>,
-         typename TMPFactory = internal::pseudo_vector_factory<T, Allocator>>
+         typename FFT =
+             pcx::fft_unit<T, pcx::fft_ordering::unordered, pcx::ifft_output::normalized, Allocator>,
+         typename TmpFactory = internal::pseudo_vector_factory<T, Allocator>>
     requires std::floating_point<T> && std::same_as<typename Allocator::value_type, T>
 class fxcorr_unit {
 public:
@@ -54,7 +54,7 @@ public:
 
     fxcorr_unit() = delete;
     fxcorr_unit(pcx::vector<T> g, std::size_t fft_size, allocator_type allocator = allocator_type{})
-    : m_fft(std::make_shared<FFTUnit>(fft_size, 2048, allocator))
+    : m_fft(std::make_shared<FFT>(fft_size, 2048, allocator))
     , m_kernel(m_fft->size(), allocator)
     , m_tmp_factory(m_fft->size(), allocator)
     , m_overlap(g.size() - 1) {
@@ -62,9 +62,7 @@ public:
         // m_kernel = m_kernel / static_cast<T>(m_fft->size());
     };
 
-    fxcorr_unit(pcx::vector<T>           g,
-                std::shared_ptr<FFTUnit> fft_unit,
-                allocator_type           allocator = allocator_type{})
+    fxcorr_unit(pcx::vector<T> g, std::shared_ptr<FFT> fft_unit, allocator_type allocator = allocator_type{})
     : m_fft(std::move(fft_unit))
     , m_kernel(m_fft->size(), allocator)
     , m_tmp_factory(m_fft->size(), allocator)
@@ -73,10 +71,10 @@ public:
         // m_kernel = m_kernel / static_cast<T>(m_fft->size());
     };
 
-    fxcorr_unit(pcx::vector<T>           g,
-                std::shared_ptr<FFTUnit> fft_unit,
-                TMPFactory               tmp_factory,
-                allocator_type           allocator = allocator_type{})
+    fxcorr_unit(pcx::vector<T>       g,
+                std::shared_ptr<FFT> fft_unit,
+                TmpFactory           tmp_factory,
+                allocator_type       allocator = allocator_type{})
     : m_fft(fft_unit)
     , m_kernel(m_fft->size(), allocator)
     , m_tmp_factory(tmp_factory)
@@ -116,9 +114,9 @@ public:
     }
 
 private:
-    std::shared_ptr<FFTUnit>       m_fft;
+    std::shared_ptr<FFT>           m_fft;
     pcx::vector<T, allocator_type> m_kernel;
-    TMPFactory                     m_tmp_factory;
+    TmpFactory                     m_tmp_factory;
     std::size_t                    m_overlap;
 };
 }    // namespace pcx

@@ -7,7 +7,7 @@
 
 // NOLINTBEGIN
 
-void test_que(pcx::fft_unit<float, pcx::fft_output::unsorted>& unit, std::vector<std::complex<float>>& v1) {
+void test_que(pcx::fft_unit<float, pcx::fft_ordering::unordered>& unit, std::vector<std::complex<float>>& v1) {
     unit(v1);
 }
 
@@ -206,7 +206,7 @@ int test_fft_float(std::size_t size) {
     auto ff = fft(vec);
 
     for (std::size_t sub_size = size; sub_size <= size * 2; sub_size *= 2) {
-        auto unit = pcx::fft_unit<float, pcx::fft_output::normal>(size, sub_size);
+        auto unit = pcx::fft_unit<float, pcx::fft_ordering::normal>(size, sub_size);
 
         vec_out = vec;
 
@@ -305,8 +305,8 @@ int test_fftu_float(std::size_t size) {
     for (std::size_t sub_size = 64; sub_size <= size; sub_size *= 2) {
         vec_out = vec;
 
-        auto unit = pcx::fft_unit<float, pcx::fft_output::bit_reversed>(size, sub_size);
-        auto unit_u = pcx::fft_unit<float, pcx::fft_output::unsorted>(size, sub_size);
+        auto unit = pcx::fft_unit<float, pcx::fft_ordering::bit_reversed>(size, sub_size);
+        auto unit_u = pcx::fft_unit<float, pcx::fft_ordering::unordered>(size, sub_size);
 
         auto ffu   = fftu(vec);
         auto eps_u = 1U << (depth - 1);
@@ -396,7 +396,7 @@ int test_fftu_float_0(std::size_t size) {
     for (std::size_t sub_size = 64; sub_size <= size; sub_size *= 2) {
         vec_out = vec;
 
-        auto unit = pcx::fft_unit<float, pcx::fft_output::bit_reversed>(size, sub_size);
+        auto unit = pcx::fft_unit<float, pcx::fft_ordering::bit_reversed>(size, sub_size);
 
         auto ffu   = fftu(vec);
         auto eps_u = 1U << (depth - 1);
