@@ -30,7 +30,6 @@ int main() {
 
     using fft_t   = pcx::fft_unit<float,
                                 pcx::fft_ordering::unordered,
-                                pcx::ifft_output::normalized,
                                 pcx::aligned_allocator<float>,
                                 2048>;
     auto fft_unit = std::make_shared<fft_t>(8192);
