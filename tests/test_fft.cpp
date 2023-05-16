@@ -7,7 +7,8 @@
 
 // NOLINTBEGIN
 
-void test_que(pcx::fft_unit<float, pcx::fft_ordering::unordered>& unit, std::vector<std::complex<float>>& v1) {
+void test_que(pcx::fft_unit<float, pcx::fft_ordering::unordered>& unit,
+              std::vector<std::complex<float>>&                   v1) {
     unit(v1);
 }
 
@@ -305,7 +306,7 @@ int test_fftu_float(std::size_t size) {
     for (std::size_t sub_size = 64; sub_size <= size; sub_size *= 2) {
         vec_out = vec;
 
-        auto unit = pcx::fft_unit<float, pcx::fft_ordering::bit_reversed>(size, sub_size);
+        auto unit   = pcx::fft_unit<float, pcx::fft_ordering::bit_reversed>(size, sub_size);
         auto unit_u = pcx::fft_unit<float, pcx::fft_ordering::unordered>(size, sub_size);
 
         auto ffu   = fftu(vec);
@@ -454,53 +455,20 @@ int main() {
         }
     }
 
-    // auto p = std::make_index_sequence<8>{};
-    // test_fftu_float_fixed(p);
-    // if (ret > 0) {
-    //     return ret;
-    // }
-
-    // ret += test_fft_float4(64*2);
-
-    //
     constexpr std::size_t size = 64;
     constexpr float       pi   = 3.14159265358979323846;
 
     auto vec  = pcx::vector<float>(size);
     auto vec2 = pcx::vector<float>(size);
-    for (uint i = 0; i < size; ++i) {
-        vec[i] = std::exp(std::complex(0.F, 2 * pi * i / size * 1.F));
-    }
-    vec2 = vec;
 
-    auto v3 = fftu(vec);
-    auto v4 = ifftu(v3);
-    // for (uint i = 0; i < size; ++i) {
-    //     std::cout << abs(v4[i].value() - vec[i].value()) << " " << v4[i].value() << "  " << vec[i].value()
-    //               << "\n";
-    // }
+    std::cout << pcx::fft_unit_par<float>::test(vec) << "\n";
+    std::cout << pcx::fft_unit_par<float>::test(std::vector<std::complex<float>>{}) << "\n";
+    std::cout << pcx::fft_unit_par<float>::test(std::vector<float>{}) << "\n";
 
+    static_assert(pcx::complex_vector_of<float, pcx::vector<float>>);
+    static_assert(pcx::complex_vector_of<float, std::vector<std::complex<float>>>);
+    // static_assert(pcx::complex_vector_of<float, std::vector<float>>);
 
-    //     //
-    //     //     auto vec3 = fft(vec);
-    //     //     unit.binary4(vec);
-    //     //
-    //     //     for (uint i = 0; i < size; ++i)
-    //     //     {
-    //     //         std::cout << "#" << i << " " << (vec3[i].value()) << "  " << (vec[i].value())
-    //     //                   << "  " << abs(vec[i].value() - vec3[i].value()) << "\n";
-    //     //     }
-
-    //     auto til = std::vector<std::complex<float>>(8 * 4);
-    //
-    //     for (uint i = 0; i < 32; ++i)
-    //     {
-    //         til.at(i) = std::complex<float>(i, 100 + i);
-    //     }
-    //
-    //     unit.test_itrlv(reinterpret_cast<float*>(til.data()));
-    //
-    //     std::cout << til[0] << " " << til[1];
 
     return 0;
 }

@@ -6,6 +6,7 @@
 #include "vector_util.hpp"
 
 #include <array>
+#include <bits/ranges_base.h>
 #include <cmath>
 #include <concepts>
 #include <cstddef>
@@ -14,6 +15,7 @@
 #include <stdexcept>
 #include <string>
 #include <tuple>
+#include <type_traits>
 #include <utility>
 #include <xmmintrin.h>
 
@@ -22,6 +24,25 @@ namespace pcx {
 namespace internal {
 template<typename T, typename... U>
 concept has_type = (std::same_as<T, U> || ...);
+
+
+template<typename V_>
+struct vector_traits {
+    using real_type                        = decltype([] {});
+    static constexpr std::size_t pack_size = 0;
+};
+template<typename T_, typename Alloc_>
+struct vector_traits<std::vector<std::complex<T_>, Alloc_>> {
+    using real_type                        = T_;
+    static constexpr std::size_t pack_size = 1;
+};
+template<typename T_, std::size_t PackSize_, typename Alloc_>
+struct vector_traits<pcx::vector<T_, Alloc_, PackSize_>> {
+    using real_type                        = T_;
+    static constexpr std::size_t pack_size = PackSize_;
+};
+
+
 namespace fft {
 
 template<std::size_t Size, bool DecInTime>
@@ -492,6 +513,9 @@ inline auto wnk(std::size_t n, std::size_t k) -> std::complex<T> {
 }
 }    // namespace fft
 }    // namespace internal
+
+template<typename T, typename V>
+concept complex_vector_of = std::same_as<T, typename internal::vector_traits<V>::real_type>;
 
 enum class fft_ordering {
     normal,
@@ -2636,44 +2660,187 @@ private:
                                          std::vector<real_type, allocator_type>>;
 
 public:
-    void operator()(auto& dest, const auto& source) {
-        constexpr auto PDest = 8;
-        constexpr auto PSrc  = 8;
+    template<typename DestR_, typename SrcR_>
+    void operator()(DestR_& dest, const SrcR_& source) {
+        using dest_vector_t  = std::ranges::range_value_t<DestR_>;
+        using src_vector_t   = std::ranges::range_value_t<SrcR_>;
+        constexpr auto PDest = internal::vector_traits<dest_vector_t>::pack_size;
+        constexpr auto PSrc  = internal::vector_traits<src_vector_t>::pack_size;
 
-        uint l_size    = 1;
+        auto tw_it     = m_twiddles.begin();
         auto data_size = dest[0].size();
-        for (uint depth = 0; depth < log2i(m_size); ++depth) {
-            for (uint idx = 0; idx < l_size; ++idx) {
-                std::array<T*, 4> dst0{
-                    dest[idx].data(),
-                    dest[idx + m_size * 1 / 4].data(),
-                    dest[idx + m_size * 2 / 2].data(),
-                    dest[idx + m_size * 3 / 4].data(),
+
+        uint l_size = 1;
+        for (; l_size < m_size / 2; l_size *= 4) {
+            const auto grp_size = m_size / l_size / 4;
+            for (uint grp = 0; grp < grp_size; ++grp) {
+                std::array<T*, 4> dst{
+                    dest[grp].data(),
+                    dest[grp + grp_size * 1].data(),
+                    dest[grp + grp_size * 2].data(),
+                    dest[grp + grp_size * 3].data(),
                 };
-                std::array<const T*, 4> src0{
-                    source[idx].data(),
-                    source[idx + m_size * 1 / 4].data(),
-                    source[idx + m_size * 2 / 2].data(),
-                    source[idx + m_size * 3 / 4].data(),
+                long_btfly4<PDest, PSrc>(dst, data_size);
+            }
+            for (uint idx = 1; idx < l_size; ++idx) {
+                std::array<std::complex<T>, 3> tw = {
+                    *(tw_it++),
+                    *(tw_it++),
+                    *(tw_it++),
                 };
-                for (uint i = 0; i < data_size; i += avx::reg<T>::size) {
+                for (uint grp = 0; grp < grp_size; ++grp) {
                     std::array<T*, 4> dst{
-                        avx::ra_addr<PDest>(dst0[0], i),
-                        avx::ra_addr<PDest>(dst0[1], i),
-                        avx::ra_addr<PDest>(dst0[2], i),
-                        avx::ra_addr<PDest>(dst0[3], i),
+                        dest[grp + idx * grp_size * 4].data(),
+                        dest[grp + idx * grp_size * 4 + grp_size * 1].data(),
+                        dest[grp + idx * grp_size * 4 + grp_size * 2].data(),
+                        dest[grp + idx * grp_size * 4 + grp_size * 3].data(),
                     };
-                    std::array<const T*, 4> src{
-                        avx::ra_addr<PSrc>(src0[0], i),
-                        avx::ra_addr<PSrc>(src0[1], i),
-                        avx::ra_addr<PSrc>(src0[2], i),
-                        avx::ra_addr<PSrc>(src0[3], i),
+                    long_btfly4<PDest, PSrc>(dst, data_size, tw);
+                }
+            }
+        }
+        if (l_size == m_size) {
+            const auto grp_size = m_size / l_size / 2;
+            for (uint grp = 0; grp < grp_size; ++grp) {
+                std::array<T*, 2> dst{
+                    dest[grp].data(),
+                    dest[grp + grp_size * 1].data(),
+                };
+                long_btfly2<PDest, PSrc>(dst, data_size);
+            }
+            for (uint idx = 1; idx < l_size; ++idx) {
+                auto tw = *(tw_it++);
+                for (uint grp = 0; grp < grp_size; ++grp) {
+                    std::array<T*, 2> dst{
+                        dest[grp + idx * grp_size * 4].data(),
+                        dest[grp + idx * grp_size * 4 + grp_size * 1].data(),
                     };
-                    internal::fft::node4<T, PDest, PSrc, false, false>(dst, src);
+                    long_btfly2<PDest, PSrc>(dst, data_size, tw);
                 }
             }
         }
     };
+
+    static auto test(const auto& dest) {
+        return internal::vector_traits<std::remove_cvref_t<decltype(dest)>>::pack_size;
+    }
+
+private:
+    template<std::size_t PDest, std::size_t PSrc, typename... Optional>
+    inline void long_btfly4(std::array<T*, 4> dest, std::size_t size, Optional... optional) {
+        using src_type       = std::array<const T*, 4>;
+        using tw_type        = std::array<std::complex<T>, 3>;
+        constexpr bool Src   = internal::has_type<src_type, Optional...>;
+        constexpr bool Tw    = internal::has_type<tw_type, Optional...>;
+        constexpr bool Scale = internal::has_type<T, Optional...>;
+
+        const auto& source = [](auto... optional) {
+            if constexpr (Src) {
+                return std::get<src_type&>(std::tie(optional...));
+            } else {
+                return [] {};
+            }
+        }(optional...);
+
+        auto tw = [](auto... optional) {
+            if constexpr (Tw) {
+                auto& tw = std::get<tw_type&>(std::tie(optional...));
+                return std::array<avx::cx_reg<T>, 3>{
+                    avx::broadcast(tw[0]),
+                    avx::broadcast(tw[1]),
+                    avx::broadcast(tw[2]),
+                };
+            } else {
+                return [] {};
+            }
+        }(optional...);
+
+        auto scaling = [](auto... optional) {
+            if constexpr (Scale) {
+                auto scale = std::get<T>(std::tie(optional...));
+                return avx::broadcast(scale);
+            } else {
+                return [] {};
+            }
+        }(optional...);
+
+        for (uint i = 0; i < size; i += avx::reg<T>::size) {
+            std::array<T*, 4> dst{
+                avx::ra_addr<PDest>(dest[0], i),
+                avx::ra_addr<PDest>(dest[1], i),
+                avx::ra_addr<PDest>(dest[2], i),
+                avx::ra_addr<PDest>(dest[3], i),
+            };
+            auto src = [](auto source, auto i) {
+                if constexpr (Src) {
+                    return std::array<const T*, 4>{
+                        avx::ra_addr<PSrc>(source[0], i),
+                        avx::ra_addr<PSrc>(source[1], i),
+                        avx::ra_addr<PSrc>(source[2], i),
+                        avx::ra_addr<PSrc>(source[3], i),
+                    };
+                } else {
+                    return [] {};
+                }
+            }(source, i);
+
+            internal::fft::node4<T, PDest, PSrc, false, false>(dst, src, tw, scaling);
+        }
+    }
+
+    template<std::size_t PDest, std::size_t PSrc, typename... Optional>
+    inline void long_btfly2(std::array<T*, 2> dest, std::size_t size, Optional... optional) {
+        using src_type       = std::array<const T*, 2>;
+        using tw_type        = std::complex<T>;
+        constexpr bool Src   = internal::has_type<src_type, Optional...>;
+        constexpr bool Tw    = internal::has_type<tw_type, Optional...>;
+        constexpr bool Scale = internal::has_type<T, Optional...>;
+
+        const auto& source = [](auto... optional) {
+            if constexpr (Src) {
+                return std::get<src_type&>(std::tie(optional...));
+            } else {
+                return [] {};
+            }
+        }(optional...);
+
+        auto tw = [](auto... optional) {
+            if constexpr (Tw) {
+                auto& tw = std::get<tw_type&>(std::tie(optional...));
+                return avx::broadcast(tw);
+            } else {
+                return [] {};
+            }
+        }(optional...);
+
+        auto scaling = [](auto... optional) {
+            if constexpr (Scale) {
+                auto scale = std::get<T>(std::tie(optional...));
+                return avx::broadcast(scale);
+            } else {
+                return [] {};
+            }
+        }(optional...);
+
+        for (uint i = 0; i < size; i += avx::reg<T>::size) {
+            std::array<T*, 2> dst{
+                avx::ra_addr<PDest>(dest[0], i),
+                avx::ra_addr<PDest>(dest[1], i),
+            };
+            auto src = [](auto source, auto i) {
+                if constexpr (Src) {
+                    return std::array<const T*, 2>{
+                        avx::ra_addr<PSrc>(source[0], i),
+                        avx::ra_addr<PSrc>(source[1], i),
+                    };
+                } else {
+                    return [] {};
+                }
+            }(source, i);
+
+            internal::fft::node2<T, PDest, PSrc, false, false>(dst, src, tw, scaling);
+        }
+    }
 
 private:
     const std::size_t                  m_size;
