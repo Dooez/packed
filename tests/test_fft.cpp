@@ -441,19 +441,19 @@ int test_fftu_float_0(std::size_t size) {
 int main() {
     int ret = 0;
 
-    for (uint i = 6; i < 16; ++i) {
-        std::cout << (1U << i) << "\n";
-        // ret += test_ifftu_float(1U << i);
-        // ret += test_fft_float4(1U << i);
-        // ret += test_fft_float<1024>(1U << i);
-        ret += test_fft_float(1U << i);
-        ret += test_fftu_float(1U << i);
-        ret += test_fftu_float_0(1U << i);
-        // ret += test_fftu_float<1024>(1U << i);
-        if (ret > 0) {
-            return ret;
-        }
-    }
+    // for (uint i = 6; i < 16; ++i) {
+    //     std::cout << (1U << i) << "\n";
+    //     // ret += test_ifftu_float(1U << i);
+    //     // ret += test_fft_float4(1U << i);
+    //     // ret += test_fft_float<1024>(1U << i);
+    //     ret += test_fft_float(1U << i);
+    //     ret += test_fftu_float(1U << i);
+    //     ret += test_fftu_float_0(1U << i);
+    //     // ret += test_fftu_float<1024>(1U << i);
+    //     if (ret > 0) {
+    //         return ret;
+    //     }
+    // }
 
     constexpr std::size_t size = 64;
     constexpr float       pi   = 3.14159265358979323846;
@@ -469,7 +469,20 @@ int main() {
     static_assert(pcx::complex_vector_of<float, std::vector<std::complex<float>>>);
     // static_assert(pcx::complex_vector_of<float, std::vector<float>>);
 
-
+    std::size_t par_size = 512;
+    auto        st_par   = std::vector<pcx::vector<float>>(par_size);
+    for (uint i = 0; auto& vec: st_par) {
+        vec.resize(128);
+        pcx::subrange(vec).fill(std::exp(std::complex(0.F, 2 * pi * i / par_size * 13.37F)));
+        ++i;
+    }
+    pcx::fft_unit_par<float> par_unit(par_size);
+    par_unit(st_par, st_par);
+    for (uint i = 0; auto& vec: st_par) {
+        std::cout << abs(vec[0].value()) << "\n";
+        if (++i > 32)
+            break;
+    }
     return 0;
 }
 

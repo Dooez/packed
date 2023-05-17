@@ -500,6 +500,16 @@ inline void node2(std::array<T*, 2> dest, Args... args) {
     cxstore<PStore>(dest[1], a1);
 };
 
+constexpr auto reverse_bit_order(uint64_t num, uint64_t depth) -> uint64_t {
+    num = num >> 32 | num << 32;
+    num = (num & 0xFFFF0000FFFF0000) >> 16 | (num & 0x0000FFFF0000FFFF) << 16;
+    num = (num & 0xFF00FF00FF00FF00) >> 8 | (num & 0x00FF00FF00FF00FF) << 8;
+    num = (num & 0xF0F0F0F0F0F0F0F0) >> 4 | (num & 0x0F0F0F0F0F0F0F0F) << 4;
+    num = (num & 0xCCCCCCCCCCCCCCCC) >> 2 | (num & 0x3333333333333333) << 2;
+    num = (num & 0xAAAAAAAAAAAAAAAA) >> 1 | (num & 0x5555555555555555) << 1;
+    return num >> (64 - depth);
+}
+
 template<typename T>
 inline auto wnk(std::size_t n, std::size_t k) -> std::complex<T> {
     constexpr double pi = 3.14159265358979323846;
@@ -516,6 +526,10 @@ inline auto wnk(std::size_t n, std::size_t k) -> std::complex<T> {
 
 template<typename T, typename V>
 concept complex_vector_of = std::same_as<T, typename internal::vector_traits<V>::real_type>;
+
+template<typename T, typename R>
+concept range_complex_vector_of = std::ranges::random_access_range<R> &&    //
+                                  complex_vector_of<T, std::remove_pointer_t<std::ranges::range_value_t<R>>>;
 
 enum class fft_ordering {
     normal,
@@ -2660,63 +2674,109 @@ private:
                                          std::vector<real_type, allocator_type>>;
 
 public:
+    fft_unit_par(std::size_t size, allocator_type allocator = allocator_type{})
+    : m_size(size){};
+
     template<typename DestR_, typename SrcR_>
+        requires range_complex_vector_of<T, DestR_> && range_complex_vector_of<T, SrcR_>
     void operator()(DestR_& dest, const SrcR_& source) {
-        using dest_vector_t  = std::ranges::range_value_t<DestR_>;
-        using src_vector_t   = std::ranges::range_value_t<SrcR_>;
+        if (dest.size() != m_size) {
+            throw(std::invalid_argument(std::string("destination size (which is ")
+                                            .append(std::to_string(dest.size()))
+                                            .append(" is not equal to fft size (which is ")
+                                            .append(std::to_string(m_size))
+                                            .append(")")));
+        }
+        if (source.size() != m_size) {
+            throw(std::invalid_argument(std::string("source size (which is ")
+                                            .append(std::to_string(source.size()))
+                                            .append(" is not equal to fft size (which is ")
+                                            .append(std::to_string(m_size))
+                                            .append(")")));
+        }
+
+        using dest_vector_t = std::remove_pointer_t<std::ranges::range_value_t<DestR_>>;
+        using src_vector_t  = std::remove_pointer_t<std::ranges::range_value_t<SrcR_>>;
+
         constexpr auto PDest = internal::vector_traits<dest_vector_t>::pack_size;
         constexpr auto PSrc  = internal::vector_traits<src_vector_t>::pack_size;
 
+        auto get_vector = [](auto&& R, std::size_t i) -> auto& {
+            using vector_t = std::ranges::range_value_t<std::remove_cvref_t<decltype(R)>>;
+            if constexpr (std::is_pointer_v<vector_t>) {
+                return *R[i];
+            } else {
+                return R[i];
+            }
+        };
+
         auto tw_it     = m_twiddles.begin();
-        auto data_size = dest[0].size();
+        auto data_size = get_vector(dest, 0).size();
 
         uint l_size = 1;
         for (; l_size < m_size / 2; l_size *= 4) {
-            const auto grp_size = m_size / l_size / 4;
+            const auto grp_size = std::max(m_size / l_size / 4, 0UL);
             for (uint grp = 0; grp < grp_size; ++grp) {
                 std::array<T*, 4> dst{
-                    dest[grp].data(),
-                    dest[grp + grp_size * 1].data(),
-                    dest[grp + grp_size * 2].data(),
-                    dest[grp + grp_size * 3].data(),
+                    get_vector(dest, grp).data(),
+                    get_vector(dest, grp + grp_size * 1).data(),
+                    get_vector(dest, grp + grp_size * 2).data(),
+                    get_vector(dest, grp + grp_size * 3).data(),
                 };
                 long_btfly4<PDest, PSrc>(dst, data_size);
             }
             for (uint idx = 1; idx < l_size; ++idx) {
+                // std::array<std::complex<T>, 3> tw = {
+                //     *(tw_it++),
+                //     *(tw_it++),
+                //     *(tw_it++),
+                // };
+                using namespace internal::fft;
                 std::array<std::complex<T>, 3> tw = {
-                    *(tw_it++),
-                    *(tw_it++),
-                    *(tw_it++),
+                    wnk<T>(l_size, reverse_bit_order(idx, log2i(l_size / 2))),
+                    wnk<T>(l_size * 2, reverse_bit_order(idx * 2, log2i(l_size))),
+                    wnk<T>(l_size * 2, reverse_bit_order(idx * 2 + 1, log2i(l_size))),
                 };
+
                 for (uint grp = 0; grp < grp_size; ++grp) {
                     std::array<T*, 4> dst{
-                        dest[grp + idx * grp_size * 4].data(),
-                        dest[grp + idx * grp_size * 4 + grp_size * 1].data(),
-                        dest[grp + idx * grp_size * 4 + grp_size * 2].data(),
-                        dest[grp + idx * grp_size * 4 + grp_size * 3].data(),
+                        get_vector(dest, grp + idx * grp_size * 4).data(),
+                        get_vector(dest, grp + idx * grp_size * 4 + grp_size * 1).data(),
+                        get_vector(dest, grp + idx * grp_size * 4 + grp_size * 2).data(),
+                        get_vector(dest, grp + idx * grp_size * 4 + grp_size * 3).data(),
                     };
                     long_btfly4<PDest, PSrc>(dst, data_size, tw);
                 }
             }
         }
-        if (l_size == m_size) {
+        if (l_size == m_size / 2) {
             const auto grp_size = m_size / l_size / 2;
             for (uint grp = 0; grp < grp_size; ++grp) {
                 std::array<T*, 2> dst{
-                    dest[grp].data(),
-                    dest[grp + grp_size * 1].data(),
+                    get_vector(dest, grp).data(),
+                    get_vector(dest, grp + grp_size * 1).data(),
                 };
                 long_btfly2<PDest, PSrc>(dst, data_size);
             }
             for (uint idx = 1; idx < l_size; ++idx) {
-                auto tw = *(tw_it++);
+                // auto tw = *(tw_it++);
+
+                using namespace internal::fft;
+                auto tw = wnk<T>(l_size, reverse_bit_order(idx, log2i(l_size / 2)));
                 for (uint grp = 0; grp < grp_size; ++grp) {
                     std::array<T*, 2> dst{
-                        dest[grp + idx * grp_size * 4].data(),
-                        dest[grp + idx * grp_size * 4 + grp_size * 1].data(),
+                        get_vector(dest, grp + idx * grp_size * 2).data(),
+                        get_vector(dest, grp + idx * grp_size * 2 + grp_size * 1).data(),
                     };
                     long_btfly2<PDest, PSrc>(dst, data_size, tw);
                 }
+            }
+        }
+        for (uint i = 0; i < m_size; ++i) {
+            auto rev = internal::fft::reverse_bit_order(i, log2i(m_size));
+            if (rev > i) {
+                using std::swap;
+                swap(get_vector(dest, i), get_vector(dest, rev));
             }
         }
     };
