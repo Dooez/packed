@@ -571,7 +571,7 @@ public:
     , m_twiddles(get_twiddles(size(), sub_size(), allocator)){};
 
     explicit fft_unit(std::size_t    fft_size,
-                      std::size_t    sub_size  = 1,
+                      std::size_t    sub_size  = 2048,
                       allocator_type allocator = allocator_type())
         requires(SubSize == pcx::dynamic_size)
     : m_size(check_size(fft_size))
@@ -2733,9 +2733,9 @@ public:
                 // };
                 using namespace internal::fft;
                 std::array<std::complex<T>, 3> tw = {
-                    wnk<T>(l_size, reverse_bit_order(idx, log2i(l_size / 2))),
-                    wnk<T>(l_size * 2, reverse_bit_order(idx * 2, log2i(l_size))),
-                    wnk<T>(l_size * 2, reverse_bit_order(idx * 2 + 1, log2i(l_size))),
+                    wnk<T>(l_size * 2, reverse_bit_order(idx, log2i(l_size))),
+                    wnk<T>(l_size * 4, reverse_bit_order(idx * 2, log2i(l_size * 2))),
+                    wnk<T>(l_size * 4, reverse_bit_order(idx * 2 + 1, log2i(l_size * 2))),
                 };
 
                 for (uint grp = 0; grp < grp_size; ++grp) {
@@ -2762,7 +2762,7 @@ public:
                 // auto tw = *(tw_it++);
 
                 using namespace internal::fft;
-                auto tw = wnk<T>(l_size, reverse_bit_order(idx, log2i(l_size / 2)));
+                auto tw = wnk<T>(l_size * 2, reverse_bit_order(idx, log2i(l_size )));
                 for (uint grp = 0; grp < grp_size; ++grp) {
                     std::array<T*, 2> dst{
                         get_vector(dest, grp + idx * grp_size * 2).data(),

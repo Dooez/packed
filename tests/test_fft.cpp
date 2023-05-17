@@ -469,17 +469,26 @@ int main() {
     static_assert(pcx::complex_vector_of<float, std::vector<std::complex<float>>>);
     // static_assert(pcx::complex_vector_of<float, std::vector<float>>);
 
-    std::size_t par_size = 512;
-    auto        st_par   = std::vector<pcx::vector<float>>(par_size);
+    std::size_t par_size  = 512;
+    auto        st_par    = std::vector<pcx::vector<float>>(par_size);
+    auto        vec_check = pcx::vector<float>(par_size);
     for (uint i = 0; auto& vec: st_par) {
         vec.resize(128);
-        pcx::subrange(vec).fill(std::exp(std::complex(0.F, 2 * pi * i / par_size * 13.37F)));
+        auto val = std::exp(std::complex(0.F, 2 * pi * i / par_size * 13.37F));
+        pcx::subrange(vec).fill(val);
+        vec_check[i] = val;
         ++i;
     }
+
     pcx::fft_unit_par<float> par_unit(par_size);
+    pcx::fft_unit<float>     check_unit(par_size);
+
     par_unit(st_par, st_par);
+    check_unit(vec_check);
+
     for (uint i = 0; auto& vec: st_par) {
-        std::cout << abs(vec[0].value()) << "\n";
+        std::cout << std::to_string(abs(vec[0].value())) << "  " << std::to_string(abs(vec_check[i].value()))
+                  << "  " << std::to_string(abs(vec_check[i].value() - vec[0].value())) << "\n";
         if (++i > 32)
             break;
     }
