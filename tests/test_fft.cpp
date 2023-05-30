@@ -441,57 +441,57 @@ int test_fftu_float_0(std::size_t size) {
 int main() {
     int ret = 0;
 
-    // for (uint i = 6; i < 16; ++i) {
-    //     std::cout << (1U << i) << "\n";
-    //     // ret += test_ifftu_float(1U << i);
-    //     // ret += test_fft_float4(1U << i);
-    //     // ret += test_fft_float<1024>(1U << i);
-    //     ret += test_fft_float(1U << i);
-    //     ret += test_fftu_float(1U << i);
-    //     ret += test_fftu_float_0(1U << i);
-    //     // ret += test_fftu_float<1024>(1U << i);
-    //     if (ret > 0) {
-    //         return ret;
-    //     }
-    // }
-
-    constexpr std::size_t size = 64;
-    constexpr float       pi   = 3.14159265358979323846;
-
-    auto vec  = pcx::vector<float>(size);
-    auto vec2 = pcx::vector<float>(size);
-
-    std::cout << pcx::fft_unit_par<float>::test(vec) << "\n";
-    std::cout << pcx::fft_unit_par<float>::test(std::vector<std::complex<float>>{}) << "\n";
-    std::cout << pcx::fft_unit_par<float>::test(std::vector<float>{}) << "\n";
-
-    static_assert(pcx::complex_vector_of<float, pcx::vector<float>>);
-    static_assert(pcx::complex_vector_of<float, std::vector<std::complex<float>>>);
-    // static_assert(pcx::complex_vector_of<float, std::vector<float>>);
-
-    std::size_t par_size  = 512;
-    auto        st_par    = std::vector<pcx::vector<float>>(par_size);
-    auto        vec_check = pcx::vector<float>(par_size);
-    for (uint i = 0; auto& vec: st_par) {
-        vec.resize(128);
-        auto val = std::exp(std::complex(0.F, 2 * pi * i / par_size * 13.37F));
-        pcx::subrange(vec).fill(val);
-        vec_check[i] = val;
-        ++i;
+    for (uint i = 6; i < 16; ++i) {
+        std::cout << (1U << i) << "\n";
+        // ret += test_ifftu_float(1U << i);
+        // ret += test_fft_float4(1U << i);
+        // ret += test_fft_float<1024>(1U << i);
+        ret += test_fft_float(1U << i);
+        ret += test_fftu_float(1U << i);
+        // ret += test_fftu_float_0(1U << i);
+        // ret += test_fftu_float<1024>(1U << i);
+        if (ret > 0) {
+            return ret;
+        }
     }
 
-    pcx::fft_unit_par<float> par_unit(par_size);
-    pcx::fft_unit<float>     check_unit(par_size);
-
-    par_unit(st_par, st_par);
-    check_unit(vec_check);
-
-    for (uint i = 0; auto& vec: st_par) {
-        std::cout << std::to_string(abs(vec[0].value())) << "  " << std::to_string(abs(vec_check[i].value()))
-                  << "  " << std::to_string(abs(vec_check[i].value() - vec[0].value())) << "\n";
-        if (++i > 32)
-            break;
-    }
+//     constexpr std::size_t size = 64;
+//     constexpr float       pi   = 3.14159265358979323846;
+//
+//     auto vec  = pcx::vector<float>(size);
+//     auto vec2 = pcx::vector<float>(size);
+//
+//     std::cout << pcx::fft_unit_par<float>::test(vec) << "\n";
+//     std::cout << pcx::fft_unit_par<float>::test(std::vector<std::complex<float>>{}) << "\n";
+//     std::cout << pcx::fft_unit_par<float>::test(std::vector<float>{}) << "\n";
+//
+//     static_assert(pcx::complex_vector_of<float, pcx::vector<float>>);
+//     static_assert(pcx::complex_vector_of<float, std::vector<std::complex<float>>>);
+//     // static_assert(pcx::complex_vector_of<float, std::vector<float>>);
+//
+//     std::size_t par_size  = 512;
+//     auto        st_par    = std::vector<pcx::vector<float>>(par_size);
+//     auto        vec_check = pcx::vector<float>(par_size);
+//     for (uint i = 0; auto& vec: st_par) {
+//         vec.resize(128);
+//         auto val = std::exp(std::complex(0.F, 2 * pi * i / par_size * 13.37F));
+//         pcx::subrange(vec).fill(val);
+//         vec_check[i] = val;
+//         ++i;
+//     }
+//
+//     pcx::fft_unit_par<float> par_unit(par_size);
+//     pcx::fft_unit<float>     check_unit(par_size);
+//
+//     par_unit(st_par, st_par);
+//     check_unit(vec_check);
+//
+//     for (uint i = 0; auto& vec: st_par) {
+//         std::cout << std::to_string(abs(vec[0].value())) << "  " << std::to_string(abs(vec_check[i].value()))
+//                   << "  " << std::to_string(abs(vec_check[i].value() - vec[0].value())) << "\n";
+//         if (++i > 32)
+//             break;
+//     }
     return 0;
 }
 

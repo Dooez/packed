@@ -35,11 +35,31 @@ template<typename T_, typename Alloc_>
 struct vector_traits<std::vector<std::complex<T_>, Alloc_>> {
     using real_type                        = T_;
     static constexpr std::size_t pack_size = 1;
+
+    static auto data(std::vector<std::complex<T_>, Alloc_>& vector) {
+        return reinterpret_cast<real_type*>(vector.data());
+    }
+    static auto data(const std::vector<std::complex<T_>, Alloc_>& vector) {
+        return reinterpret_cast<const real_type*>(vector.data());
+    }
+    static auto size(const std::vector<std::complex<T_>, Alloc_>& vector) {
+        return vector.size();
+    }
 };
 template<typename T_, std::size_t PackSize_, typename Alloc_>
 struct vector_traits<pcx::vector<T_, PackSize_, Alloc_>> {
     using real_type                        = T_;
     static constexpr std::size_t pack_size = PackSize_;
+
+    static auto data(pcx::vector<T_, PackSize_, Alloc_>& vector) {
+        return vector.data();
+    }
+    static auto data(const pcx::vector<T_, PackSize_, Alloc_>& vector) {
+        return vector.data();
+    }
+    static auto size(const pcx::vector<T_, PackSize_, Alloc_>& vector) {
+        return vector.size();
+    }
 };
 
 
@@ -590,15 +610,24 @@ public:
         return m_size;
     }
 
-    template<typename Alloc_, std::size_t PData_>
-    void operator()(pcx::vector<T, PData_, Alloc_>& vector) {
-        assert(size() == vector.size());
-        if constexpr (!sorted) {
-            fftu_internal<PData_>(vector.data());
-        } else {
-            fft_internal<PData_>(vector.data());
+    template<typename Vect_>
+        requires complex_vector_of<T, Vect_>
+    void operator()(Vect_& vector) {
+        using v_traits = internal::vector_traits<Vect_>;
+        if (v_traits::size(vector) != m_size) {
+            throw(std::invalid_argument(std::string("input size (which is ")
+                                            .append(std::to_string(v_traits::size(vector)))
+                                            .append(" is not equal to fft size (which is ")
+                                            .append(std::to_string(m_size))
+                                            .append(")")));
         }
-    };
+        constexpr auto PData = v_traits::pack_size;
+        if constexpr (!sorted) {
+            fftu_internal<PData>(v_traits::data(vector));
+        } else {
+            fft_internal<PData>(v_traits::data(vector));
+        }
+    }
 
     template<typename AllocDest_, std::size_t PDest_, typename AllocSrc_, std::size_t PSrc_>
     void operator()(pcx::vector<T, PDest_, AllocDest_>&     dest,
@@ -650,16 +679,6 @@ public:
             ifftu_internal<PData_, Normalized>(vector.data());
         } else {
             ifft_internal<PData_, Normalized>(vector.data());
-        }
-    };
-
-    template<typename Alloc_>
-    void operator()(std::vector<std::complex<T>, Alloc_>& vector) {
-        assert(size() == vector.size());
-        if constexpr (!sorted) {
-            fftu_internal<1>(reinterpret_cast<T*>(vector.data()));
-        } else {
-            fft_internal<1>(reinterpret_cast<T*>(vector.data()));
         }
     };
 
