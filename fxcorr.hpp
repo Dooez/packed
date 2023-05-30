@@ -27,7 +27,7 @@ public:
     }
 
 private:
-    pcx::vector<T, Allocator> m_vector;
+    pcx::vector<T, default_pack_size<T>, Allocator> m_vector;
 };
 }    // namespace internal
 
@@ -91,7 +91,7 @@ public:
     fxcorr_unit& operator=(fxcorr_unit&& other) noexcept = delete;
 
     template<typename Alloc_, std::size_t PackSize_>
-    void operator()(pcx::vector<T, Alloc_, PackSize_>& vec) {
+    void operator()(pcx::vector<T, PackSize_, Alloc_>& vec) {
         uint offset = 0;
         auto step   = (m_fft->size() - m_overlap) / PackSize_ * PackSize_;
         for (; offset + m_fft->size() < vec.size(); offset += step) {
@@ -114,7 +114,7 @@ public:
 
 private:
     std::shared_ptr<FFT_>          m_fft;
-    pcx::vector<T, allocator_type> m_kernel;
+    pcx::vector<T, default_pack_size<T>, allocator_type> m_kernel;
     TmpFactory_                    m_tmp_factory;
     std::size_t                    m_overlap;
 };

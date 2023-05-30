@@ -48,9 +48,9 @@ int equal_eps(std::complex<T> lhs, std::complex<T> rhs) {
 template<typename T, std::size_t PackSize>
     requires pcx::packed_floating_point<T, PackSize>
 int test_bin_ops(std::size_t length) {
-    auto pcx_lhs = pcx::vector<T, pcx::aligned_allocator<T>, PackSize>(length);
-    auto pcx_rhs = pcx::vector<T, pcx::aligned_allocator<T>, PackSize>(length);
-    auto pcx_res = pcx::vector<T, pcx::aligned_allocator<T>, PackSize>(length);
+    auto pcx_lhs = pcx::vector<T, PackSize, pcx::aligned_allocator<T>>(length);
+    auto pcx_rhs = pcx::vector<T, PackSize, pcx::aligned_allocator<T>>(length);
+    auto pcx_res = pcx::vector<T, PackSize, pcx::aligned_allocator<T>>(length);
 
     auto std_lhs = std::vector<std::complex<T>>(length);
     auto std_rhs = std::vector<std::complex<T>>(length);

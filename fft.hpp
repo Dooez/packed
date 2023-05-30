@@ -37,7 +37,7 @@ struct vector_traits<std::vector<std::complex<T_>, Alloc_>> {
     static constexpr std::size_t pack_size = 1;
 };
 template<typename T_, std::size_t PackSize_, typename Alloc_>
-struct vector_traits<pcx::vector<T_, Alloc_, PackSize_>> {
+struct vector_traits<pcx::vector<T_, PackSize_, Alloc_>> {
     using real_type                        = T_;
     static constexpr std::size_t pack_size = PackSize_;
 };
@@ -83,8 +83,7 @@ struct order {
         } else {
             return std::array<std::size_t, sizeof...(N)>{N...};
         }
-    }
-    (std::make_index_sequence<Size - 1>{});
+    }(std::make_index_sequence<Size - 1>{});
 };
 
 template<typename T,
@@ -560,7 +559,7 @@ private:
                                       std::vector<std::size_t, sort_allocator_type>,
                                       decltype([]() {})>;
     using twiddle_t = std::conditional_t<sorted,
-                                         pcx::vector<real_type, allocator_type, avx::reg<T>::size>,
+                                         pcx::vector<real_type, avx::reg<T>::size, allocator_type>,
                                          std::vector<real_type, allocator_type>>;
 
 public:
@@ -592,7 +591,7 @@ public:
     }
 
     template<typename Alloc_, std::size_t PData_>
-    void operator()(pcx::vector<T, Alloc_, PData_>& vector) {
+    void operator()(pcx::vector<T, PData_, Alloc_>& vector) {
         assert(size() == vector.size());
         if constexpr (!sorted) {
             fftu_internal<PData_>(vector.data());
@@ -602,8 +601,8 @@ public:
     };
 
     template<typename AllocDest_, std::size_t PDest_, typename AllocSrc_, std::size_t PSrc_>
-    void operator()(pcx::vector<T, AllocDest_, PDest_>&     dest,
-                    const pcx::vector<T, AllocSrc_, PSrc_>& source) {
+    void operator()(pcx::vector<T, PDest_, AllocDest_>&     dest,
+                    const pcx::vector<T, PSrc_, AllocSrc_>& source) {
         assert(size() == dest.size());
         assert(source.size() <= size());
         if constexpr (!sorted) {
@@ -622,7 +621,7 @@ public:
     };
 
     template<typename Alloc_, std::size_t PDest_, bool Const_, std::size_t Size_, std::size_t PSrc_>
-    void operator()(pcx::vector<T, Alloc_, PDest_>& dest, pcx::subrange<T, Const_, Size_, PSrc_> source) {
+    void operator()(pcx::vector<T, PDest_, Alloc_>& dest, pcx::subrange<T, Const_, Size_, PSrc_> source) {
         assert(size() == dest.size());
         assert(source.begin().aligned());
         assert(source.size() <= size());
@@ -645,7 +644,7 @@ public:
     template<bool Normalized    = true,
              typename Alloc_    = allocator_type,
              std::size_t PData_ = pcx::default_pack_size<real_type>>
-    void ifft(pcx::vector<T, Alloc_, PData_>& vector) {
+    void ifft(pcx::vector<T, PData_, Alloc_>& vector) {
         assert(size() == vector.size());
         if constexpr (!sorted) {
             ifftu_internal<PData_, Normalized>(vector.data());
@@ -2330,7 +2329,7 @@ private:
         return sort_t{};
     };
     static auto get_twiddles(std::size_t fft_size, std::size_t sub_size, allocator_type allocator)
-        -> pcx::vector<real_type, allocator_type, avx::reg<T>::size>
+        -> pcx::vector<real_type, avx::reg<T>::size, allocator_type>
         requires(sorted)
     {
         auto       wnk   = internal::fft::wnk<T>;
@@ -2338,7 +2337,7 @@ private:
 
         const std::size_t n_twiddles = 8 * ((1U << (depth - 3)) - 1U);
 
-        auto twiddles = pcx::vector<real_type, allocator_type, avx::reg<T>::size>(n_twiddles, allocator);
+        auto twiddles = pcx::vector<real_type, avx::reg<T>::size, allocator_type>(n_twiddles, allocator);
 
         auto tw_it = twiddles.begin();
 
@@ -2465,7 +2464,7 @@ private:
             while (l_size < single_load_size / 2) {
                 std::size_t start = group_size * i_group;
                 for (uint i = 0; i < group_size; ++i) {
-                    auto tw0 = wnk(l_size,    //
+                    auto tw0 = wnk(l_size,        //
                                    reverse_bit_order((start + i), log2i(l_size / 2)));
                     auto tw1 = wnk(l_size * 2,    //
                                    reverse_bit_order((start + i) * 2, log2i(l_size)));
@@ -2670,7 +2669,7 @@ private:
                                       std::vector<std::size_t, sort_allocator_type>,
                                       decltype([]() {})>;
     using twiddle_t = std::conditional_t<sorted,
-                                         pcx::vector<real_type, allocator_type, avx::reg<T>::size>,
+                                         pcx::vector<real_type, avx::reg<T>::size, allocator_type>,
                                          std::vector<real_type, allocator_type>>;
 
 public:
@@ -2762,7 +2761,7 @@ public:
                 // auto tw = *(tw_it++);
 
                 using namespace internal::fft;
-                auto tw = wnk<T>(l_size * 2, reverse_bit_order(idx, log2i(l_size )));
+                auto tw = wnk<T>(l_size * 2, reverse_bit_order(idx, log2i(l_size)));
                 for (uint grp = 0; grp < grp_size; ++grp) {
                     std::array<T*, 2> dst{
                         get_vector(dest, grp + idx * grp_size * 2).data(),

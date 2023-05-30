@@ -19,12 +19,12 @@ namespace pcx {
  * @tparam Allocator
  */
 template<typename T,
-         typename Allocator   = pcx::aligned_allocator<T>,
-         std::size_t PackSize = pcx::default_pack_size<T>>
+         std::size_t PackSize = pcx::default_pack_size<T>,
+         typename Allocator   = pcx::aligned_allocator<T>>
     requires packed_floating_point<T, PackSize>
 class vector {
     friend class internal::expression_traits;
-    template<typename OT, typename OAllocator, std::size_t OPackSize>
+    template<typename OT, std::size_t OPackSize, typename OAllocator>
         requires packed_floating_point<OT, OPackSize>
     friend class pcx::vector;
 
@@ -340,7 +340,7 @@ public:
     }
 
     template<std::size_t OPackSize>
-    explicit vector(const vector<real_type, allocator_type, OPackSize>& other)
+    explicit vector(const vector<real_type, OPackSize, allocator_type >& other)
     : m_allocator(alloc_traits::select_on_container_copy_construction(other.m_allocator))
     , m_size(other.m_size) {
         if (m_size == 0) {
@@ -351,7 +351,7 @@ public:
     }
 
     template<typename OAllocator, std::size_t OPackSize>
-    explicit vector(const vector<T, OAllocator, OPackSize>& other, const OAllocator& allocator = OAllocator{})
+    explicit vector(const vector<T, OPackSize, OAllocator>& other, const OAllocator& allocator = OAllocator{})
     : m_allocator(allocator)
     , m_size(other.m_size) {
         if (m_size == 0) {
@@ -388,7 +388,7 @@ private:
 
 template<typename T, bool Const = false, std::size_t PackSize = pcx::default_pack_size<T>>
 class iterator {
-    template<typename VT, typename, std::size_t VPackSize>
+    template<typename VT, std::size_t VPackSize, typename>
         requires packed_floating_point<VT, VPackSize>
     friend class vector;
     friend class iterator<T, true, PackSize>;
@@ -520,10 +520,9 @@ private:
     difference_type m_idx = 0;
 };
 
-
 template<typename T, bool Const>
 class iterator<T, Const, 1> {
-    template<typename VT, typename, std::size_t VPackSize>
+    template<typename VT, std::size_t VPackSize, typename>
         requires packed_floating_point<VT, VPackSize>
     friend class vector;
     friend class iterator<T, true, 1>;
@@ -647,7 +646,7 @@ template<typename T,
          std::size_t Size     = pcx::dynamic_size,
          std::size_t PackSize = pcx::default_pack_size<T>>
 class subrange : public std::ranges::view_base {
-    template<typename VT, typename, std::size_t VPackSize>
+    template<typename VT, std::size_t VPackSize, typename>
         requires packed_floating_point<VT, VPackSize>
     friend class vector;
 
@@ -682,13 +681,13 @@ public:
     , m_size(end - begin){};
 
     template<typename VAllocator>
-    explicit subrange(vector<real_type, VAllocator, pack_size>& vector) noexcept
+    explicit subrange(vector<real_type, pack_size, VAllocator>& vector) noexcept
         requires(Size == pcx::dynamic_size)
     : m_begin(vector.begin())
     , m_size(vector.size()){};
 
     template<typename VAllocator>
-    explicit subrange(const vector<real_type, VAllocator, pack_size>& vector) noexcept
+    explicit subrange(const vector<real_type, pack_size, VAllocator>& vector) noexcept
         requires(Size == pcx::dynamic_size) && Const
     : m_begin(vector.begin())
     , m_size(vector.size()){};
@@ -804,7 +803,7 @@ private:
 
 template<typename T, bool Const = false, std::size_t PackSize = pcx::default_pack_size<T>>
 class cx_ref {
-    template<typename VT, typename, std::size_t VPackSize>
+    template<typename VT, std::size_t VPackSize, typename>
         requires packed_floating_point<VT, VPackSize>
     friend class vector;
 

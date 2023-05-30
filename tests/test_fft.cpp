@@ -85,8 +85,8 @@ inline auto wnk(std::size_t n, std::size_t k) -> std::complex<T> {
     return exp(std::complex<T>(0, -2 * pi * static_cast<double>(k) / static_cast<double>(n)));
 }
 template<typename T, typename Allocator, std::size_t PackSize>
-auto fft(const pcx::vector<T, Allocator, PackSize>& vector) {
-    using vector_t = pcx::vector<T, Allocator, PackSize>;
+auto fft(const pcx::vector<T, PackSize, Allocator>& vector) {
+    using vector_t = pcx::vector<T, PackSize, Allocator>;
     auto fft_size  = vector.size();
     auto res       = vector_t(fft_size);
     if (fft_size == 1) {
@@ -121,7 +121,7 @@ auto fft(const pcx::vector<T, Allocator, PackSize>& vector) {
 
 
 template<typename T, typename Allocator, std::size_t PackSize>
-auto fftu(const pcx::vector<T, Allocator, PackSize>& vector) {
+auto fftu(const pcx::vector<T, PackSize, Allocator>& vector) {
     auto        size       = vector.size();
     auto        u          = vector;
     std::size_t n_groups   = 1;
@@ -154,7 +154,7 @@ auto fftu(const pcx::vector<T, Allocator, PackSize>& vector) {
 }
 
 template<typename T, typename Allocator, std::size_t PackSize>
-auto ifftu(const pcx::vector<T, Allocator, PackSize>& vector) {
+auto ifftu(const pcx::vector<T, PackSize, Allocator>& vector) {
     auto        size       = vector.size();
     auto        u          = vector;
     std::size_t n_groups   = size / 2;
@@ -196,8 +196,8 @@ int test_fft_float(std::size_t size) {
 
     auto depth = log2i(size);
 
-    auto vec      = pcx::vector<float, std::allocator<float>, PackSize>(size);
-    auto vec_out  = pcx::vector<float, std::allocator<float>, PackSize>(size);
+    auto vec      = pcx::vector<float, PackSize, std::allocator<float>>(size);
+    auto vec_out  = pcx::vector<float, PackSize, std::allocator<float>>(size);
     auto svec_out = std::vector<std::complex<float>>(size);
     for (uint i = 0; i < size; ++i) {
         vec[i]      = std::exp(std::complex(0.F, 2 * pi * i / size * 13.37F));
@@ -295,8 +295,8 @@ int test_fftu_float(std::size_t size) {
 
     auto depth = log2i(size);
 
-    auto vec      = pcx::vector<float, std::allocator<float>, PackSize>(size);
-    auto vec_out  = pcx::vector<float, std::allocator<float>, PackSize>(size);
+    auto vec      = pcx::vector<float, PackSize, std::allocator<float>>(size);
+    auto vec_out  = pcx::vector<float, PackSize, std::allocator<float>>(size);
     auto svec_out = std::vector<std::complex<float>>(size);
     for (uint i = 0; i < size; ++i) {
         vec[i]      = std::exp(std::complex(0.F, 2 * pi * i / size * 13.37F));
@@ -386,8 +386,8 @@ int test_fftu_float_0(std::size_t size) {
 
     auto depth = log2i(size);
 
-    auto vec      = pcx::vector<float, std::allocator<float>, PackSize>(size);
-    auto vec_out  = pcx::vector<float, std::allocator<float>, PackSize>(size);
+    auto vec      = pcx::vector<float, PackSize, std::allocator<float>>(size);
+    auto vec_out  = pcx::vector<float, PackSize, std::allocator<float>>(size);
     auto svec_out = std::vector<std::complex<float>>(size);
     for (uint i = 0; i < size; ++i) {
         vec[i]      = std::exp(std::complex(0.F, 2 * pi * i / size * 13.37F));
@@ -404,8 +404,8 @@ int test_fftu_float_0(std::size_t size) {
 
         for (auto n_empty = size / 2; n_empty < std::min(size, size / 2 + pcx::avx::reg<float>::size);
              ++n_empty) {
-            auto vec_short = pcx::vector<float, std::allocator<float>, PackSize>(size - n_empty);
-            auto vec_zero  = pcx::vector<float, std::allocator<float>, PackSize>(size);
+            auto vec_short = pcx::vector<float, PackSize, std::allocator<float>>(size - n_empty);
+            auto vec_zero  = pcx::vector<float, PackSize, std::allocator<float>>(size);
 
             vec_short = pcx::subrange(vec.begin(), vec_short.size());
             pcx::subrange(vec_zero.begin(), vec_short.size())
