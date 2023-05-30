@@ -62,6 +62,8 @@ struct vector_traits<pcx::vector<T_, PackSize_, Alloc_>> {
     }
 };
 
+    template<typename T_,bool Const_, std::size_t Size_, std::size_t PackSize_>
+    struct vector_traits<pcx::subrange<T_, Const_, Size_, PackSize_>>{};
 
 namespace fft {
 
@@ -629,25 +631,44 @@ public:
         }
     }
 
-    template<typename AllocDest_, std::size_t PDest_, typename AllocSrc_, std::size_t PSrc_>
-    void operator()(pcx::vector<T, PDest_, AllocDest_>&     dest,
-                    const pcx::vector<T, PSrc_, AllocSrc_>& source) {
-        assert(size() == dest.size());
-        assert(source.size() <= size());
+    template<typename DestVect_, typename SrcVect_>
+        requires complex_vector_of<T, DestVect_> && complex_vector_of<T, SrcVect_>
+    void operator()(DestVect_& dest, const SrcVect_& source) {
+        using src_traits = internal::vector_traits<SrcVect_>;
+        using dst_traits = internal::vector_traits<DestVect_>;
+        if (dst_traits::size(dest) != m_size) {
+            throw(std::invalid_argument(std::string("destination size (which is ")
+                                            .append(std::to_string(dst_traits::size(dest)))
+                                            .append(" is not equal to fft size (which is ")
+                                            .append(std::to_string(size()))
+                                            .append(")")));
+        }
+        if (src_traits::size(source) > m_size) {
+            throw(std::invalid_argument(std::string("source size (which is ")
+                                            .append(std::to_string(src_traits::size(source)))
+                                            .append(" is bigger than fft size (which is ")
+                                            .append(std::to_string(size()))
+                                            .append(")")));
+        }
+        constexpr auto PDest = dst_traits::pack_size;
+        constexpr auto PSrc = src_traits::pack_size;
+
+        auto dst_ptr = dst_traits::data(dest);
+        auto src_ptr = src_traits::data(source);
         if constexpr (!sorted) {
-            if (source.size() < size()) {
-                fftu_internal<PDest_, PSrc_>(dest.data(), source.data(), source.size());
+            if (src_traits::size(source) < size()) {
+                fftu_internal<PDest, PSrc>(dst_ptr, src_ptr, src_traits::size(source));
             } else {
-                fftu_internal<PDest_, PSrc_>(dest.data(), source.data());
+                fftu_internal<PDest, PSrc>(dst_ptr, src_ptr);
             }
         } else {
-            if (dest.data() == source.data()) {
-                fft_internal<PDest_>(dest.data());
+            if (dst_ptr == src_ptr) {
+                fft_internal<PDest>(dst_ptr);
             } else {
-                fft_internal<PDest_, PSrc_>(dest.data(), source.data());
+                fft_internal<PDest, PSrc>(dst_ptr, src_ptr);
             }
         }
-    };
+    }
 
     template<typename Alloc_, std::size_t PDest_, bool Const_, std::size_t Size_, std::size_t PSrc_>
     void operator()(pcx::vector<T, PDest_, Alloc_>& dest, pcx::subrange<T, Const_, Size_, PSrc_> source) {
@@ -679,17 +700,6 @@ public:
             ifftu_internal<PData_, Normalized>(vector.data());
         } else {
             ifft_internal<PData_, Normalized>(vector.data());
-        }
-    };
-
-    template<typename Alloc_>
-    void operator()(std::vector<std::complex<T>, Alloc_>&       dest,
-                    const std::vector<std::complex<T>, Alloc_>& source) {
-        assert(size() == dest.size() && size() == source.size());
-        if (&dest == &source) {
-            fft_internal<1>(reinterpret_cast<T*>(dest.data()));
-        } else {
-            fft_internal<1, 1>(reinterpret_cast<T*>(dest.data()), reinterpret_cast<const T*>(source.data()));
         }
     };
 
