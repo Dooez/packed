@@ -661,10 +661,6 @@ public:
 
     static constexpr size_type pack_size = PackSize;
 
-private:
-    // using size_t =  std::conditional_t<Size == pcx::dynamic_size, size_type, decltype([]() {})>;
-
-public:
     subrange() noexcept = default;
 
     subrange(const iterator& begin, size_type size) noexcept
