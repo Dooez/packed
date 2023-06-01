@@ -8,6 +8,7 @@
 #include <array>
 #include <bits/ranges_base.h>
 #include <cmath>
+#include <complex>
 #include <concepts>
 #include <cstddef>
 #include <iostream>
@@ -69,14 +70,14 @@ struct vector_traits<pcx::subrange<T_, Const_, PackSize_>> {
 
     static auto data(pcx::subrange<T_, false, PackSize_> subrange) {
         if (!subrange.aligned()) {
-            throw(std::invalid_argument(std::string("subrange is not aligned. pcx::subrange must be aligned to be accessed as a vector")));
+            throw(std::invalid_argument(std::string(
+                "subrange is not aligned. pcx::subrange must be aligned to be accessed as a vector")));
         }
         return &(*subrange.begin());
     }
     static auto size(pcx::subrange<T_, Const_, PackSize_> subrange) {
         return subrange.size();
     }
-
 };
 
 namespace fft {
@@ -574,7 +575,7 @@ enum class fft_ordering {
 
 template<typename T,
          fft_ordering Ordering = fft_ordering::normal,
-         typename Allocator    = pcx::aligned_allocator<T, std::align_val_t(64)>,
+         typename Allocator    = std::allocator<T>,
          std::size_t SubSize   = pcx::dynamic_size>
     requires(std::same_as<T, float> || std::same_as<T, double>) &&
             (pcx::power_of_two<SubSize> && SubSize >= pcx::default_pack_size<T> ||
@@ -684,7 +685,7 @@ public:
         }
     }
 
-     template<bool Normalized    = true, typename Vect_>
+    template<bool Normalized = true, typename Vect_>
         requires complex_vector_of<T, Vect_>
     void ifft(Vect_& vector) {
         using v_traits = internal::vector_traits<Vect_>;
@@ -2678,22 +2679,25 @@ class fft_unit_par {
 public:
     using real_type      = T;
     using allocator_type = Allocator;
+    using size_type      = std::size_t;
 
 private:
     using sort_allocator_type =
         typename std::allocator_traits<allocator_type>::template rebind_alloc<std::size_t>;
+    using tw_allocator_type =
+        typename std::allocator_traits<allocator_type>::template rebind_alloc<std::complex<real_type>>;
     static constexpr bool sorted = Ordering == fft_ordering::normal;
 
     using sort_t    = std::conditional_t<sorted,    //
                                       std::vector<std::size_t, sort_allocator_type>,
                                       decltype([]() {})>;
-    using twiddle_t = std::conditional_t<sorted,
-                                         pcx::vector<real_type, avx::reg<T>::size, allocator_type>,
-                                         std::vector<real_type, allocator_type>>;
+    using twiddle_t = std::vector<std::complex<real_type>, tw_allocator_type>;
 
 public:
     fft_unit_par(std::size_t size, allocator_type allocator = allocator_type{})
-    : m_size(size){};
+    : m_size(size)
+    , m_sort(get_sort(size, allocator))
+    , m_twiddles(get_twiddles(size, allocator)){};
 
     template<typename DestR_, typename SrcR_>
         requires range_complex_vector_of<T, DestR_> && range_complex_vector_of<T, SrcR_>
@@ -2744,17 +2748,17 @@ public:
                 long_btfly4<PDest, PSrc>(dst, data_size);
             }
             for (uint idx = 1; idx < l_size; ++idx) {
-                // std::array<std::complex<T>, 3> tw = {
-                //     *(tw_it++),
-                //     *(tw_it++),
-                //     *(tw_it++),
-                // };
-                using namespace internal::fft;
                 std::array<std::complex<T>, 3> tw = {
-                    wnk<T>(l_size * 2, reverse_bit_order(idx, log2i(l_size))),
-                    wnk<T>(l_size * 4, reverse_bit_order(idx * 2, log2i(l_size * 2))),
-                    wnk<T>(l_size * 4, reverse_bit_order(idx * 2 + 1, log2i(l_size * 2))),
+                    *(tw_it++),
+                    *(tw_it++),
+                    *(tw_it++),
                 };
+                // using namespace internal::fft;
+                // std::array<std::complex<T>, 3> tw = {
+                //     wnk<T>(l_size * 2, reverse_bit_order(idx, log2i(l_size))),
+                //     wnk<T>(l_size * 4, reverse_bit_order(idx * 2, log2i(l_size * 2))),
+                //     wnk<T>(l_size * 4, reverse_bit_order(idx * 2 + 1, log2i(l_size * 2))),
+                // };
 
                 for (uint grp = 0; grp < grp_size; ++grp) {
                     std::array<T*, 4> dst{
@@ -2777,10 +2781,10 @@ public:
                 long_btfly2<PDest, PSrc>(dst, data_size);
             }
             for (uint idx = 1; idx < l_size; ++idx) {
-                // auto tw = *(tw_it++);
+                auto tw = *(tw_it++);
 
                 using namespace internal::fft;
-                auto tw = wnk<T>(l_size * 2, reverse_bit_order(idx, log2i(l_size)));
+                // auto tw = wnk<T>(l_size * 2, reverse_bit_order(idx, log2i(l_size)));
                 for (uint grp = 0; grp < grp_size; ++grp) {
                     std::array<T*, 2> dst{
                         get_vector(dest, grp + idx * grp_size * 2).data(),
@@ -2790,20 +2794,89 @@ public:
                 }
             }
         }
-        for (uint i = 0; i < m_size; ++i) {
-            auto rev = internal::fft::reverse_bit_order(i, log2i(m_size));
-            if (rev > i) {
+        if constexpr (sorted) {
+            for (uint i = 0; i < m_sort.size(); i += 2) {
                 using std::swap;
-                swap(get_vector(dest, i), get_vector(dest, rev));
+                swap(get_vector(dest, m_sort[i]), get_vector(dest, m_sort[i + 1]));
             }
         }
     };
 
-    static auto test(const auto& dest) {
-        return internal::vector_traits<std::remove_cvref_t<decltype(dest)>>::pack_size;
+private:
+    template<std::size_t PDest, std::size_t PSrc, typename... Optional>
+    inline void long_btfly8(std::array<T*, 8> dest, std::size_t size, Optional... optional) {
+        using src_type       = std::array<const T*, 8>;
+        using tw_type        = std::array<std::complex<T>, 7>;
+        constexpr bool Src   = internal::has_type<src_type, Optional...>;
+        constexpr bool Tw    = internal::has_type<tw_type, Optional...>;
+        constexpr bool Scale = internal::has_type<T, Optional...>;
+
+        const auto& source = [](auto... optional) {
+            if constexpr (Src) {
+                return std::get<src_type&>(std::tie(optional...));
+            } else {
+                return [] {};
+            }
+        }(optional...);
+
+        auto tw = [](auto... optional) {
+            if constexpr (Tw) {
+                auto& tw = std::get<tw_type&>(std::tie(optional...));
+                return std::array<avx::cx_reg<T>, 7>{
+                    avx::broadcast(tw[0]),
+                    avx::broadcast(tw[1]),
+                    avx::broadcast(tw[2]),
+                    avx::broadcast(tw[3]),
+                    avx::broadcast(tw[4]),
+                    avx::broadcast(tw[5]),
+                    avx::broadcast(tw[6]),
+                };
+            } else {
+                return [] {};
+            }
+        }(optional...);
+
+        auto scaling = [](auto... optional) {
+            if constexpr (Scale) {
+                auto scale = std::get<T>(std::tie(optional...));
+                return avx::broadcast(scale);
+            } else {
+                return [] {};
+            }
+        }(optional...);
+
+        for (uint i = 0; i < size; i += avx::reg<T>::size) {
+            std::array<T*, 8> dst{
+                avx::ra_addr<PDest>(dest[0], i),
+                avx::ra_addr<PDest>(dest[1], i),
+                avx::ra_addr<PDest>(dest[2], i),
+                avx::ra_addr<PDest>(dest[3], i),
+                avx::ra_addr<PDest>(dest[4], i),
+                avx::ra_addr<PDest>(dest[5], i),
+                avx::ra_addr<PDest>(dest[6], i),
+                avx::ra_addr<PDest>(dest[7], i),
+            };
+            auto src = [](auto source, auto i) {
+                if constexpr (Src) {
+                    return std::array<const T*, 8>{
+                        avx::ra_addr<PSrc>(source[0], i),
+                        avx::ra_addr<PSrc>(source[1], i),
+                        avx::ra_addr<PSrc>(source[2], i),
+                        avx::ra_addr<PSrc>(source[3], i),
+                        avx::ra_addr<PSrc>(source[4], i),
+                        avx::ra_addr<PSrc>(source[5], i),
+                        avx::ra_addr<PSrc>(source[6], i),
+                        avx::ra_addr<PSrc>(source[7], i),
+                    };
+                } else {
+                    return [] {};
+                }
+            }(source, i);
+
+            internal::fft::node4<T, PDest, PSrc, false, false>(dst, src, tw, scaling);
+        }
     }
 
-private:
     template<std::size_t PDest, std::size_t PSrc, typename... Optional>
     inline void long_btfly4(std::array<T*, 4> dest, std::size_t size, Optional... optional) {
         using src_type       = std::array<const T*, 4>;
@@ -2925,7 +2998,44 @@ private:
     [[no_unique_address]] const sort_t m_sort;
     const twiddle_t                    m_twiddles;
 
+    auto get_twiddles(size_type size, allocator_type allocator) -> twiddle_t {
+        auto twiddles = twiddle_t(static_cast<tw_allocator_type>(allocator));
+        //twiddles.reserve(?);
+        uint l_size = 1;
 
+        using namespace internal::fft;
+        for (; l_size < m_size / 2; l_size *= 4) {
+            const auto grp_size = std::max(m_size / l_size / 4, 0UL);
+            for (uint idx = 1; idx < l_size; ++idx) {
+                twiddles.push_back(wnk<T>(l_size * 2, reverse_bit_order(idx, log2i(l_size))));
+                twiddles.push_back(wnk<T>(l_size * 4, reverse_bit_order(idx * 2, log2i(l_size * 2))));
+                twiddles.push_back(wnk<T>(l_size * 4, reverse_bit_order(idx * 2 + 1, log2i(l_size * 2))));
+            }
+        }
+        if (l_size == m_size / 2) {
+            for (uint idx = 1; idx < l_size; ++idx) {
+                twiddles.push_back(wnk<T>(l_size * 2, reverse_bit_order(idx, log2i(l_size))));
+            }
+        }
+        return twiddles;
+    };
+
+    static auto get_sort(size_type size, allocator_type allocator) -> sort_t {
+        if constexpr (!sorted) {
+            return {};
+        } else {
+            auto sort = sort_t(static_cast<sort_allocator_type>(allocator));
+            //sort.reserve(?);
+            for (uint i = 0; i < size; ++i) {
+                auto rev = internal::fft::reverse_bit_order(i, log2i(size));
+                if (rev > i) {
+                    sort.push_back(i);
+                    sort.push_back(rev);
+                }
+            }
+            return sort;
+        }
+    };
     static constexpr auto log2i(std::size_t num) -> std::size_t {
         std::size_t order = 0;
         while ((num >>= 1U) != 0) {
