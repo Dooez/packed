@@ -340,7 +340,7 @@ public:
     }
 
     template<std::size_t OPackSize>
-    explicit vector(const vector<real_type, OPackSize, allocator_type >& other)
+    explicit vector(const vector<real_type, OPackSize, allocator_type>& other)
     : m_allocator(alloc_traits::select_on_container_copy_construction(other.m_allocator))
     , m_size(other.m_size) {
         if (m_size == 0) {
@@ -738,6 +738,9 @@ public:
             return Size;
         }
     };
+    [[nodiscard]] bool aligned() const {
+        return m_begin.aligned();
+    }
     [[nodiscard]] constexpr bool empty() const {
         return size() == 0;
     }

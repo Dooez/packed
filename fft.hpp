@@ -62,8 +62,22 @@ struct vector_traits<pcx::vector<T_, PackSize_, Alloc_>> {
     }
 };
 
-    template<typename T_,bool Const_, std::size_t Size_, std::size_t PackSize_>
-    struct vector_traits<pcx::subrange<T_, Const_, Size_, PackSize_>>{};
+template<typename T_, bool Const_, std::size_t Size_, std::size_t PackSize_>
+struct vector_traits<pcx::subrange<T_, Const_, Size_, PackSize_>> {
+    using real_type                        = T_;
+    static constexpr std::size_t pack_size = PackSize_;
+
+    static auto data(pcx::subrange<T_, false, Size_, PackSize_> subrange) {
+        if (!subrange.aligned()) {
+            throw(std::invalid_argument(std::string("subrange is not aligned. pcx::subrange must be aligned to be accessed as a vector")));
+        }
+        return &(*subrange.begin());
+    }
+    static auto size(pcx::subrange<T_, Const_, Size_, PackSize_> subrange) {
+        return subrange.size();
+    }
+
+};
 
 namespace fft {
 
@@ -651,7 +665,7 @@ public:
                                             .append(")")));
         }
         constexpr auto PDest = dst_traits::pack_size;
-        constexpr auto PSrc = src_traits::pack_size;
+        constexpr auto PSrc  = src_traits::pack_size;
 
         auto dst_ptr = dst_traits::data(dest);
         auto src_ptr = src_traits::data(source);
@@ -669,27 +683,6 @@ public:
             }
         }
     }
-
-    template<typename Alloc_, std::size_t PDest_, bool Const_, std::size_t Size_, std::size_t PSrc_>
-    void operator()(pcx::vector<T, PDest_, Alloc_>& dest, pcx::subrange<T, Const_, Size_, PSrc_> source) {
-        assert(size() == dest.size());
-        assert(source.begin().aligned());
-        assert(source.size() <= size());
-        const auto* src = &(*source.begin());
-        if constexpr (!sorted) {
-            if (source.size() < size()) {
-                fftu_internal<PDest_, PSrc_>(dest.data(), src, source.size());
-            } else {
-                fftu_internal<PDest_, PSrc_>(dest.data(), src);
-            }
-        } else {
-            if (dest.data() == src) {
-                fft_internal<PDest_, PSrc_>(dest.data());
-            } else {
-                fft_internal<PDest_, PSrc_>(dest.data(), src);
-            }
-        }
-    };
 
     template<bool Normalized    = true,
              typename Alloc_    = allocator_type,
@@ -2493,7 +2486,7 @@ private:
             while (l_size < single_load_size / 2) {
                 std::size_t start = group_size * i_group;
                 for (uint i = 0; i < group_size; ++i) {
-                    auto tw0 = wnk(l_size,        //
+                    auto tw0 = wnk(l_size,    //
                                    reverse_bit_order((start + i), log2i(l_size / 2)));
                     auto tw1 = wnk(l_size * 2,    //
                                    reverse_bit_order((start + i) * 2, log2i(l_size)));
