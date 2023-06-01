@@ -684,27 +684,24 @@ public:
         }
     }
 
-    template<bool Normalized    = true,
-             typename Alloc_    = allocator_type,
-             std::size_t PData_ = pcx::default_pack_size<real_type>>
-    void ifft(pcx::vector<T, PData_, Alloc_>& vector) {
-        assert(size() == vector.size());
-        if constexpr (!sorted) {
-            ifftu_internal<PData_, Normalized>(vector.data());
-        } else {
-            ifft_internal<PData_, Normalized>(vector.data());
+     template<bool Normalized    = true, typename Vect_>
+        requires complex_vector_of<T, Vect_>
+    void ifft(Vect_& vector) {
+        using v_traits = internal::vector_traits<Vect_>;
+        if (v_traits::size(vector) != m_size) {
+            throw(std::invalid_argument(std::string("input size (which is ")
+                                            .append(std::to_string(v_traits::size(vector)))
+                                            .append(" is not equal to fft size (which is ")
+                                            .append(std::to_string(m_size))
+                                            .append(")")));
         }
-    };
-
-    template<typename Alloc_>
-    void ifft(std::vector<std::complex<T>, Alloc_>& vector) {
-        assert(size() == vector.size());
+        constexpr auto PData = v_traits::pack_size;
         if constexpr (!sorted) {
-            ifftu_internal<1>(reinterpret_cast<T*>(vector.data()));
+            ifftu_internal<PData>(v_traits::data(vector));
         } else {
-            ifft_internal<1>(reinterpret_cast<T*>(vector.data()));
+            ifft_internal<PData>(v_traits::data(vector));
         }
-    };
+    }
 
 private:
     const size_type                       m_size;
