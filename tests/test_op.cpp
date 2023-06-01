@@ -120,7 +120,7 @@ int test_bin_ops(std::size_t length) {
 
     auto check_subr = [&]<std::size_t N>(auto&& ops) {
         auto& op = std::get<N>(ops);
-        pcx::subrange<T, false, pcx::dynamic_size, PackSize>(pcx_res).assign(op(pcx_lhs, pcx_rhs));
+        pcx::subrange<T, false, PackSize>(pcx_res).assign(op(pcx_lhs, pcx_rhs));
         for (uint i = 0; i < length; ++i) {
             auto v   = pcx_res[i].value();
             auto res = op(std_lhs[i], std_rhs[i]);

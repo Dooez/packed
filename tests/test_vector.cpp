@@ -5,32 +5,24 @@
 #include <type_traits>
 
 inline std::size_t n_caught = 0;
-#define test_except(test, expression) \
-    {                                 \
-        if constexpr (noexcept(test)) \
-        {                             \
-            expression;               \
-        } else                        \
-        {                             \
-            try                       \
-            {                         \
-                expression;           \
-            } catch (...)             \
-            {                         \
-                ++n_caught;           \
-            }                         \
-        }                             \
+#define test_except(test, expression)   \
+    {                                   \
+        if constexpr (noexcept(test)) { \
+            expression;                 \
+        } else {                        \
+            try {                       \
+                expression;             \
+            } catch (...) {             \
+                ++n_caught;             \
+            }                           \
+        }                               \
     }
 
 template<typename Vec>
-bool check_val(const Vec& vector, std::complex<typename Vec::real_type> value)
-{
+bool check_val(const Vec& vector, std::complex<typename Vec::real_type> value) {
     auto i = 0;
-    for (auto val : vector)
-    {
-        if (abs(val.value() - value) >
-            10 * std::numeric_limits<typename Vec::real_type>::epsilon())
-        {
+    for (auto val: vector) {
+        if (abs(val.value() - value) > 10 * std::numeric_limits<typename Vec::real_type>::epsilon()) {
             std::cout << i << ": " << value << "\n";
             return false;
         }
@@ -40,8 +32,7 @@ bool check_val(const Vec& vector, std::complex<typename Vec::real_type> value)
 }
 
 template<typename Vec>
-int test_vector(const Vec& vector)
-{
+int test_vector(const Vec& vector) {
     auto size = vector.size();
 
     using real_type = typename Vec::real_type;
@@ -53,36 +44,30 @@ int test_vector(const Vec& vector)
     auto vec_def   = Vec();
     auto vec_size  = Vec(size);
     auto vec_val   = Vec(size, std::get<0>(vals));
-    if (!check_val(vec_val, std::get<0>(vals)))
-    {
+    if (!check_val(vec_val, std::get<0>(vals))) {
         return 1;
     }
     auto vec_val_u = Vec(size, std::get<1>(vals));
-    if (!check_val(vec_val_u, std::get<1>(vals)))
-    {
+    if (!check_val(vec_val_u, std::get<1>(vals))) {
         return 1;
     }
     auto vec_val_f = Vec(size, std::get<2>(vals));
-    if (!check_val(vec_val_f, std::get<2>(vals)))
-    {
+    if (!check_val(vec_val_f, std::get<2>(vals))) {
         return 1;
     }
     auto vec_val_d = Vec(size, std::get<3>(vals));
-    if (!check_val(vec_val_d, std::get<3>(vals)))
-    {
+    if (!check_val(vec_val_d, std::get<3>(vals))) {
         return 1;
     }
     auto cx_val       = std::complex<real_type>(std::get<3>(vals), std::get<4>(vals));
     auto vec_val_f_cx = Vec(size, cx_val);
-    if (!check_val(vec_val_f_cx, cx_val))
-    {
+    if (!check_val(vec_val_f_cx, cx_val)) {
         return 1;
     }
 
     auto vec_cpy = Vec(vector);
     test_except(Vec(allocator), auto vec_alloc = Vec(allocator));
-    test_except(Vec(std::move(vector)), auto vec_tmp = vector;
-                auto vec_mov = Vec(std::move(vec_tmp)));
+    test_except(Vec(std::move(vector)), auto vec_tmp = vector; auto vec_mov = Vec(std::move(vec_tmp)));
     test_except(Vec(std::move(vector), allocator), auto vec_tmp = vector;
                 auto vec_mov = Vec(std::move(vec_tmp), allocator));
 
@@ -91,8 +76,7 @@ int test_vector(const Vec& vector)
 }
 
 template<typename Vec>
-int test_subvector(const Vec& vector)
-{
+int test_subvector(const Vec& vector) {
     auto size       = vector.size();
     using real_type = typename Vec::real_type;
 
@@ -105,15 +89,13 @@ int test_subvector(const Vec& vector)
     auto vec_2     = Vec(size, vals[1]);
     auto sub       = pcx::subrange(vec_size.begin(), size);
     sub.fill(vals[0]);
-    if (!check_val(vec_size, vals[0]))
-    {
+    if (!check_val(vec_size, vals[0])) {
         return 1;
     }
     auto sub2 = pcx::subrange(vec_2.begin(), size);
 
     sub.assign(sub2);
-    if (!check_val(vec_size, vals[1]))
-    {
+    if (!check_val(vec_size, vals[1])) {
         return 1;
     }
 
@@ -121,8 +103,7 @@ int test_subvector(const Vec& vector)
 }
 
 template<typename T>
-constexpr void concept_test()
-{
+constexpr void concept_test() {
     // NOLINTNEXTLINE(*using*)
     using namespace std::ranges;
     using namespace pcx;
@@ -131,8 +112,8 @@ constexpr void concept_test()
     using vector_t         = vector<T>;
     using iterator_t       = iterator<T, false, pack_size>;
     using cont_iterator_t  = iterator<T, true, pack_size>;
-    using subrange_t       = pcx::subrange<T, false, pcx::dynamic_size, pack_size>;
-    using const_subrange_t = pcx::subrange<T, true, pcx::dynamic_size, pack_size>;
+    using subrange_t       = pcx::subrange<T, false, pack_size>;
+    using const_subrange_t = pcx::subrange<T, true, pack_size>;
 
     static_assert(!view<vector_t>);
     static_assert(range<vector_t>);
@@ -164,14 +145,12 @@ constexpr void concept_test()
     // static_assert(constant_range<const_subrange_t>); c++23
 };
 
-int main()
-{
+int main() {
     concept_test<float>();
     concept_test<double>();
 
     int res = 0;
-    for (uint i = 0; i < 128; ++i)
-    {
+    for (uint i = 0; i < 128; ++i) {
         auto v_def = pcx::vector<float>(127);
 
         res += test_vector(v_def);

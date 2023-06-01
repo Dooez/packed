@@ -1937,59 +1937,59 @@ auto conj(const E& vector) {
 
 template<typename E, typename T, std::size_t PackSize, typename Allocator>
     requires packed_floating_point<T, PackSize> && (!std::same_as<E, vector<T, PackSize, Allocator>>) &&
-             requires(subrange<T, false, pcx::dynamic_size, PackSize> subrange, E e) { e + subrange; }
+             requires(subrange<T, false, PackSize> subrange, E e) { e + subrange; }
 inline auto operator+(const E& expression, const vector<T, PackSize, Allocator>& vector) {
     return expression + subrange(vector.begin(), vector.size());
 };
 template<typename T, std::size_t PackSize, typename Allocator, typename E>
     requires packed_floating_point<T, PackSize> &&
-             requires(subrange<T, false, pcx::dynamic_size, PackSize> subrange, E e) { subrange + e; }
+             requires(subrange<T, false, PackSize> subrange, E e) { subrange + e; }
 inline auto operator+(const vector<T, PackSize, Allocator>& vector, const E& expression) {
     return subrange(vector.begin(), vector.size()) + expression;
 };
 
 template<typename E, typename T, std::size_t PackSize, typename Allocator>
     requires packed_floating_point<T, PackSize> && (!std::same_as<E, vector<T, PackSize, Allocator>>) &&
-             requires(subrange<T, false, pcx::dynamic_size, PackSize> subrange, E e) { e - subrange; }
+             requires(subrange<T, false, PackSize> subrange, E e) { e - subrange; }
 inline auto operator-(const E& expression, const vector<T, PackSize, Allocator>& vector) {
     return expression - subrange(vector.begin(), vector.size());
 };
 template<typename T, std::size_t PackSize, typename Allocator, typename E>
     requires packed_floating_point<T, PackSize> &&
-             requires(subrange<T, false, pcx::dynamic_size, PackSize> subrange, E e) { subrange - e; }
+             requires(subrange<T, false, PackSize> subrange, E e) { subrange - e; }
 inline auto operator-(const vector<T, PackSize, Allocator>& vector, const E& expression) {
     return subrange(vector.begin(), vector.size()) - expression;
 };
 
 template<typename E, typename T, std::size_t PackSize, typename Allocator>
     requires packed_floating_point<T, PackSize> && (!std::same_as<E, vector<T, PackSize, Allocator>>) &&
-             requires(subrange<T, false, pcx::dynamic_size, PackSize> subrange, E e) { e* subrange; }
+             requires(subrange<T, false, PackSize> subrange, E e) { e* subrange; }
 inline auto operator*(const E& expression, const vector<T, PackSize, Allocator>& vector) {
     return expression * subrange(vector.begin(), vector.size());
 };
 template<typename T, std::size_t PackSize, typename Allocator, typename E>
     requires packed_floating_point<T, PackSize> &&
-             requires(subrange<T, false, pcx::dynamic_size, PackSize> subrange, E e) { subrange* e; }
+             requires(subrange<T, false, PackSize> subrange, E e) { subrange* e; }
 inline auto operator*(const vector<T, PackSize, Allocator>& vector, const E& expression) {
     return subrange(vector.begin(), vector.size()) * expression;
 };
 
 template<typename E, typename T, std::size_t PackSize, typename Allocator>
     requires packed_floating_point<T, PackSize> && (!std::same_as<E, vector<T, PackSize, Allocator>>) &&
-             requires(subrange<T, false, pcx::dynamic_size, PackSize> subrange, E e) { e / subrange; }
+             requires(subrange<T, false, PackSize> subrange, E e) { e / subrange; }
 inline auto operator/(const E& expression, const vector<T, PackSize, Allocator>& vector) {
     return expression / subrange(vector.begin(), vector.size());
 };
 template<typename T, std::size_t PackSize, typename Allocator, typename E>
     requires packed_floating_point<T, PackSize> &&
-             requires(subrange<T, false, pcx::dynamic_size, PackSize> subrange, E e) { subrange / e; }
+             requires(subrange<T, false, PackSize> subrange, E e) { subrange / e; }
 inline auto operator/(const vector<T, PackSize, Allocator>& vector, const E& expression) {
     return subrange(vector.begin(), vector.size()) / expression;
 };
 
 template<typename T, std::size_t PackSize, typename Allocator>
     requires packed_floating_point<T, PackSize> &&
-             requires(subrange<T, false, pcx::dynamic_size, PackSize> subrange) { conj(subrange); }
+             requires(subrange<T, false, PackSize> subrange) { conj(subrange); }
 inline auto conj(const vector<T, PackSize, Allocator>& vector) {
     return conj(subrange(vector.begin(), vector.size()));
 };

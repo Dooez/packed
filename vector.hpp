@@ -641,10 +641,7 @@ private:
     real_pointer m_ptr{};
 };
 
-template<typename T,
-         bool        Const    = false,
-         std::size_t Size     = pcx::dynamic_size,
-         std::size_t PackSize = pcx::default_pack_size<T>>
+template<typename T, bool Const = false, std::size_t PackSize = pcx::default_pack_size<T>>
 class subrange : public std::ranges::view_base {
     template<typename VT, std::size_t VPackSize, typename>
         requires packed_floating_point<VT, VPackSize>
@@ -665,37 +662,29 @@ public:
     static constexpr size_type pack_size = PackSize;
 
 private:
-    using size_t = std::conditional_t<Size == pcx::dynamic_size, size_type, decltype([]() {})>;
+    // using size_t =  std::conditional_t<Size == pcx::dynamic_size, size_type, decltype([]() {})>;
 
 public:
     subrange() noexcept = default;
 
     subrange(const iterator& begin, size_type size) noexcept
-        requires(Size == pcx::dynamic_size)
     : m_begin(begin)
     , m_size(size){};
 
     subrange(const iterator& begin, const iterator& end) noexcept
-        requires(Size == pcx::dynamic_size)
     : m_begin(begin)
     , m_size(end - begin){};
 
     template<typename VAllocator>
     explicit subrange(vector<real_type, pack_size, VAllocator>& vector) noexcept
-        requires(Size == pcx::dynamic_size)
     : m_begin(vector.begin())
     , m_size(vector.size()){};
 
     template<typename VAllocator>
     explicit subrange(const vector<real_type, pack_size, VAllocator>& vector) noexcept
-        requires(Size == pcx::dynamic_size) && Const
+        requires Const
     : m_begin(vector.begin())
     , m_size(vector.size()){};
-
-
-    explicit subrange(const iterator& begin) noexcept
-        requires(Size != pcx::dynamic_size)
-    : m_begin(begin){};
 
     subrange(const subrange&) noexcept = default;
     subrange(subrange&&) noexcept      = default;
@@ -732,11 +721,7 @@ public:
     }
 
     [[nodiscard]] constexpr auto size() const -> size_type {
-        if constexpr (Size == pcx::dynamic_size) {
-            return m_size;
-        } else {
-            return Size;
-        }
+        return m_size;
     };
     [[nodiscard]] bool aligned() const {
         return m_begin.aligned();
@@ -800,8 +785,8 @@ public:
     };
 
 private:
-    [[no_unique_address]] size_t m_size{};
-    iterator                     m_begin{};
+    size_type m_size{};
+    iterator  m_begin{};
 };
 
 template<typename T, bool Const = false, std::size_t PackSize = pcx::default_pack_size<T>>
@@ -813,7 +798,7 @@ class cx_ref {
     friend class iterator<T, Const, PackSize>;
     friend class iterator<T, false, PackSize>;
 
-    template<typename ST, bool SConst, std::size_t Size, std::size_t SPackSize>
+    template<typename ST, bool SConst, std::size_t SPackSize>
     friend class subrange;
 
     friend class cx_ref<T, true, PackSize>;

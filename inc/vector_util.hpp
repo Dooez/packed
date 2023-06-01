@@ -31,13 +31,14 @@ template<typename T,std::size_t PackSize, typename Allocator>
 class vector;
 
 template<typename T, bool Const, std::size_t PackSize>
-class cx_ref;
-
-template<typename T, bool Const, std::size_t PackSize>
 class iterator;
 
-template<typename T, bool Const, std::size_t Size, std::size_t PackSize>
+template<typename T, bool Const, std::size_t PackSize>
 class subrange;
+
+template<typename T, bool Const, std::size_t PackSize>
+class cx_ref;
+
 
 template<std::size_t PackSize>
 constexpr auto pidx(std::size_t idx) -> std::size_t {

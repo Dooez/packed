@@ -62,18 +62,18 @@ struct vector_traits<pcx::vector<T_, PackSize_, Alloc_>> {
     }
 };
 
-template<typename T_, bool Const_, std::size_t Size_, std::size_t PackSize_>
-struct vector_traits<pcx::subrange<T_, Const_, Size_, PackSize_>> {
+template<typename T_, bool Const_, std::size_t PackSize_>
+struct vector_traits<pcx::subrange<T_, Const_, PackSize_>> {
     using real_type                        = T_;
     static constexpr std::size_t pack_size = PackSize_;
 
-    static auto data(pcx::subrange<T_, false, Size_, PackSize_> subrange) {
+    static auto data(pcx::subrange<T_, false, PackSize_> subrange) {
         if (!subrange.aligned()) {
             throw(std::invalid_argument(std::string("subrange is not aligned. pcx::subrange must be aligned to be accessed as a vector")));
         }
         return &(*subrange.begin());
     }
-    static auto size(pcx::subrange<T_, Const_, Size_, PackSize_> subrange) {
+    static auto size(pcx::subrange<T_, Const_, PackSize_> subrange) {
         return subrange.size();
     }
 
