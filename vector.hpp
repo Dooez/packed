@@ -716,13 +716,13 @@ public:
         return *(m_begin + idx);
     }
 
-    [[nodiscard]] constexpr auto size() const -> size_type {
+    [[nodiscard]] auto size() const -> size_type {
         return m_size;
     };
     [[nodiscard]] bool aligned() const {
         return m_begin.aligned();
     }
-    [[nodiscard]] constexpr bool empty() const {
+    [[nodiscard]] bool empty() const {
         return size() == 0;
     }
     // NOLINTNEXTLINE (*explicit*)
@@ -740,12 +740,26 @@ public:
         requires(!Const) && (!internal::vector_expression<R>) && std::ranges::input_range<R> &&
                 std::indirectly_copyable<std::ranges::iterator_t<R>, iterator>
     void assign(const R& range) {
+        if (range.size() != size()){
+            throw(std::invalid_argument(std::string("source size (which is ")
+                                            .append(std::to_string(range.size()))
+                                            .append(" is not equal to subrange size (which is ")
+                                            .append(std::to_string(size()))
+                                            .append(")")));
+        }
         std::ranges::copy(range, begin());
     };
 
     template<typename E>
         requires(!Const) && internal::vector_expression<E>
     void assign(const E& expression) {
+        if (expression.size() != size()){
+            throw(std::invalid_argument(std::string("source size (which is ")
+                                            .append(std::to_string(expression.size()))
+                                            .append(" is not equal to subrange size (which is ")
+                                            .append(std::to_string(size()))
+                                            .append(")")));
+        }
         assert(size() == expression.size());
 
         auto it_this       = begin();
