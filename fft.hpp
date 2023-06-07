@@ -120,7 +120,8 @@ struct order {
         } else {
             return std::array<std::size_t, sizeof...(N)>{N...};
         }
-    }(std::make_index_sequence<Size - 1>{});
+    }
+    (std::make_index_sequence<Size - 1>{});
 };
 
 template<typename T,
@@ -1481,7 +1482,6 @@ public:
                 scaling = avx::broadcast(static_cast<float>(1 / static_cast<double>(max_size)));
             }
 
-
             std::array<avx::cx_reg<T>, 7> tw{
                 avx::cxload<avx::reg<T>::size>(twiddle_ptr),
                 avx::cxload<avx::reg<T>::size>(twiddle_ptr + avx::reg<T>::size * 2),
@@ -2676,6 +2676,7 @@ private:
 
 template<typename T,
          fft_ordering Ordering = fft_ordering::normal,
+         bool         Big_g    = false,
          typename Allocator    = pcx::aligned_allocator<T, std::align_val_t(64)>>
     requires(std::same_as<T, float> || std::same_as<T, double>)
 class fft_unit_par {
@@ -2739,6 +2740,26 @@ public:
         auto data_size = get_vector(dest, 0).size();
 
         uint l_size = 1;
+        if constexpr (Big_g) {
+            if (log2i(m_size) % 2 != 0) {
+                const auto grp_size = m_size / l_size / 4;
+                for (uint grp = 0; grp < grp_size; ++grp) {
+                    std::array<T*, 4> dst{
+                        get_vector(dest, grp).data(),
+                        get_vector(dest, grp + grp_size * 1).data(),
+                        get_vector(dest, grp + grp_size * 2).data(),
+                        get_vector(dest, grp + grp_size * 3).data(),
+                        get_vector(dest, grp + grp_size * 4).data(),
+                        get_vector(dest, grp + grp_size * 5).data(),
+                        get_vector(dest, grp + grp_size * 6).data(),
+                        get_vector(dest, grp + grp_size * 7).data(),
+                    };
+                    long_btfly8<PDest, PSrc>(dst, data_size);
+                }
+                l_size *= 8;
+            }
+        }
+
         for (; l_size < m_size / 2; l_size *= 4) {
             const auto grp_size = std::max(m_size / l_size / 4, 0UL);
             for (uint grp = 0; grp < grp_size; ++grp) {
@@ -2756,13 +2777,6 @@ public:
                     *(tw_it++),
                     *(tw_it++),
                 };
-                // using namespace internal::fft;
-                // std::array<std::complex<T>, 3> tw = {
-                //     wnk<T>(l_size * 2, reverse_bit_order(idx, log2i(l_size))),
-                //     wnk<T>(l_size * 4, reverse_bit_order(idx * 2, log2i(l_size * 2))),
-                //     wnk<T>(l_size * 4, reverse_bit_order(idx * 2 + 1, log2i(l_size * 2))),
-                // };
-
                 for (uint grp = 0; grp < grp_size; ++grp) {
                     std::array<T*, 4> dst{
                         get_vector(dest, grp + idx * grp_size * 4).data(),
@@ -2775,7 +2789,7 @@ public:
             }
         }
         if (l_size == m_size / 2) {
-            const auto grp_size = m_size / l_size / 2;
+            const auto grp_size = 1;
             for (uint grp = 0; grp < grp_size; ++grp) {
                 std::array<T*, 2> dst{
                     get_vector(dest, grp).data(),
@@ -2785,9 +2799,6 @@ public:
             }
             for (uint idx = 1; idx < l_size; ++idx) {
                 auto tw = *(tw_it++);
-
-                using namespace internal::fft;
-                // auto tw = wnk<T>(l_size * 2, reverse_bit_order(idx, log2i(l_size)));
                 for (uint grp = 0; grp < grp_size; ++grp) {
                     std::array<T*, 2> dst{
                         get_vector(dest, grp + idx * grp_size * 2).data(),
@@ -3007,6 +3018,11 @@ private:
         uint l_size = 1;
 
         using namespace internal::fft;
+        if constexpr (Big_g) {
+            if (log2i(size) % 2 != 0) {
+                l_size *= 8;
+            }
+        }
         for (; l_size < m_size / 2; l_size *= 4) {
             const auto grp_size = std::max(m_size / l_size / 4, 0UL);
             for (uint idx = 1; idx < l_size; ++idx) {
