@@ -206,7 +206,7 @@ int test_fft_float(std::size_t size) {
 
     auto ff = fft(vec);
 
-    for (std::size_t sub_size = size; sub_size <= size * 2; sub_size *= 2) {
+    for (std::size_t sub_size = 64; sub_size <= size * 4; sub_size *= 2) {
         auto unit = pcx::fft_unit<float, pcx::fft_ordering::normal>(size, sub_size);
 
         vec_out = vec;

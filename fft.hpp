@@ -2365,11 +2365,14 @@ private:
         std::size_t n_groups = 1;
 
         std::size_t sub_size_ = std::min(fft_size, sub_size);
+        if (log2i(fft_size / sub_size_) % 2 != 0) {
+            sub_size_ /= 2;
+        }
         // if (fft_size > sub_size_ ) {
         //     sub_size_ = sub_size_ / 2;
         // }
 
-        if (log2i(sub_size_ / (avx::reg<T>::size * 2)) % 2 == 0) {
+        if (log2i(fft_size / (avx::reg<T>::size * 2)) % 2 == 0) {
             for (uint k = 0; k < avx::reg<T>::size; ++k) {
                 *(tw_it++) = wnk(l_size, k);
             }
