@@ -120,8 +120,7 @@ struct order {
         } else {
             return std::array<std::size_t, sizeof...(N)>{N...};
         }
-    }
-    (std::make_index_sequence<Size - 1>{});
+    }(std::make_index_sequence<Size - 1>{});
 };
 
 template<typename T,
@@ -568,16 +567,24 @@ template<typename T, typename R>
 concept range_complex_vector_of = std::ranges::random_access_range<R> &&    //
                                   complex_vector_of<T, std::remove_pointer_t<std::ranges::range_value_t<R>>>;
 
-enum class fft_ordering {
+/**
+ * @brief Controls how fft output and ifft input is ordered;
+ * This may have an impact on performance of fft/ifft;
+ * 
+ * normal:          default, elements are in ascending frequency order, starting from zero 
+ * bit_reversed:    element indexes are in a bit-reversed order
+ * unordered:       
+ */
+enum class fft_order {
     normal,
     bit_reversed,
     unordered
 };
 
 template<typename T,
-         fft_ordering Ordering = fft_ordering::normal,
-         typename Allocator    = std::allocator<T>,
-         std::size_t SubSize   = pcx::dynamic_size>
+         fft_order Order     = fft_order::normal,
+         typename Allocator  = std::allocator<T>,
+         std::size_t SubSize = pcx::dynamic_size>
     requires(std::same_as<T, float> || std::same_as<T, double>) &&
             (pcx::power_of_two<SubSize> && SubSize >= pcx::default_pack_size<T> ||
              (SubSize == pcx::dynamic_size))
@@ -591,7 +598,7 @@ private:
     using subsize_t = std::conditional_t<SubSize == pcx::dynamic_size, std::size_t, decltype([]() {})>;
     using sort_allocator_type =
         typename std::allocator_traits<allocator_type>::template rebind_alloc<std::size_t>;
-    static constexpr bool sorted = Ordering == fft_ordering::normal;
+    static constexpr bool sorted = Order == fft_order::normal;
 
     using sort_t    = std::conditional_t<sorted,    //
                                       std::vector<std::size_t, sort_allocator_type>,
@@ -1726,7 +1733,7 @@ public:
             auto [e2, e3] = avx::btfly(shd2, shd3tw);
 
             reg_t she0, she1, she2, she3;
-            if constexpr (Ordering == fft_ordering::bit_reversed) {
+            if constexpr (Order == fft_order::bit_reversed) {
                 if constexpr (PDest < 4) {
                     std::tie(she0, she1) = avx::unpack_ps(e0, e1);
                     std::tie(she2, she3) = avx::unpack_ps(e2, e3);
@@ -1810,12 +1817,12 @@ public:
             auto she3 = avx::cxload<PTform>(ptr3);
 
             reg_t e0, e1, e2, e3;
-            if constexpr (Ordering == fft_ordering::bit_reversed) {
+            if constexpr (Order == fft_order::bit_reversed) {
                 std::tie(she0, she1, she2, she3) =
                     avx::convert<float>::repack<PSrc, PTform>(she0, she1, she2, she3);
             }
             std::tie(she0, she1, she2, she3) = avx::convert<float>::inverse<true>(she0, she1, she2, she3);
-            if constexpr (Ordering == fft_ordering::bit_reversed) {
+            if constexpr (Order == fft_order::bit_reversed) {
                 std::tie(e0, e1) = avx::unpack_128(she0, she1);
                 std::tie(e2, e3) = avx::unpack_128(she2, she3);
             } else {
@@ -1826,7 +1833,7 @@ public:
             auto tw7 = avx::cxload<avx::reg<T>::size>(twiddle_ptr);
             auto tw8 = avx::cxload<avx::reg<T>::size>(twiddle_ptr + avx::reg<T>::size * 2);
 
-            if constexpr (Ordering == fft_ordering::bit_reversed) {
+            if constexpr (Order == fft_order::bit_reversed) {
                 std::tie(e0, e1) = avx::unpack_ps(e0, e1);
                 std::tie(e2, e3) = avx::unpack_ps(e2, e3);
                 std::tie(e0, e1) = avx::unpack_pd(e0, e1);
@@ -2675,9 +2682,9 @@ private:
 };
 
 template<typename T,
-         fft_ordering Ordering = fft_ordering::normal,
-         bool         Big_g    = false,
-         typename Allocator    = pcx::aligned_allocator<T, std::align_val_t(64)>>
+         fft_order Order    = fft_order::normal,
+         bool      Big_g    = false,
+         typename Allocator = pcx::aligned_allocator<T, std::align_val_t(64)>>
     requires(std::same_as<T, float> || std::same_as<T, double>)
 class fft_unit_par {
 public:
@@ -2690,7 +2697,7 @@ private:
         typename std::allocator_traits<allocator_type>::template rebind_alloc<std::size_t>;
     using tw_allocator_type =
         typename std::allocator_traits<allocator_type>::template rebind_alloc<std::complex<real_type>>;
-    static constexpr bool sorted = Ordering == fft_ordering::normal;
+    static constexpr bool sorted = Order == fft_order::normal;
 
     using sort_t    = std::conditional_t<sorted,    //
                                       std::vector<std::size_t, sort_allocator_type>,

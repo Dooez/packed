@@ -29,7 +29,7 @@ int main() {
     fill_bark(f, 35);
 
     using fft_t   = pcx::fft_unit<float,
-                                pcx::fft_ordering::unordered,
+                                pcx::fft_order::unordered,
                                 pcx::aligned_allocator<float>,
                                 2048>;
     auto fft_unit = std::make_shared<fft_t>(8192);

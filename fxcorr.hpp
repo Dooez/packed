@@ -43,7 +43,7 @@ private:
  */
 template<typename T,
          typename Allocator   = pcx::aligned_allocator<T>,
-         typename FFT_        = pcx::fft_unit<T, pcx::fft_ordering::unordered, Allocator>,
+         typename FFT_        = pcx::fft_unit<T, pcx::fft_order::unordered, Allocator>,
          typename TmpFactory_ = internal::pseudo_vector_factory<T, Allocator>>
     requires std::floating_point<T> && std::same_as<typename Allocator::value_type, T>
 class fxcorr_unit {

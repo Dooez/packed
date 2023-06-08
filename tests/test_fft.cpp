@@ -7,7 +7,7 @@
 
 // NOLINTBEGIN
 
-void test_que(pcx::fft_unit<float, pcx::fft_ordering::unordered>& unit,
+void test_que(pcx::fft_unit<float, pcx::fft_order::unordered>& unit,
               std::vector<std::complex<float>>&                   v1) {
     unit(v1);
 }
@@ -179,7 +179,7 @@ int test_fft_float(std::size_t size) {
     auto ff = fft(vec);
 
     for (std::size_t sub_size = 64; sub_size <= size * 4; sub_size *= 2) {
-        auto unit = pcx::fft_unit<float, pcx::fft_ordering::normal>(size, sub_size);
+        auto unit = pcx::fft_unit<float, pcx::fft_order::normal>(size, sub_size);
 
         vec_out = vec;
 
@@ -278,8 +278,8 @@ int test_fftu_float(std::size_t size) {
     for (std::size_t sub_size = 64; sub_size <= size; sub_size *= 2) {
         vec_out = vec;
 
-        auto unit   = pcx::fft_unit<float, pcx::fft_ordering::bit_reversed>(size, sub_size);
-        auto unit_u = pcx::fft_unit<float, pcx::fft_ordering::unordered>(size, sub_size);
+        auto unit   = pcx::fft_unit<float, pcx::fft_order::bit_reversed>(size, sub_size);
+        auto unit_u = pcx::fft_unit<float, pcx::fft_order::unordered>(size, sub_size);
 
         auto ffu   = fftu(vec);
         auto eps_u = 1U << (depth - 1);
@@ -370,7 +370,7 @@ int test_fftu_float_0(std::size_t size) {
     for (std::size_t sub_size = 64; sub_size <= size; sub_size *= 2) {
         vec_out = vec;
 
-        auto unit = pcx::fft_unit<float, pcx::fft_ordering::bit_reversed>(size, sub_size);
+        auto unit = pcx::fft_unit<float, pcx::fft_order::bit_reversed>(size, sub_size);
 
         auto ffu   = fftu(vec);
         auto eps_u = 1U << (depth - 1);
@@ -419,7 +419,7 @@ int test_par_fft_float(std::size_t size) {
     constexpr double dpi = 3.14159265358979323846;
 
 
-    auto test_1 = []<pcx::fft_ordering order>(std::size_t size) {
+    auto test_1 = []<pcx::fft_order order>(std::size_t size) {
         auto depth     = log2i(size);
         auto st_par    = std::vector<pcx::vector<float, PackSize>>(size);
         auto vec_check = pcx::vector<float, PackSize>(size);
@@ -454,8 +454,8 @@ int test_par_fft_float(std::size_t size) {
         return 0;
     };
 
-    return test_1.template operator()<pcx::fft_ordering::normal>(size) +
-           test_1.template operator()<pcx::fft_ordering::bit_reversed>(size);
+    return test_1.template operator()<pcx::fft_order::normal>(size) +
+           test_1.template operator()<pcx::fft_order::bit_reversed>(size);
 }
 
 constexpr float pi = 3.14159265358979323846;
