@@ -12,33 +12,6 @@ void test_que(pcx::fft_unit<float, pcx::fft_ordering::unordered>& unit,
     unit(v1);
 }
 
-// void test_que(pcx::fft_unit<float, 8192, 512>& unit, pcx::vector<float>& v1) {
-//     unit.subtransform<1, 8>(v1.data(), v1.size());
-// }
-
-// void test_que(pcx::fft_unit<float, 8192, 512>&       unit,
-//               float*                                 data,
-//               std::size_t                            l_size,
-//               std::size_t                            offset,
-//               std::array<pcx::avx::cx_reg<float>, 7> tw,
-//               pcx::avx::reg_t<float>                 scaling) {
-//     unit.node8_along<8, 8, false, true, false>(data, l_size, offset, tw, scaling);
-// }
-
-
-// void test_que(pcx::fft_unit<float, 8192, 512>& unit,
-//               float*                           data,
-//               std::size_t                      l_size,
-//               std::size_t                      offset,
-//               pcx::avx::cx_reg<float>          tw0,
-//               pcx::avx::cx_reg<float>          tw1,
-//               pcx::avx::cx_reg<float>          tw2,
-//               pcx::avx::cx_reg<float>          tw3,
-//               pcx::avx::cx_reg<float>          tw4,
-//               pcx::avx::cx_reg<float>          tw5,
-//               pcx::avx::cx_reg<float>          tw6) {
-//     unit.node8_dit<8,8,true>(data, l_size, offset, tw0, tw1, tw2, tw3, tw4, tw5, tw6);
-// }
 template<typename T>
 auto fmul(std::complex<T> lhs, std::complex<T> rhs) -> std::complex<T> {
     auto lhsv = pcx::avx::broadcast(lhs);
@@ -118,7 +91,6 @@ auto fft(const pcx::vector<T, PackSize, Allocator>& vector) {
 
     return res;
 }
-
 
 template<typename T, typename Allocator, std::size_t PackSize>
 auto fftu(const pcx::vector<T, PackSize, Allocator>& vector) {
@@ -380,6 +352,7 @@ int test_fftu_float(std::size_t size) {
     }
     return 0;
 }
+
 template<std::size_t PackSize = 8>
 int test_fftu_float_0(std::size_t size) {
     constexpr float pi = 3.14159265358979323846;
@@ -438,6 +411,53 @@ int test_fftu_float_0(std::size_t size) {
     }
     return 0;
 }
+
+
+template<std::size_t PackSize = 8>
+int test_par_fft_float(std::size_t size) {
+    constexpr float  pi  = 3.14159265358979323846;
+    constexpr double dpi = 3.14159265358979323846;
+
+
+    auto test_1 = []<pcx::fft_ordering order>(std::size_t size) {
+        auto depth     = log2i(size);
+        auto st_par    = std::vector<pcx::vector<float, PackSize>>(size);
+        auto vec_check = pcx::vector<float, PackSize>(size);
+        for (uint i = 0; auto& vec: st_par) {
+            vec.resize(128);
+            auto val = std::exp(std::complex(0.F, 2 * pi * i / size * 13.37F));
+            pcx::subrange(vec).fill(val);
+            vec_check[i] = val;
+            ++i;
+        }
+
+        pcx::fft_unit_par<float, order> par_unit(size);
+        pcx::fft_unit<float, order>     check_unit(size);
+
+
+        par_unit(st_par, st_par);
+        check_unit(vec_check);
+        uint q = 0;
+        for (uint i = 0; i < size; ++i) {
+            auto val       = (st_par[i])[0].value();
+            auto val_check = vec_check[i].value();
+
+            if (!equal_eps(val, val_check, size)) {
+                std::cout << "par_fft " << size << " #" << i << ": " << abs(val - val_check) << "  " << val
+                          << val_check << "\n";
+                ++q;
+                if (q > 32U) {
+                    return 1;
+                }
+            }
+        }
+        return 0;
+    };
+
+    return test_1.template operator()<pcx::fft_ordering::normal>(size) +
+           test_1.template operator()<pcx::fft_ordering::bit_reversed>(size);
+}
+
 constexpr float pi = 3.14159265358979323846;
 
 int main() {
@@ -445,66 +465,15 @@ int main() {
 
     for (uint i = 8; i < 16; ++i) {
         std::cout << (1U << i) << "\n";
-        // ret += test_ifftu_float(1U << i);
-        // ret += test_fft_float4(1U << i);
+
         // ret += test_fft_float<1024>(1U << i);
-        // ret += test_fft_float(1U << i);
-        // ret += test_fftu_float(1U << i);
-        // ret += test_fftu_float_0(1U << i);
-        // ret += test_fftu_float<1024>(1U << i);
+        ret += test_fft_float(1U << i);
+        ret += test_fftu_float(1U << i);
+        ret += test_fftu_float_0(1U << i);
+        ret += test_par_fft_float(1U << i);
+
         if (ret > 0) {
             return ret;
-        }
-    }
-
-    //     constexpr std::size_t size = 64;
-    //
-    //     auto vec  = pcx::vector<float>(size);
-    //     auto vec2 = pcx::vector<float>(size);
-    //
-    //     std::cout << pcx::fft_unit_par<float>::test(vec) << "\n";
-    //     std::cout << pcx::fft_unit_par<float>::test(std::vector<std::complex<float>>{}) << "\n";
-    //     std::cout << pcx::fft_unit_par<float>::test(std::vector<float>{}) << "\n";
-    //
-    //     static_assert(pcx::complex_vector_of<float, pcx::vector<float>>);
-    //     static_assert(pcx::complex_vector_of<float, std::vector<std::complex<float>>>);
-    //     // static_assert(pcx::complex_vector_of<float, std::vector<float>>);
-    //
-//
-    constexpr float pi       = 3.14159265358979323846;
-    std::size_t     par_size = 1024 * 4;
-    auto        st_par    = std::vector<pcx::vector<float>>(par_size);
-    auto vec_check = pcx::vector<float>(par_size);
-
-    for (uint i = 0; auto& vec: st_par) {
-        vec.resize(128);
-        auto val = std::exp(std::complex(0.F, 2 * pi * i / par_size * 13.37F));
-        pcx::subrange(vec).fill(val);
-        vec_check[i] = val;
-        ++i;
-    }
-
-    // pcx::fft_unit_par<float, pcx::fft_ordering::bit_reversed> par_unit(par_size);
-    pcx::fft_unit_par<float, pcx::fft_ordering::normal> par_unit(par_size);
-
-    // pcx::fft_unit<float, pcx::fft_ordering::bit_reversed> check_unit(par_size);
-    pcx::fft_unit<float, pcx::fft_ordering::normal> check_unit(par_size);
-
-
-    par_unit(st_par, st_par);
-    check_unit(vec_check);
-    uint q = 0;
-    for (uint i = 0; i < par_size; ++i) {
-        auto val       = (st_par[i])[0].value();
-        auto val_check = vec_check[i].value();
-
-        if (!equal_eps(val, val_check, par_size)) {
-            std::cout << "svec " << par_size << " #" << i << ": " << abs(val - val_check) << "  " << val
-                      << val_check << "\n";
-            ++q;
-            if (q > 32U) {
-                return 1;
-            }
         }
     }
     return 0;
