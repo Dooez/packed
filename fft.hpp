@@ -2749,9 +2749,9 @@ public:
         uint l_size = 1;
         if constexpr (Big_g) {
             if (log2i(m_size) % 2 != 0) {
-                const auto grp_size = m_size / l_size / 4;
+                const auto grp_size = m_size / l_size / 8;
                 for (uint grp = 0; grp < grp_size; ++grp) {
-                    std::array<T*, 4> dst{
+                    std::array<T*, 8> dst{
                         get_vector(dest, grp).data(),
                         get_vector(dest, grp + grp_size * 1).data(),
                         get_vector(dest, grp + grp_size * 2).data(),
@@ -2768,7 +2768,7 @@ public:
         }
 
         for (; l_size < m_size / 2; l_size *= 4) {
-            const auto grp_size = std::max(m_size / l_size / 4, 0UL);
+            const auto grp_size = m_size / l_size / 4;
             for (uint grp = 0; grp < grp_size; ++grp) {
                 std::array<T*, 4> dst{
                     get_vector(dest, grp).data(),
@@ -2796,23 +2796,20 @@ public:
             }
         }
         if (l_size == m_size / 2) {
-            const auto grp_size = 1;
-            for (uint grp = 0; grp < grp_size; ++grp) {
-                std::array<T*, 2> dst{
-                    get_vector(dest, grp).data(),
-                    get_vector(dest, grp + grp_size * 1).data(),
-                };
-                long_btfly2<PDest, PSrc>(dst, data_size);
-            }
+            std::array<T*, 2> dst{
+                get_vector(dest, 0).data(),
+                get_vector(dest, 1).data(),
+            };
+            long_btfly2<PDest, PSrc>(dst, data_size);
+
             for (uint idx = 1; idx < l_size; ++idx) {
                 auto tw = *(tw_it++);
-                for (uint grp = 0; grp < grp_size; ++grp) {
-                    std::array<T*, 2> dst{
-                        get_vector(dest, grp + idx * grp_size * 2).data(),
-                        get_vector(dest, grp + idx * grp_size * 2 + grp_size * 1).data(),
-                    };
-                    long_btfly2<PDest, PSrc>(dst, data_size, tw);
-                }
+
+                std::array<T*, 2> dst{
+                    get_vector(dest, idx * 2).data(),
+                    get_vector(dest, idx * 2 + 1).data(),
+                };
+                long_btfly2<PDest, PSrc>(dst, data_size, tw);
             }
         }
         if constexpr (sorted) {
@@ -2894,7 +2891,7 @@ private:
                 }
             }(source, i);
 
-            internal::fft::node4<T, PDest, PSrc, false, false>(dst, src, tw, scaling);
+            internal::fft::node8<T, PDest, PSrc, false, false>(dst, src, tw, scaling);
         }
     }
 

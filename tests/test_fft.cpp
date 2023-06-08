@@ -7,8 +7,7 @@
 
 // NOLINTBEGIN
 
-void test_que(pcx::fft_unit<float, pcx::fft_order::unordered>& unit,
-              std::vector<std::complex<float>>&                   v1) {
+void test_que(pcx::fft_unit<float, pcx::fft_order::unordered>& unit, std::vector<std::complex<float>>& v1) {
     unit(v1);
 }
 
@@ -419,7 +418,7 @@ int test_par_fft_float(std::size_t size) {
     constexpr double dpi = 3.14159265358979323846;
 
 
-    auto test_1 = []<pcx::fft_order order>(std::size_t size) {
+    auto test_1 = []<pcx::fft_order order, bool Big = false>(std::size_t size) {
         auto depth     = log2i(size);
         auto st_par    = std::vector<pcx::vector<float, PackSize>>(size);
         auto vec_check = pcx::vector<float, PackSize>(size);
@@ -431,8 +430,8 @@ int test_par_fft_float(std::size_t size) {
             ++i;
         }
 
-        pcx::fft_unit_par<float, order> par_unit(size);
-        pcx::fft_unit<float, order>     check_unit(size);
+        pcx::fft_unit_par<float, order, Big> par_unit(size);
+        pcx::fft_unit<float, order>          check_unit(size);
 
 
         par_unit(st_par, st_par);
@@ -455,7 +454,9 @@ int test_par_fft_float(std::size_t size) {
     };
 
     return test_1.template operator()<pcx::fft_order::normal>(size) +
-           test_1.template operator()<pcx::fft_order::bit_reversed>(size);
+           test_1.template operator()<pcx::fft_order::bit_reversed>(size) +
+           test_1.template operator()<pcx::fft_order::normal, true>(size) +
+           test_1.template operator()<pcx::fft_order::bit_reversed, true>(size);
 }
 
 constexpr float pi = 3.14159265358979323846;
