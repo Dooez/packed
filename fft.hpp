@@ -120,7 +120,8 @@ struct order {
         } else {
             return std::array<std::size_t, sizeof...(N)>{N...};
         }
-    }(std::make_index_sequence<Size - 1>{});
+    }
+    (std::make_index_sequence<Size - 1>{});
 };
 
 template<typename T,
@@ -570,10 +571,10 @@ concept range_complex_vector_of = std::ranges::random_access_range<R> &&    //
 /**
  * @brief Controls how fft output and ifft input is ordered;
  * This may have an impact on performance of fft/ifft;
- * 
- * normal:          default, elements are in ascending frequency order, starting from zero 
+ *
+ * normal:          default, elements are in ascending frequency order, starting from zero
  * bit_reversed:    element indexes are in a bit-reversed order
- * unordered:       
+ * unordered:
  */
 enum class fft_order {
     normal,
@@ -2683,7 +2684,8 @@ private:
 
 template<typename T,
          fft_order Order    = fft_order::normal,
-         bool      Big_g    = false,
+         bool      BigG     = false,
+         bool      BiggerG  = false,
          typename Allocator = pcx::aligned_allocator<T, std::align_val_t(64)>>
     requires(std::same_as<T, float> || std::same_as<T, double>)
 class fft_unit_par {
@@ -2747,8 +2749,67 @@ public:
         auto data_size = get_vector(dest, 0).size();
 
         uint l_size = 1;
-        if constexpr (Big_g) {
+        if constexpr (BigG && !BiggerG) {
             if (log2i(m_size) % 2 != 0) {
+                const auto grp_size = m_size / l_size / 8;
+                for (uint grp = 0; grp < grp_size; ++grp) {
+                    std::array<T*, 8> dst{
+                        get_vector(dest, grp).data(),
+                        get_vector(dest, grp + grp_size * 1).data(),
+                        get_vector(dest, grp + grp_size * 2).data(),
+                        get_vector(dest, grp + grp_size * 3).data(),
+                        get_vector(dest, grp + grp_size * 4).data(),
+                        get_vector(dest, grp + grp_size * 5).data(),
+                        get_vector(dest, grp + grp_size * 6).data(),
+                        get_vector(dest, grp + grp_size * 7).data(),
+                    };
+                    std::array<T*, 8> src{
+                        get_vector(source, grp).data(),
+                        get_vector(source, grp + grp_size * 1).data(),
+                        get_vector(source, grp + grp_size * 2).data(),
+                        get_vector(source, grp + grp_size * 3).data(),
+                        get_vector(source, grp + grp_size * 4).data(),
+                        get_vector(source, grp + grp_size * 5).data(),
+                        get_vector(source, grp + grp_size * 6).data(),
+                        get_vector(source, grp + grp_size * 7).data(),
+                    };
+                    long_btfly8<PDest, PSrc>(dst, data_size, src);
+                }
+                l_size *= 8;
+            }
+        }
+        if constexpr (BiggerG) {
+            auto max_size = m_size;
+            if (log2i(m_size) % 3 == 1) {
+                max_size /= 4;
+            };
+            const auto grp_size = m_size / l_size / 8;
+            for (uint grp = 0; grp < grp_size; ++grp) {
+                std::array<T*, 8> dst{
+                    get_vector(dest, grp).data(),
+                    get_vector(dest, grp + grp_size * 1).data(),
+                    get_vector(dest, grp + grp_size * 2).data(),
+                    get_vector(dest, grp + grp_size * 3).data(),
+                    get_vector(dest, grp + grp_size * 4).data(),
+                    get_vector(dest, grp + grp_size * 5).data(),
+                    get_vector(dest, grp + grp_size * 6).data(),
+                    get_vector(dest, grp + grp_size * 7).data(),
+                };
+                std::array<T*, 8> src{
+                    get_vector(source, grp).data(),
+                    get_vector(source, grp + grp_size * 1).data(),
+                    get_vector(source, grp + grp_size * 2).data(),
+                    get_vector(source, grp + grp_size * 3).data(),
+                    get_vector(source, grp + grp_size * 4).data(),
+                    get_vector(source, grp + grp_size * 5).data(),
+                    get_vector(source, grp + grp_size * 6).data(),
+                    get_vector(source, grp + grp_size * 7).data(),
+                };
+                long_btfly8<PDest, PSrc>(dst, data_size, src);
+            }
+            l_size *= 8;
+
+            for (; l_size < max_size / 4; l_size *= 8) {
                 const auto grp_size = m_size / l_size / 8;
                 for (uint grp = 0; grp < grp_size; ++grp) {
                     std::array<T*, 8> dst{
@@ -2763,8 +2824,49 @@ public:
                     };
                     long_btfly8<PDest, PSrc>(dst, data_size);
                 }
-                l_size *= 8;
+                for (uint idx = 1; idx < l_size; ++idx) {
+                    std::array<std::complex<T>, 7> tw = {
+                        *(tw_it++),
+                        *(tw_it++),
+                        *(tw_it++),
+                        *(tw_it++),
+                        *(tw_it++),
+                        *(tw_it++),
+                        *(tw_it++),
+                    };
+                    for (uint grp = 0; grp < grp_size; ++grp) {
+                        std::array<T*, 8> dst{
+                            get_vector(dest, grp + idx * grp_size * 8).data(),
+                            get_vector(dest, grp + idx * grp_size * 8 + grp_size * 1).data(),
+                            get_vector(dest, grp + idx * grp_size * 8 + grp_size * 2).data(),
+                            get_vector(dest, grp + idx * grp_size * 8 + grp_size * 3).data(),
+                            get_vector(dest, grp + idx * grp_size * 8 + grp_size * 4).data(),
+                            get_vector(dest, grp + idx * grp_size * 8 + grp_size * 5).data(),
+                            get_vector(dest, grp + idx * grp_size * 8 + grp_size * 6).data(),
+                            get_vector(dest, grp + idx * grp_size * 8 + grp_size * 7).data(),
+                        };
+                        long_btfly8<PDest, PSrc>(dst, data_size, tw);
+                    }
+                }
             }
+        } else if constexpr (!BigG) {
+            const auto grp_size = m_size / l_size / 4;
+            for (uint grp = 0; grp < grp_size; ++grp) {
+                std::array<T*, 4> dst{
+                    get_vector(dest, grp).data(),
+                    get_vector(dest, grp + grp_size * 1).data(),
+                    get_vector(dest, grp + grp_size * 2).data(),
+                    get_vector(dest, grp + grp_size * 3).data(),
+                };
+                std::array<T*, 4> src{
+                    get_vector(source, grp).data(),
+                    get_vector(source, grp + grp_size * 1).data(),
+                    get_vector(source, grp + grp_size * 2).data(),
+                    get_vector(source, grp + grp_size * 3).data(),
+                };
+                long_btfly4<PDest, PSrc>(dst, data_size, src);
+            }
+            l_size *= 4;
         }
 
         for (; l_size < m_size / 2; l_size *= 4) {
@@ -2795,21 +2897,23 @@ public:
                 }
             }
         }
-        if (l_size == m_size / 2) {
-            std::array<T*, 2> dst{
-                get_vector(dest, 0).data(),
-                get_vector(dest, 1).data(),
-            };
-            long_btfly2<PDest, PSrc>(dst, data_size);
-
-            for (uint idx = 1; idx < l_size; ++idx) {
-                auto tw = *(tw_it++);
-
+        if constexpr (!BigG && !BiggerG) {
+            if (l_size == m_size / 2) {
                 std::array<T*, 2> dst{
-                    get_vector(dest, idx * 2).data(),
-                    get_vector(dest, idx * 2 + 1).data(),
+                    get_vector(dest, 0).data(),
+                    get_vector(dest, 1).data(),
                 };
-                long_btfly2<PDest, PSrc>(dst, data_size, tw);
+                long_btfly2<PDest, PSrc>(dst, data_size);
+
+                for (uint idx = 1; idx < l_size; ++idx) {
+                    auto tw = *(tw_it++);
+
+                    std::array<T*, 2> dst{
+                        get_vector(dest, idx * 2).data(),
+                        get_vector(dest, idx * 2 + 1).data(),
+                    };
+                    long_btfly2<PDest, PSrc>(dst, data_size, tw);
+                }
             }
         }
         if constexpr (sorted) {
@@ -3022,9 +3126,28 @@ private:
         uint l_size = 1;
 
         using namespace internal::fft;
-        if constexpr (Big_g) {
+        if constexpr (BigG) {
             if (log2i(size) % 2 != 0) {
                 l_size *= 8;
+            }
+        }
+
+        if constexpr (BiggerG) {
+            auto max_size = m_size;
+            if (log2i(m_size) % 3 == 1) {
+                max_size /= 4;
+            };
+            for (; l_size < max_size / 4; l_size *= 8) {
+                const auto grp_size = std::max(m_size / l_size / 4, 0UL);
+                for (uint idx = 1; idx < l_size; ++idx) {
+                    twiddles.push_back(wnk<T>(l_size * 2, reverse_bit_order(idx, log2i(l_size))));
+                    twiddles.push_back(wnk<T>(l_size * 4, reverse_bit_order(idx * 2 + 0, log2i(l_size * 2))));
+                    twiddles.push_back(wnk<T>(l_size * 4, reverse_bit_order(idx * 2 + 1, log2i(l_size * 2))));
+                    twiddles.push_back(wnk<T>(l_size * 8, reverse_bit_order(idx * 4 + 0, log2i(l_size * 4))));
+                    twiddles.push_back(wnk<T>(l_size * 8, reverse_bit_order(idx * 4 + 1, log2i(l_size * 4))));
+                    twiddles.push_back(wnk<T>(l_size * 8, reverse_bit_order(idx * 4 + 2, log2i(l_size * 4))));
+                    twiddles.push_back(wnk<T>(l_size * 8, reverse_bit_order(idx * 4 + 3, log2i(l_size * 4))));
+                }
             }
         }
         for (; l_size < m_size / 2; l_size *= 4) {
@@ -3035,9 +3158,12 @@ private:
                 twiddles.push_back(wnk<T>(l_size * 4, reverse_bit_order(idx * 2 + 1, log2i(l_size * 2))));
             }
         }
-        if (l_size == m_size / 2) {
-            for (uint idx = 1; idx < l_size; ++idx) {
-                twiddles.push_back(wnk<T>(l_size * 2, reverse_bit_order(idx, log2i(l_size))));
+
+        if constexpr (!BiggerG) {
+            if (l_size == m_size / 2) {
+                for (uint idx = 1; idx < l_size; ++idx) {
+                    twiddles.push_back(wnk<T>(l_size * 2, reverse_bit_order(idx, log2i(l_size))));
+                }
             }
         }
         return twiddles;
