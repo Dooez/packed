@@ -7,6 +7,7 @@
 
 #include <array>
 #include <bits/ranges_base.h>
+#include <bits/utility.h>
 #include <cmath>
 #include <complex>
 #include <concepts>
@@ -120,8 +121,7 @@ struct order {
         } else {
             return std::array<std::size_t, sizeof...(N)>{N...};
         }
-    }
-    (std::make_index_sequence<Size - 1>{});
+    }(std::make_index_sequence<Size - 1>{});
 };
 
 template<typename T,
@@ -535,6 +535,48 @@ inline void node2(std::array<T*, 2> dest, Args... args) {
 
     cxstore<PStore>(dest[0], a0);
     cxstore<PStore>(dest[1], a1);
+};
+
+template<std::size_t NodeSize>
+struct node {};
+template<>
+struct node<2> {
+    template<typename T,
+             std::size_t PDest,
+             std::size_t PSrc,
+             bool        ConjTw,
+             bool        Reverse,
+             bool        DIT = false,
+             typename... Args>
+    inline void perform(std::array<T*, 2> dest, Args... args) {
+        node2<T, PDest, PSrc, ConjTw, Reverse, DIT>(dest, args...);
+    };
+};
+template<>
+struct node<4> {
+    template<typename T,
+             std::size_t PDest,
+             std::size_t PSrc,
+             bool        ConjTw,
+             bool        Reverse,
+             bool        DIT = false,
+             typename... Args>
+    inline void perform(std::array<T*, 4> dest, Args... args) {
+        node4<T, PDest, PSrc, ConjTw, Reverse, DIT>(dest, args...);
+    };
+};
+template<>
+struct node<8> {
+    template<typename T,
+             std::size_t PDest,
+             std::size_t PSrc,
+             bool        ConjTw,
+             bool        Reverse,
+             bool        DIT = false,
+             typename... Args>
+    inline void perform(std::array<T*, 8> dest, Args... args) {
+        node8<T, PDest, PSrc, ConjTw, Reverse, DIT>(dest, args...);
+    };
 };
 
 constexpr auto reverse_bit_order(uint64_t num, uint64_t depth) -> uint64_t {
@@ -1594,6 +1636,36 @@ public:
         }
     };
 
+    template<std::size_t PDest,
+             std::size_t PTform,
+             bool        Inverse = false,
+             bool        Scale   = false,
+             std::size_t... Idxs>
+    inline auto subtransform_recursive_new(T* data, std::size_t size) -> const T* {
+        constexpr std::size_t NodeSize = sizeof...(Idxs);
+        if (size <= sub_size()) {
+            return subtransform<PDest, PTform, Inverse, Scale>(data, size);
+        } else {
+            auto        twiddle_ptr = (subtransform_recursive_new<PTform, PTform, Inverse, false, Idxs...>(
+                                    avx::ra_addr<PTform>(data, size * Idxs / NodeSize), size / NodeSize),
+                                ...);
+            std::size_t n_groups    = size / avx::reg<T>::size / NodeSize;
+
+            auto scaling = std::conditional_t<Scale, typename avx::reg<float>::type, decltype([] {})>{};
+            if constexpr (Scale) {
+                scaling = avx::broadcast(static_cast<T>(1. / static_cast<double>(size)));
+            }
+            for (std::size_t i_group = 0; i_group < n_groups; ++i_group) {
+                std::array<avx::cx_reg<T>, NodeSize - 1> tw{
+                    avx::cxload<avx::reg<T>::size>(twiddle_ptr + avx::reg<T>::size * 2 * Idxs)...};
+                twiddle_ptr += avx::reg<T>::size * 2 * (NodeSize - 1);
+                node_along<NodeSize, PDest, PTform, true, Inverse>(
+                    data, size, i_group * avx::reg<T>::size, tw, scaling);
+            }
+            return twiddle_ptr;
+        }
+    };
+
     template<std::size_t PDest, std::size_t PSrc, bool First = false, typename... Optional>
     inline auto unsorted_subtransform(float*       dest,
                                       std::size_t  size,
@@ -2274,6 +2346,82 @@ public:
             }
         } else {
             internal::fft::node8<T, PDest, PSrc, ConjTw, Reverse, DecInTime>(dst, optional...);
+        }
+    };
+
+    template<std::size_t NodeSize,
+             std::size_t PDest,
+             std::size_t PSrc,
+             bool        DecInTime,
+             bool        ConjTw  = false,
+             bool        Reverse = false,
+             typename... Optional>
+    inline void node_along(T* dest, std::size_t l_size, std::size_t offset, Optional... optional) {
+        constexpr auto PLoad  = std::max(PSrc, avx::reg<T>::size);
+        constexpr auto PStore = std::max(PDest, avx::reg<T>::size);
+
+        using source_type     = const T*;
+        constexpr bool Src    = internal::has_type<source_type, Optional...>;
+        constexpr bool Upsize = Src && internal::has_type<std::size_t, Optional...>;
+
+        constexpr auto perform = [](auto... args) {
+            internal::fft::node<NodeSize>::template perform<T, PDest, PSrc, ConjTw, Reverse, DecInTime>(
+                args...);
+        };
+
+        constexpr auto Idxs = std::make_index_sequence<NodeSize>{};
+        constexpr auto get_data_array =
+            []<std::size_t... I>(auto data, auto offset, auto l_size, std::index_sequence<I...>) {
+                constexpr auto Size = sizeof...(I);
+                return std::array<decltype(data), Size>{
+                    avx::ra_addr<PStore>(data, offset + l_size / Size * I)...};
+            };
+
+        auto dst = get_data_array(dest, offset, l_size, Idxs);
+
+        if constexpr (Src) {
+            auto source = std::get<source_type&>(std::tie(optional...));
+            if constexpr (Upsize) {
+                auto data_size = std::get<std::size_t&>(std::tie(optional...));
+
+                if (offset + l_size / 4 * 3 + avx::reg<T>::size <= data_size) {
+                    auto src = get_data_array(source, offset, l_size, Idxs);
+                    perform(dst, src, optional...);
+                } else {
+                    std::array<T, avx::reg<T>::size * 2> zeros{};
+
+                    auto src = []<std::size_t... I>(const T* ptr, std::index_sequence<I...>) {
+                        constexpr auto Size = sizeof...(I);
+                        return std::array<const T*, Size>{ptr + 0 * I...};
+                    }(zeros.data(), Idxs);
+
+                    for (uint i = 0; i < NodeSize; ++i) {
+                        auto           l_offset = offset + l_size / NodeSize * i;
+                        std::ptrdiff_t diff     = data_size - l_offset - 1;
+                        if (diff >= static_cast<int>(avx::reg<T>::size)) {
+                            src[i] = avx::ra_addr<PLoad>(source, l_offset);
+                        } else if (diff >= 0) {
+                            std::array<T, avx::reg<T>::size * 2> align{};
+                            for (; diff >= 0; --diff) {
+                                align[diff] = *(source + pidx<PSrc>(l_offset + diff));
+                                align[diff + avx::reg<T>::size] =
+                                    *(source + pidx<PSrc>(l_offset + diff) + PSrc);
+                            }
+                            src[i] = align.data();
+                            perform(dst, src, optional...);
+                            return;
+                        } else {
+                            break;
+                        }
+                    }
+                    perform(dst, src, optional...);
+                };
+            } else {
+                auto src = get_data_array(source, offset, l_size, Idxs);
+                perform(dst, src, optional...);
+            }
+        } else {
+            perform(dst, optional...);
         }
     };
 

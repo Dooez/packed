@@ -7,7 +7,7 @@
 
 // NOLINTBEGIN
 
-void test_que(pcx::fft_unit<float, pcx::fft_order::unordered>& unit, std::vector<std::complex<float>>& v1) {
+void test_que(pcx::fft_unit<float, pcx::fft_order::normal>& unit, std::vector<std::complex<float>>& v1) {
     unit(v1);
 }
 
@@ -471,10 +471,9 @@ int main() {
     for (uint i = 6; i < 16; ++i) {
         std::cout << (1U << i) << "\n";
 
-        // ret += test_fft_float<1024>(1U << i);
-        // ret += test_fft_float(1U << i);
-        // ret += test_fftu_float(1U << i);
-        // ret += test_fftu_float_0(1U << i);
+        ret += test_fft_float<1024>(1U << i);
+        ret += test_fft_float(1U << i);
+        ret += test_fftu_float(1U << i);
         ret += test_par_fft_float(1U << i);
 
         if (ret > 0) {
