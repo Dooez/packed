@@ -664,7 +664,7 @@ public:
     : m_size(check_size(fft_size))
     , m_sub_size(check_sub_size(sub_size))
     , m_sort(get_sort(size(), static_cast<sort_allocator_type>(allocator)))
-    , m_twiddles(get_twiddles(size(), sub_size, allocator)){};
+    , m_twiddles(get_twiddles<4>(size(), sub_size, allocator)){};
 
     fft_unit(const fft_unit& other)     = default;
     fft_unit(fft_unit&& other) noexcept = default;
@@ -796,27 +796,27 @@ public:
     void fftu_internal(float* data) {
         auto* twiddle_ptr = m_twiddles.data();
         if (log2i(size() / (avx::reg<T>::size * 4)) % 2 == 0) {
-            unsorted_subtransform_recursive_new<4, PData, PData, true>(data, size(), twiddle_ptr);
+            unsorted_subtransform_recursive<4, PData, PData, true>(data, size(), twiddle_ptr);
         } else if (size() / (avx::reg<T>::size * 4) > 8) {
             constexpr auto PTform = std::max(PData, avx::reg<T>::size);
             for (std::size_t i_group = 0; i_group < size() / 8 / avx::reg<T>::size; ++i_group) {
                 node_along<8, PTform, PData, false>(data, size(), i_group * avx::reg<T>::size);
             }
             twiddle_ptr =
-                unsorted_subtransform_recursive_new<4, PData, PTform, true>(data, size() / 8, twiddle_ptr);
-            twiddle_ptr = unsorted_subtransform_recursive_new<4, PData, PTform, false>(
+                unsorted_subtransform_recursive<4, PData, PTform, true>(data, size() / 8, twiddle_ptr);
+            twiddle_ptr = unsorted_subtransform_recursive<4, PData, PTform, false>(
                 avx::ra_addr<PTform>(data, size() / 8 * 1), size() / 8, twiddle_ptr);
-            twiddle_ptr = unsorted_subtransform_recursive_new<4, PData, PTform, false>(
+            twiddle_ptr = unsorted_subtransform_recursive<4, PData, PTform, false>(
                 avx::ra_addr<PTform>(data, size() / 8 * 2), size() / 8, twiddle_ptr);
-            twiddle_ptr = unsorted_subtransform_recursive_new<4, PData, PTform, false>(
+            twiddle_ptr = unsorted_subtransform_recursive<4, PData, PTform, false>(
                 avx::ra_addr<PTform>(data, size() / 8 * 3), size() / 8, twiddle_ptr);
-            twiddle_ptr = unsorted_subtransform_recursive_new<4, PData, PTform, false>(
+            twiddle_ptr = unsorted_subtransform_recursive<4, PData, PTform, false>(
                 avx::ra_addr<PTform>(data, size() / 8 * 4), size() / 8, twiddle_ptr);
-            twiddle_ptr = unsorted_subtransform_recursive_new<4, PData, PTform, false>(
+            twiddle_ptr = unsorted_subtransform_recursive<4, PData, PTform, false>(
                 avx::ra_addr<PTform>(data, size() / 8 * 5), size() / 8, twiddle_ptr);
-            twiddle_ptr = unsorted_subtransform_recursive_new<4, PData, PTform, false>(
+            twiddle_ptr = unsorted_subtransform_recursive<4, PData, PTform, false>(
                 avx::ra_addr<PTform>(data, size() / 8 * 6), size() / 8, twiddle_ptr);
-            twiddle_ptr = unsorted_subtransform_recursive_new<4, PData, PTform, false>(
+            twiddle_ptr = unsorted_subtransform_recursive<4, PData, PTform, false>(
                 avx::ra_addr<PTform>(data, size() / 8 * 7), size() / 8, twiddle_ptr);
         } else {
             constexpr auto PTform = std::max(PData, avx::reg<T>::size);
@@ -831,8 +831,8 @@ public:
                 node_along<2, PTform, PData, false>(data, size(), i_group * avx::reg<T>::size);
             }
             twiddle_ptr =
-                unsorted_subtransform_recursive_new<4, PData, PTform, true>(data, size() / 2, twiddle_ptr);
-            unsorted_subtransform_recursive_new<4, PData, PTform, false>(
+                unsorted_subtransform_recursive<4, PData, PTform, true>(data, size() / 2, twiddle_ptr);
+            unsorted_subtransform_recursive<4, PData, PTform, false>(
                 avx::ra_addr<PTform>(data, size() / 2), size() / 2, twiddle_ptr);
         }
     }
@@ -842,27 +842,27 @@ public:
         auto* twiddle_ptr = m_twiddles.data();
         if (source_size == 0) {
             if (log2i(size() / (avx::reg<T>::size * 4)) % 2 == 0) {
-                unsorted_subtransform_recursive_new<4, PDest, PDest, true>(dest, size(), twiddle_ptr, source);
+                unsorted_subtransform_recursive<4, PDest, PDest, true>(dest, size(), twiddle_ptr, source);
             } else if (size() / (avx::reg<T>::size * 4) > 8) {
                 constexpr auto PTform = std::max(PDest, avx::reg<T>::size);
                 for (std::size_t i_group = 0; i_group < size() / 8 / avx::reg<T>::size; ++i_group) {
                     node_along<8, PTform, PDest, false>(dest, size(), i_group * avx::reg<T>::size);
                 }
-                twiddle_ptr = unsorted_subtransform_recursive_new<4, PDest, PTform, true>(
-                    dest, size() / 8, twiddle_ptr);
-                twiddle_ptr = unsorted_subtransform_recursive_new<4, PDest, PTform, false>(
+                twiddle_ptr =
+                    unsorted_subtransform_recursive<4, PDest, PTform, true>(dest, size() / 8, twiddle_ptr);
+                twiddle_ptr = unsorted_subtransform_recursive<4, PDest, PTform, false>(
                     avx::ra_addr<PTform>(dest, size() / 8 * 1), size() / 8, twiddle_ptr);
-                twiddle_ptr = unsorted_subtransform_recursive_new<4, PDest, PTform, false>(
+                twiddle_ptr = unsorted_subtransform_recursive<4, PDest, PTform, false>(
                     avx::ra_addr<PTform>(dest, size() / 8 * 2), size() / 8, twiddle_ptr);
-                twiddle_ptr = unsorted_subtransform_recursive_new<4, PDest, PTform, false>(
+                twiddle_ptr = unsorted_subtransform_recursive<4, PDest, PTform, false>(
                     avx::ra_addr<PTform>(dest, size() / 8 * 3), size() / 8, twiddle_ptr);
-                twiddle_ptr = unsorted_subtransform_recursive_new<4, PDest, PTform, false>(
+                twiddle_ptr = unsorted_subtransform_recursive<4, PDest, PTform, false>(
                     avx::ra_addr<PTform>(dest, size() / 8 * 4), size() / 8, twiddle_ptr);
-                twiddle_ptr = unsorted_subtransform_recursive_new<4, PDest, PTform, false>(
+                twiddle_ptr = unsorted_subtransform_recursive<4, PDest, PTform, false>(
                     avx::ra_addr<PTform>(dest, size() / 8 * 5), size() / 8, twiddle_ptr);
-                twiddle_ptr = unsorted_subtransform_recursive_new<4, PDest, PTform, false>(
+                twiddle_ptr = unsorted_subtransform_recursive<4, PDest, PTform, false>(
                     avx::ra_addr<PTform>(dest, size() / 8 * 6), size() / 8, twiddle_ptr);
-                twiddle_ptr = unsorted_subtransform_recursive_new<4, PDest, PTform, false>(
+                twiddle_ptr = unsorted_subtransform_recursive<4, PDest, PTform, false>(
                     avx::ra_addr<PTform>(dest, size() / 8 * 7), size() / 8, twiddle_ptr);
             } else {
                 constexpr auto PTform = std::max(PDest, avx::reg<T>::size);
@@ -892,14 +892,14 @@ public:
                     cxstore<PTform>(ptr1, a1);
                 }
 
-                twiddle_ptr = unsorted_subtransform_recursive_new<4, PDest, PTform, true>(
-                    dest, size() / 2, twiddle_ptr);
-                unsorted_subtransform_recursive_new<4, PDest, PTform, false>(
+                twiddle_ptr =
+                    unsorted_subtransform_recursive<4, PDest, PTform, true>(dest, size() / 2, twiddle_ptr);
+                unsorted_subtransform_recursive<4, PDest, PTform, false>(
                     avx::ra_addr<PTform>(dest, size() / 2), size() / 2, twiddle_ptr);
             }
         } else {
             if (log2i(size() / (avx::reg<T>::size * 4)) % 2 == 0) {
-                unsorted_subtransform_recursive_new<4, PDest, PDest, true>(
+                unsorted_subtransform_recursive<4, PDest, PDest, true>(
                     dest, size(), twiddle_ptr, source, source_size);
             } else if (size() / (avx::reg<T>::size * 4) > 8) {
                 constexpr auto PTform = std::max(PDest, avx::reg<T>::size);
@@ -907,21 +907,21 @@ public:
                     node_along<8, PTform, PSrc, false>(
                         dest, size(), i_group * avx::reg<T>::size, source, source_size);
                 }
-                twiddle_ptr = unsorted_subtransform_recursive_new<4, PDest, PTform, true>(
-                    dest, size() / 8, twiddle_ptr);
-                twiddle_ptr = unsorted_subtransform_recursive_new<4, PDest, PTform, false>(
+                twiddle_ptr =
+                    unsorted_subtransform_recursive<4, PDest, PTform, true>(dest, size() / 8, twiddle_ptr);
+                twiddle_ptr = unsorted_subtransform_recursive<4, PDest, PTform, false>(
                     avx::ra_addr<PTform>(dest, size() / 8 * 1), size() / 8, twiddle_ptr);
-                twiddle_ptr = unsorted_subtransform_recursive_new<4, PDest, PTform, false>(
+                twiddle_ptr = unsorted_subtransform_recursive<4, PDest, PTform, false>(
                     avx::ra_addr<PTform>(dest, size() / 8 * 2), size() / 8, twiddle_ptr);
-                twiddle_ptr = unsorted_subtransform_recursive_new<4, PDest, PTform, false>(
+                twiddle_ptr = unsorted_subtransform_recursive<4, PDest, PTform, false>(
                     avx::ra_addr<PTform>(dest, size() / 8 * 3), size() / 8, twiddle_ptr);
-                twiddle_ptr = unsorted_subtransform_recursive_new<4, PDest, PTform, false>(
+                twiddle_ptr = unsorted_subtransform_recursive<4, PDest, PTform, false>(
                     avx::ra_addr<PTform>(dest, size() / 8 * 4), size() / 8, twiddle_ptr);
-                twiddle_ptr = unsorted_subtransform_recursive_new<4, PDest, PTform, false>(
+                twiddle_ptr = unsorted_subtransform_recursive<4, PDest, PTform, false>(
                     avx::ra_addr<PTform>(dest, size() / 8 * 5), size() / 8, twiddle_ptr);
-                twiddle_ptr = unsorted_subtransform_recursive_new<4, PDest, PTform, false>(
+                twiddle_ptr = unsorted_subtransform_recursive<4, PDest, PTform, false>(
                     avx::ra_addr<PTform>(dest, size() / 8 * 6), size() / 8, twiddle_ptr);
-                twiddle_ptr = unsorted_subtransform_recursive_new<4, PDest, PTform, false>(
+                twiddle_ptr = unsorted_subtransform_recursive<4, PDest, PTform, false>(
                     avx::ra_addr<PTform>(dest, size() / 8 * 7), size() / 8, twiddle_ptr);
             } else {
                 constexpr auto PTform = std::max(PDest, avx::reg<T>::size);
@@ -935,9 +935,9 @@ public:
                     node_along<2, PTform, PSrc, false>(
                         dest, size(), i_group * avx::reg<T>::size, tw0, source, source_size);
                 }
-                twiddle_ptr = unsorted_subtransform_recursive_new<4, PDest, PTform, true>(
-                    dest, size() / 2, twiddle_ptr);
-                unsorted_subtransform_recursive_new<4, PDest, PTform, false>(
+                twiddle_ptr =
+                    unsorted_subtransform_recursive<4, PDest, PTform, true>(dest, size() / 2, twiddle_ptr);
+                unsorted_subtransform_recursive<4, PDest, PTform, false>(
                     avx::ra_addr<PTform>(dest, size() / 2), size() / 2, twiddle_ptr);
             }
         }
@@ -1817,10 +1817,10 @@ public:
              std::size_t PSrc,
              bool        First = false,
              typename... Optional>
-    inline auto unsorted_subtransform_recursive_new(T*          dest,    //
-                                                    std::size_t size,
-                                                    const T*    twiddle_ptr,
-                                                    Optional... optional) -> const T* {
+    inline auto unsorted_subtransform_recursive(T*          dest,    //
+                                                std::size_t size,
+                                                const T*    twiddle_ptr,
+                                                Optional... optional) -> const T* {
         if (size <= sub_size()) {
             return unsorted_subtransform<PDest, PSrc, First>(dest, size, twiddle_ptr, optional...);
         }
@@ -1841,10 +1841,10 @@ public:
             node_along<NodeSize, PTform, PSrc, false>(
                 dest, size, i_group * avx::reg<T>::size, tw, optional...);
         }
-        twiddle_ptr = unsorted_subtransform_recursive_new<NodeSize, PDest, PTform, First>(
+        twiddle_ptr = unsorted_subtransform_recursive<NodeSize, PDest, PTform, First>(
             dest, size / NodeSize, twiddle_ptr);
         for (uint i = 1; i < NodeSize; ++i) {
-            twiddle_ptr = unsorted_subtransform_recursive_new<NodeSize, PDest, PTform, false>(
+            twiddle_ptr = unsorted_subtransform_recursive<NodeSize, PDest, PTform, false>(
                 avx::ra_addr<PTform>(dest, i * size / NodeSize), size / NodeSize, twiddle_ptr);
         };
         return twiddle_ptr;
@@ -2219,6 +2219,7 @@ private:
     {
         return sort_t{};
     };
+    template<std::size_t NodeSizeRecursive>
     static auto get_twiddles(std::size_t fft_size, std::size_t sub_size, allocator_type allocator)
         -> pcx::vector<real_type, avx::reg<T>::size, allocator_type>
         requires(sorted)
@@ -2239,10 +2240,6 @@ private:
         if (log2i(fft_size / sub_size_) % 2 != 0) {
             sub_size_ /= 2;
         }
-        // if (fft_size > sub_size_ ) {
-        //     sub_size_ = sub_size_ / 2;
-        // }
-
         if (log2i(fft_size / (avx::reg<T>::size * 2)) % 2 == 0) {
             for (uint k = 0; k < avx::reg<T>::size; ++k) {
                 *(tw_it++) = wnk(l_size, k);
@@ -2286,19 +2283,17 @@ private:
 
         while (l_size < fft_size) {
             for (std::size_t i_group = 0; i_group < n_groups; ++i_group) {
-                for (uint k = 0; k < avx::reg<T>::size; ++k) {
-                    *(tw_it++) = wnk(l_size, k + i_group * avx::reg<T>::size);
-                }
-                for (uint k = 0; k < avx::reg<T>::size; ++k) {
-                    auto a     = wnk(l_size * 2UL, k + i_group * avx::reg<T>::size);
-                    *(tw_it++) = wnk(l_size * 2UL, k + i_group * avx::reg<T>::size);
-                }
-                for (uint k = 0; k < avx::reg<T>::size; ++k) {
-                    *(tw_it++) = wnk(l_size * 2UL, k + i_group * avx::reg<T>::size + l_size / 2);
+                for (uint i_bf = 0; i_bf < log2i(NodeSizeRecursive); ++i_bf) {
+                    for (uint i_subgroup = 0; i_subgroup < (1U << i_bf); ++i_subgroup) {
+                        for (uint k = 0; k < avx::reg<T>::size; ++k) {
+                            *(tw_it++) =
+                                wnk(l_size * (1U << i_bf), k + i_group * avx::reg<T>::size + i_subgroup * l_size / 2);
+                        }
+                    }
                 }
             }
-            l_size *= 4;
-            n_groups *= 4;
+            l_size *= NodeSizeRecursive;
+            n_groups *= NodeSizeRecursive;
         };
         if (l_size == fft_size) {
             for (std::size_t i_group = 0; i_group < n_groups; ++i_group) {
@@ -2312,6 +2307,7 @@ private:
         return twiddles;
     }
 
+    template<std::size_t NodeSizeRecursive = 4>
     static auto get_twiddles(std::size_t fft_size, std::size_t sub_size, allocator_type allocator)
         -> std::vector<T, allocator_type>
         requires(!sorted)
