@@ -625,9 +625,10 @@ enum class fft_order {
 };
 
 template<typename T,
-         fft_order Order     = fft_order::normal,
-         typename Allocator  = std::allocator<T>,
-         std::size_t SubSize = pcx::dynamic_size>
+         fft_order Order         = fft_order::normal,
+         typename Allocator      = std::allocator<T>,
+         std::size_t SubSize     = pcx::dynamic_size,
+         std::size_t NodeSizeRec = 4>
     requires(std::same_as<T, float> || std::same_as<T, double>) &&
             (pcx::power_of_two<SubSize> && SubSize >= pcx::default_pack_size<T> ||
              (SubSize == pcx::dynamic_size))
@@ -774,22 +775,21 @@ public:
     inline void fft_internal(float* data) {
         constexpr auto PTform = std::max(PData, avx::reg<T>::size);
         depth3_and_sort<PTform, PData>(data);
-        // subtransform_recursive<PData, PTform, false, false>(data, size());
-        subtransform_recursive<PData, PTform>(data, size(), std::make_index_sequence<4>{});
+        subtransform_recursive<PData, PTform>(data, size(), std::make_index_sequence<NodeSizeRec>{});
     }
 
     template<std::size_t PData, bool Normalized = true>
     inline void ifft_internal(float* data) {
         constexpr auto PTform = std::max(PData, avx::reg<T>::size);
         depth3_and_sort<PTform, PData, true>(data);
-        subtransform_recursive<PData, PTform, true, Normalized>(data, size(), std::make_index_sequence<4>{});
+        subtransform_recursive<PData, PTform, true, Normalized>(data, size(), std::make_index_sequence<NodeSizeRec>{});
     }
 
     template<std::size_t PDest, std::size_t PSrc>
     inline void fft_internal(float* dest, const float* source) {
         constexpr auto PTform = std::max(PDest, avx::reg<T>::size);
         depth3_and_sort<PTform, PSrc>(dest, source);
-        subtransform_recursive<PDest, PTform>(dest, size(), std::make_index_sequence<4>{});
+        subtransform_recursive<PDest, PTform>(dest, size(), std::make_index_sequence<NodeSizeRec>{});
     };
 
     template<std::size_t PData>
@@ -2286,8 +2286,8 @@ private:
                 for (uint i_bf = 0; i_bf < log2i(NodeSizeRecursive); ++i_bf) {
                     for (uint i_subgroup = 0; i_subgroup < (1U << i_bf); ++i_subgroup) {
                         for (uint k = 0; k < avx::reg<T>::size; ++k) {
-                            *(tw_it++) =
-                                wnk(l_size * (1U << i_bf), k + i_group * avx::reg<T>::size + i_subgroup * l_size / 2);
+                            *(tw_it++) = wnk(l_size * (1U << i_bf),
+                                             k + i_group * avx::reg<T>::size + i_subgroup * l_size / 2);
                         }
                     }
                 }
