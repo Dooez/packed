@@ -1812,44 +1812,6 @@ public:
         return twiddle_ptr;
     };
 
-    template<std::size_t PDest,
-             std::size_t PSrc,
-             bool        First = false,
-             typename... Optional>
-    inline auto unsorted_subtransform_recursive(T*          dest,    //
-                                                std::size_t size,
-                                                const T*    twiddle_ptr,
-                                                Optional... optional) -> const T* {
-        if (size <= sub_size()) {
-            return unsorted_subtransform<PDest, PSrc, First>(dest, size, twiddle_ptr, optional...);
-        }
-        constexpr auto PTform = std::max(PSrc, avx::reg<T>::size);
-        if constexpr (First) {
-            twiddle_ptr += 6;
-            for (std::size_t i_group = 0; i_group < size / 4 / avx::reg<T>::size; ++i_group) {
-                node_along<4, PTform, PSrc, false>(dest, size, i_group * avx::reg<T>::size, optional...);
-            }
-        } else {
-            std::array<avx::cx_reg<T>, 3> tw{
-                {{avx::broadcast(twiddle_ptr++), avx::broadcast(twiddle_ptr++)},
-                 {avx::broadcast(twiddle_ptr++), avx::broadcast(twiddle_ptr++)},
-                 {avx::broadcast(twiddle_ptr++), avx::broadcast(twiddle_ptr++)}}
-            };
-            for (std::size_t i_group = 0; i_group < size / 4 / avx::reg<T>::size; ++i_group) {
-                node_along<4, PTform, PSrc, false>(dest, size, i_group * avx::reg<T>::size, tw, optional...);
-            }
-        }
-        twiddle_ptr =
-            unsorted_subtransform_recursive_new<4, PDest, PTform, First>(dest, size / 4, twiddle_ptr);
-        twiddle_ptr = unsorted_subtransform_recursive_new<4, PDest, PTform, false>(
-            avx::ra_addr<PTform>(dest, size / 4), size / 4, twiddle_ptr);
-        twiddle_ptr = unsorted_subtransform_recursive_new<4, PDest, PTform, false>(
-            avx::ra_addr<PTform>(dest, size / 2), size / 4, twiddle_ptr);
-        twiddle_ptr = unsorted_subtransform_recursive_new<4, PDest, PTform, false>(
-            avx::ra_addr<PTform>(dest, size / 4 * 3), size / 4, twiddle_ptr);
-        return twiddle_ptr;
-    };
-
     template<std::size_t NodeSize,
              std::size_t PDest,
              std::size_t PSrc,
