@@ -7,7 +7,7 @@
 
 #include <array>
 #include <bits/ranges_base.h>
-#include <bits/utility.h>
+// #include <bits/utility.h>
 #include <cmath>
 #include <complex>
 #include <concepts>
@@ -82,6 +82,21 @@ struct vector_traits<pcx::subrange<T_, Const_, PackSize_>> {
 };
 
 namespace fft {
+constexpr auto log2i(std::size_t num) -> std::size_t {
+    std::size_t order = 0;
+    while ((num >>= 1U) != 0) {
+        order++;
+    }
+    return order;
+}
+constexpr auto powi(uint64_t num, uint64_t pow) -> uint64_t {
+    auto res = (pow % 2) == 1 ? num : 1UL;
+    if (pow > 1) {
+        auto half_pow = powi(num, pow / 2UL);
+        res *= half_pow * half_pow;
+    }
+    return res;
+}
 
 template<std::size_t Size, bool DecInTime>
 struct order {
@@ -93,13 +108,6 @@ struct order {
         num = (num & 0xCCCCCCCCCCCCCCCC) >> 2 | (num & 0x3333333333333333) << 2;
         num = (num & 0xAAAAAAAAAAAAAAAA) >> 1 | (num & 0x5555555555555555) << 1;
         return num >> (64 - depth);
-    }
-    static constexpr auto log2i(std::size_t num) -> std::size_t {
-        std::size_t order = 0;
-        while ((num >>= 1U) != 0) {
-            order++;
-        }
-        return order;
     }
     static constexpr std::array<std::size_t, Size> data = [] {
         std::array<std::size_t, Size> order;
@@ -121,7 +129,8 @@ struct order {
         } else {
             return std::array<std::size_t, sizeof...(N)>{N...};
         }
-    }(std::make_index_sequence<Size - 1>{});
+    }
+    (std::make_index_sequence<Size - 1>{});
 };
 
 template<typename T,
@@ -624,11 +633,28 @@ enum class fft_order {
     unordered
 };
 
+struct strategy4 {
+    static constexpr std::size_t target_size = 4;
+
+    using align_t = std::array<std::size_t, internal::fft::log2i(target_size)>;
+    static constexpr align_t align_node_size{0, 8};
+    static constexpr align_t align_node_count{0, 1};
+};
+struct strategy8 {
+    static constexpr std::size_t target_size = 8;
+
+    using align_t = std::array<std::size_t, internal::fft::log2i(target_size)>;
+    static constexpr align_t align_node_size{0, 4, 4};
+    static constexpr align_t align_node_count{0, 2, 1};
+};
+
 template<typename T,
          fft_order Order         = fft_order::normal,
          typename Allocator      = std::allocator<T>,
          std::size_t SubSize     = pcx::dynamic_size,
-         std::size_t NodeSizeRec = 4>
+         std::size_t NodeSizeRec = 4,
+         typename Strategy       = strategy4,
+         typename StrategyRec    = strategy4>
     requires(std::same_as<T, float> || std::same_as<T, double>) &&
             (pcx::power_of_two<SubSize> && SubSize >= pcx::default_pack_size<T> ||
              (SubSize == pcx::dynamic_size))
@@ -665,7 +691,7 @@ public:
     : m_size(check_size(fft_size))
     , m_sub_size(check_sub_size(sub_size))
     , m_sort(get_sort(size(), static_cast<sort_allocator_type>(allocator)))
-    , m_twiddles(get_twiddles<4>(size(), sub_size, allocator)){};
+    , m_twiddles(get_twiddles(size(), sub_size, allocator)){};
 
     fft_unit(const fft_unit& other)     = default;
     fft_unit(fft_unit&& other) noexcept = default;
@@ -782,7 +808,8 @@ public:
     inline void ifft_internal(float* data) {
         constexpr auto PTform = std::max(PData, avx::reg<T>::size);
         depth3_and_sort<PTform, PData, true>(data);
-        subtransform_recursive<PData, PTform, true, Normalized>(data, size(), std::make_index_sequence<NodeSizeRec>{});
+        subtransform_recursive<PData, PTform, true, Normalized>(
+            data, size(), std::make_index_sequence<NodeSizeRec>{});
     }
 
     template<std::size_t PDest, std::size_t PSrc>
@@ -1637,7 +1664,8 @@ public:
             auto tw = []<std::size_t... Itw>(auto* tw_ptr, std::index_sequence<Itw...>) {
                 return std::array<avx::cx_reg<T>, sizeof...(Itw)>{
                     avx::cxload<avx::reg<T>::size>(tw_ptr + avx::reg<T>::size * 2 * Itw)...};
-            }(twiddle_ptr, std::make_index_sequence<NodeSize - 1>{});
+            }
+            (twiddle_ptr, std::make_index_sequence<NodeSize - 1>{});
             twiddle_ptr += avx::reg<T>::size * 2 * (NodeSize - 1);
             node_along<NodeSize, PDest, PTform, true, Inverse>(
                 data, size, i_group * avx::reg<T>::size, tw, scaling);
@@ -1835,7 +1863,8 @@ public:
                     ...
                 };
             }
-        }(twiddle_ptr, std::make_index_sequence<NodeSize - 1>{});
+        }
+        (twiddle_ptr, std::make_index_sequence<NodeSize - 1>{});
         twiddle_ptr += 2 * (NodeSize - 1);
         for (std::size_t i_group = 0; i_group < size / NodeSize / avx::reg<T>::size; ++i_group) {
             node_along<NodeSize, PTform, PSrc, false>(
@@ -2087,10 +2116,10 @@ public:
         constexpr auto Idxs = std::make_index_sequence<NodeSize>{};
         constexpr auto get_data_array =
             []<std::size_t... I>(auto data, auto offset, auto l_size, std::index_sequence<I...>) {
-                constexpr auto Size = sizeof...(I);
-                return std::array<decltype(data), Size>{
-                    avx::ra_addr<PStore>(data, offset + l_size / Size * I)...};
-            };
+            constexpr auto Size = sizeof...(I);
+            return std::array<decltype(data), Size>{
+                avx::ra_addr<PStore>(data, offset + l_size / Size * I)...};
+        };
 
         auto dst = get_data_array(dest, offset, l_size, Idxs);
 
@@ -2108,7 +2137,8 @@ public:
                     auto src = []<std::size_t... I>(const T* ptr, std::index_sequence<I...>) {
                         constexpr auto Size = sizeof...(I);
                         return std::array<const T*, Size>{ptr + 0 * I...};
-                    }(zeros.data(), Idxs);
+                    }
+                    (zeros.data(), Idxs);
 
                     for (uint i = 0; i < NodeSize; ++i) {
                         auto           l_offset = offset + l_size / NodeSize * i;
@@ -2219,7 +2249,6 @@ private:
     {
         return sort_t{};
     };
-    template<std::size_t NodeSizeRecursive>
     static auto get_twiddles(std::size_t fft_size, std::size_t sub_size, allocator_type allocator)
         -> pcx::vector<real_type, avx::reg<T>::size, allocator_type>
         requires(sorted)
@@ -2236,7 +2265,54 @@ private:
         std::size_t l_size   = avx::reg<T>::size * 2;
         std::size_t n_groups = 1;
 
+
         std::size_t sub_size_ = std::min(fft_size, sub_size);
+
+        auto get_cost = []<typename Strategy_>(auto size, Strategy_ strat) {
+            std::size_t node_count = 0;
+            std::size_t weight     = 1;
+            using namespace internal::fft;
+
+            auto ts               = Strategy_::target_size;
+            auto align_node_count = Strategy_::align_node_count.at(log2i(size % Strategy_::target_size));
+            if (align_node_count > 0) {
+                auto align_node_size = Strategy_::align_node_size.at(log2i(size % Strategy_::target_size));
+                auto align_size      = powi(align_node_size, align_node_count);
+                if (size > align_size) {
+                    size /= align_size;
+                    node_count += align_node_size;
+                    weight *= powi(log2i(align_node_size), align_node_count);
+                }
+            }
+            auto target_node_count = size / Strategy_::target_size;
+            node_count += target_node_count;
+            weight *= powi(log2i(Strategy_::target_size), target_node_count);
+            return std::pair(node_count, weight);
+        };
+
+        auto rec_size = fft_size / sub_size;
+
+        auto rec_cost  = get_cost(rec_size, StrategyRec{});
+        auto targ_cost = get_cost(sub_size_ / 8, Strategy{});
+
+        auto count1  = rec_cost.first + targ_cost.first;
+        auto weight1 = rec_cost.second + targ_cost.second;
+
+        rec_cost  = get_cost(rec_size * 2, StrategyRec{});
+        targ_cost = get_cost(sub_size_ / 2 / 8, Strategy{});
+
+        auto count2  = rec_cost.first + targ_cost.first;
+        auto weight2 = rec_cost.second + targ_cost.second;
+
+        // if (count2 < count1) {
+        //     sub_size_ /= 2;
+        // } else if (count2 == count1) {
+        //     if (weight2 > weight1) {
+        //         sub_size_ /= 2;
+        //     }
+        // }
+
+
         if (log2i(fft_size / sub_size_) % 2 != 0) {
             sub_size_ /= 2;
         }
@@ -2283,7 +2359,7 @@ private:
 
         while (l_size < fft_size) {
             for (std::size_t i_group = 0; i_group < n_groups; ++i_group) {
-                for (uint i_bf = 0; i_bf < log2i(NodeSizeRecursive); ++i_bf) {
+                for (uint i_bf = 0; i_bf < log2i(NodeSizeRec); ++i_bf) {
                     for (uint i_subgroup = 0; i_subgroup < (1U << i_bf); ++i_subgroup) {
                         for (uint k = 0; k < avx::reg<T>::size; ++k) {
                             *(tw_it++) = wnk(l_size * (1U << i_bf),
@@ -2292,8 +2368,8 @@ private:
                     }
                 }
             }
-            l_size *= NodeSizeRecursive;
-            n_groups *= NodeSizeRecursive;
+            l_size *= NodeSizeRec;
+            n_groups *= NodeSizeRec;
         };
         if (l_size == fft_size) {
             for (std::size_t i_group = 0; i_group < n_groups; ++i_group) {
@@ -2307,7 +2383,6 @@ private:
         return twiddles;
     }
 
-    template<std::size_t NodeSizeRecursive = 4>
     static auto get_twiddles(std::size_t fft_size, std::size_t sub_size, allocator_type allocator)
         -> std::vector<T, allocator_type>
         requires(!sorted)
