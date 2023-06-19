@@ -2268,20 +2268,23 @@ private:
 
         std::size_t sub_size_ = std::min(fft_size, sub_size);
 
-        auto get_cost = []<typename Strategy_>(auto size, Strategy_ strat) {
+        auto get_cost = []<typename Strategy_>(auto size, Strategy_) {
             std::size_t node_count = 0;
             std::size_t weight     = 1;
             using namespace internal::fft;
 
-            auto ts               = Strategy_::target_size;
-            auto align_node_count = Strategy_::align_node_count.at(log2i(size % Strategy_::target_size));
+            auto misalign        = size % Strategy_::target_size;
+            auto align_node_count = Strategy_::align_node_count.at(log2i(misalign));
             if (align_node_count > 0) {
-                auto align_node_size = Strategy_::align_node_size.at(log2i(size % Strategy_::target_size));
+                auto align_node_size = Strategy_::align_node_size.at(log2i(misalign));
                 auto align_size      = powi(align_node_size, align_node_count);
-                if (size > align_size) {
+                if (size >= align_size) {
                     size /= align_size;
                     node_count += align_node_size;
                     weight *= powi(log2i(align_node_size), align_node_count);
+                } else {
+                    node_count += log2i(misalign);
+                    size /= misalign;
                 }
             }
             auto target_node_count = size / Strategy_::target_size;
@@ -2311,7 +2314,6 @@ private:
         //         sub_size_ /= 2;
         //     }
         // }
-
 
         if (log2i(fft_size / sub_size_) % 2 != 0) {
             sub_size_ /= 2;
