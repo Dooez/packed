@@ -2273,51 +2273,47 @@ private:
             std::size_t weight     = 1;
             using namespace internal::fft;
 
-            auto misalign        = size % Strategy_::target_size;
-            auto align_node_count = Strategy_::align_node_count.at(log2i(misalign));
+            auto misalign         = log2i(size) % log2i(Strategy_::target_size);
+            auto align_node_count = Strategy_::align_node_count.at(misalign);
             if (align_node_count > 0) {
-                auto align_node_size = Strategy_::align_node_size.at(log2i(misalign));
+                auto align_node_size = Strategy_::align_node_size.at(misalign);
                 auto align_size      = powi(align_node_size, align_node_count);
                 if (size >= align_size) {
                     size /= align_size;
-                    node_count += align_node_size;
+                    node_count += align_node_count;
                     weight *= powi(log2i(align_node_size), align_node_count);
                 } else {
-                    node_count += log2i(misalign);
-                    size /= misalign;
+                    node_count += misalign;
+                    size /= 1U << misalign;
                 }
             }
-            auto target_node_count = size / Strategy_::target_size;
+            auto target_node_count = log2i(size) / log2i(Strategy_::target_size);
             node_count += target_node_count;
             weight *= powi(log2i(Strategy_::target_size), target_node_count);
             return std::pair(node_count, weight);
         };
 
-        auto rec_size = fft_size / sub_size;
+        auto rec_size = fft_size / sub_size_;
 
         auto rec_cost  = get_cost(rec_size, StrategyRec{});
         auto targ_cost = get_cost(sub_size_ / 8, Strategy{});
 
         auto count1  = rec_cost.first + targ_cost.first;
-        auto weight1 = rec_cost.second + targ_cost.second;
+        auto weight1 = rec_cost.second * targ_cost.second;
 
         rec_cost  = get_cost(rec_size * 2, StrategyRec{});
         targ_cost = get_cost(sub_size_ / 2 / 8, Strategy{});
 
         auto count2  = rec_cost.first + targ_cost.first;
-        auto weight2 = rec_cost.second + targ_cost.second;
+        auto weight2 = rec_cost.second * targ_cost.second;
 
-        // if (count2 < count1) {
-        //     sub_size_ /= 2;
-        // } else if (count2 == count1) {
-        //     if (weight2 > weight1) {
-        //         sub_size_ /= 2;
-        //     }
-        // }
-
-        if (log2i(fft_size / sub_size_) % 2 != 0) {
+        if ((count2 < count1) || (count2 == count1) && (weight2 > weight1)) {
             sub_size_ /= 2;
         }
+
+        // if (log2i(fft_size / sub_size_) % 2 != 0) {
+        //     sub_size_ /= 2;
+        // }
         if (log2i(fft_size / (avx::reg<T>::size * 2)) % 2 == 0) {
             for (uint k = 0; k < avx::reg<T>::size; ++k) {
                 *(tw_it++) = wnk(l_size, k);
