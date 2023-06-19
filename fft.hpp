@@ -81,6 +81,11 @@ struct vector_traits<pcx::subrange<T_, Const_, PackSize_>> {
     }
 };
 
+template<std::size_t I>
+struct Integer {
+    static constexpr std::size_t value = I;
+};
+
 namespace fft {
 constexpr auto log2i(std::size_t num) -> std::size_t {
     std::size_t order = 0;
@@ -2268,6 +2273,22 @@ private:
 
         std::size_t sub_size_ = std::min(fft_size, sub_size);
 
+        auto insert_tw = [](auto tw_it, auto size, auto n_groups, auto max_btfly_size) {
+            using namespace internal::fft;
+            for (uint i_group = 0; i_group < n_groups; ++i_group) {
+                for (uint i_btfly = 0; i_btfly < log2i(max_btfly_size); ++i_btfly) {
+                    for (uint i_subgroup = 0; i_subgroup < (1U << i_btfly); ++i_subgroup) {
+                        for (uint k = 0; k < avx::reg<T>::size; ++k) {
+                            *(tw_it++) = internal::fft::wnk<T>(size * (1U << i_btfly),
+                                                               k + i_group * avx::reg<T>::size +
+                                                                   i_subgroup * size / 2);
+                        }
+                    }
+                }
+            }
+            return tw_it;
+        };
+
         auto get_cost = []<typename Strategy_>(auto size, Strategy_) {
             std::size_t node_count = 0;
             std::size_t weight     = 1;
@@ -2275,18 +2296,25 @@ private:
 
             auto misalign         = log2i(size) % log2i(Strategy_::target_size);
             auto align_node_count = Strategy_::align_node_count.at(misalign);
+            auto misalign         = log2i(size) % log2i(Strategy_::target_size);
+            auto align_node_count = Strategy_::align_node_count.at(misalign);
             if (align_node_count > 0) {
+                auto align_node_size = Strategy_::align_node_size.at(misalign);
                 auto align_node_size = Strategy_::align_node_size.at(misalign);
                 auto align_size      = powi(align_node_size, align_node_count);
                 if (size >= align_size) {
                     size /= align_size;
                     node_count += align_node_count;
+                    node_count += align_node_count;
                     weight *= powi(log2i(align_node_size), align_node_count);
                 } else {
                     node_count += misalign;
                     size /= 1U << misalign;
+                    node_count += misalign;
+                    size /= 1U << misalign;
                 }
             }
+            auto target_node_count = log2i(size) / log2i(Strategy_::target_size);
             auto target_node_count = log2i(size) / log2i(Strategy_::target_size);
             node_count += target_node_count;
             weight *= powi(log2i(Strategy_::target_size), target_node_count);
@@ -2294,11 +2322,13 @@ private:
         };
 
         auto rec_size = fft_size / sub_size_;
+        auto rec_size = fft_size / sub_size_;
 
         auto rec_cost  = get_cost(rec_size, StrategyRec{});
         auto targ_cost = get_cost(sub_size_ / 8, Strategy{});
 
         auto count1  = rec_cost.first + targ_cost.first;
+        auto weight1 = rec_cost.second * targ_cost.second;
         auto weight1 = rec_cost.second * targ_cost.second;
 
         rec_cost  = get_cost(rec_size * 2, StrategyRec{});
@@ -2307,13 +2337,32 @@ private:
         auto count2  = rec_cost.first + targ_cost.first;
         auto weight2 = rec_cost.second * targ_cost.second;
 
-        if ((count2 < count1) || (count2 == count1) && (weight2 > weight1)) {
+        // if ((count2 < count1) || (count2 == count1) && (weight2 > weight1)) {
+        //     sub_size_ /= 2;
+        // }
+
+        auto misalign         = log2i(sub_size_ / 8) % log2i(Strategy::target_size);
+        auto align_node_count = Strategy::align_node_count.at(misalign);
+        if (align_node_count > 0) {
+            using namespace internal::fft;
+            auto size            = sub_size_ / 8;
+            auto align_node_size = Strategy::align_node_size.at(misalign);
+            auto align_size      = powi(align_node_size, align_node_count);
+            if (size >= align_size) {
+                for (uint i = 0; i < align_node_count; ++i) {
+                    tw_it = insert_tw(tw_it, l_size, n_groups, align_node_size);
+                    l_size *= align_node_size;
+                    n_groups *= align_node_size;
+                }
+            } else {
+            }
+        }
+        // while (l_size < sub_size_) {}
+
+        if (log2i(fft_size / sub_size_) % 2 != 0) {
             sub_size_ /= 2;
         }
 
-        // if (log2i(fft_size / sub_size_) % 2 != 0) {
-        //     sub_size_ /= 2;
-        // }
         if (log2i(fft_size / (avx::reg<T>::size * 2)) % 2 == 0) {
             for (uint k = 0; k < avx::reg<T>::size; ++k) {
                 *(tw_it++) = wnk(l_size, k);
@@ -2321,7 +2370,6 @@ private:
             for (uint k = 0; k < avx::reg<T>::size * 2; ++k) {
                 *(tw_it++) = wnk(l_size * 2UL, k);
             }
-
             for (uint k = 0; k < avx::reg<T>::size * 4; ++k) {
                 *(tw_it++) = wnk(l_size * 4UL, k);
             }
