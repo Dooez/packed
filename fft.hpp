@@ -2296,10 +2296,7 @@ private:
 
             auto misalign         = log2i(size) % log2i(Strategy_::target_size);
             auto align_node_count = Strategy_::align_node_count.at(misalign);
-            auto misalign         = log2i(size) % log2i(Strategy_::target_size);
-            auto align_node_count = Strategy_::align_node_count.at(misalign);
             if (align_node_count > 0) {
-                auto align_node_size = Strategy_::align_node_size.at(misalign);
                 auto align_node_size = Strategy_::align_node_size.at(misalign);
                 auto align_size      = powi(align_node_size, align_node_count);
                 if (size >= align_size) {
@@ -2315,20 +2312,17 @@ private:
                 }
             }
             auto target_node_count = log2i(size) / log2i(Strategy_::target_size);
-            auto target_node_count = log2i(size) / log2i(Strategy_::target_size);
             node_count += target_node_count;
             weight *= powi(log2i(Strategy_::target_size), target_node_count);
             return std::pair(node_count, weight);
         };
 
         auto rec_size = fft_size / sub_size_;
-        auto rec_size = fft_size / sub_size_;
 
         auto rec_cost  = get_cost(rec_size, StrategyRec{});
         auto targ_cost = get_cost(sub_size_ / 8, Strategy{});
 
         auto count1  = rec_cost.first + targ_cost.first;
-        auto weight1 = rec_cost.second * targ_cost.second;
         auto weight1 = rec_cost.second * targ_cost.second;
 
         rec_cost  = get_cost(rec_size * 2, StrategyRec{});
@@ -2343,7 +2337,7 @@ private:
 
         auto misalign         = log2i(sub_size_ / 8) % log2i(Strategy::target_size);
         auto align_node_count = Strategy::align_node_count.at(misalign);
-        if (align_node_count > 0) {
+        if (false && align_node_count > 0) {
             using namespace internal::fft;
             auto size            = sub_size_ / 8;
             auto align_node_size = Strategy::align_node_size.at(misalign);
@@ -2364,65 +2358,29 @@ private:
         }
 
         if (log2i(fft_size / (avx::reg<T>::size * 2)) % 2 == 0) {
-            for (uint k = 0; k < avx::reg<T>::size; ++k) {
-                *(tw_it++) = wnk(l_size, k);
-            }
-            for (uint k = 0; k < avx::reg<T>::size * 2; ++k) {
-                *(tw_it++) = wnk(l_size * 2UL, k);
-            }
-            for (uint k = 0; k < avx::reg<T>::size * 4; ++k) {
-                *(tw_it++) = wnk(l_size * 4UL, k);
-            }
-
+            tw_it = insert_tw(tw_it, l_size, n_groups, 8);
             l_size *= 8;
             n_groups *= 8;
         }
         while (l_size < sub_size_) {
-            for (std::size_t i_group = 0; i_group < n_groups; ++i_group) {
-                for (uint k = 0; k < avx::reg<T>::size; ++k) {
-                    *(tw_it++) = wnk(l_size, k + i_group * avx::reg<T>::size);
-                }
-                for (uint k = 0; k < avx::reg<T>::size; ++k) {
-                    *(tw_it++) = wnk(l_size * 2UL, k + i_group * avx::reg<T>::size);
-                }
-                for (uint k = 0; k < avx::reg<T>::size; ++k) {
-                    *(tw_it++) = wnk(l_size * 2UL, k + i_group * avx::reg<T>::size + l_size / 2);
-                }
-            }
+            tw_it = insert_tw(tw_it, l_size, n_groups, 4);
             l_size *= 4;
             n_groups *= 4;
         }
 
         if (l_size == sub_size_) {
-            for (std::size_t i_group = 0; i_group < n_groups; ++i_group) {
-                for (uint k = 0; k < avx::reg<T>::size; ++k) {
-                    *(tw_it++) = wnk(l_size, k + i_group * avx::reg<T>::size);
-                }
-            }
+            tw_it = insert_tw(tw_it, l_size, n_groups, 2);
             l_size *= 2;
             n_groups *= 2;
         };
 
         while (l_size < fft_size) {
-            for (std::size_t i_group = 0; i_group < n_groups; ++i_group) {
-                for (uint i_bf = 0; i_bf < log2i(NodeSizeRec); ++i_bf) {
-                    for (uint i_subgroup = 0; i_subgroup < (1U << i_bf); ++i_subgroup) {
-                        for (uint k = 0; k < avx::reg<T>::size; ++k) {
-                            *(tw_it++) = wnk(l_size * (1U << i_bf),
-                                             k + i_group * avx::reg<T>::size + i_subgroup * l_size / 2);
-                        }
-                    }
-                }
-            }
+            tw_it = insert_tw(tw_it, l_size, n_groups, NodeSizeRec);
             l_size *= NodeSizeRec;
             n_groups *= NodeSizeRec;
         };
         if (l_size == fft_size) {
-            for (std::size_t i_group = 0; i_group < n_groups; ++i_group) {
-                for (uint k = 0; k < avx::reg<T>::size; ++k) {
-                    *(tw_it++) = wnk(l_size, k + i_group * avx::reg<T>::size);
-                }
-            }
+            tw_it = insert_tw(tw_it, l_size, n_groups, 2);
             l_size *= 2;
             n_groups *= 2;
         };

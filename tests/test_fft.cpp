@@ -468,7 +468,7 @@ constexpr float pi = 3.14159265358979323846;
 int main() {
     int ret = 0;
 
-    for (uint i = 9; i < 10; ++i) {
+    for (uint i = 6; i < 14; ++i) {
         std::cout << (1U << i) << "\n";
 
         // ret += test_fft_float<1024>(1U << i);
