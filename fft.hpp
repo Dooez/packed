@@ -646,9 +646,9 @@ struct strategy4 {
     static constexpr align_t align_node_count{0, 1};
 };
 struct strategy8 {
-    static constexpr std::size_t target_size = 8;
+    static constexpr std::size_t node_size = 8;
 
-    using align_t = std::array<std::size_t, internal::fft::log2i(target_size)>;
+    using align_t = std::array<std::size_t, internal::fft::log2i(node_size)>;
     static constexpr align_t align_node_size{0, 4, 4};
     static constexpr align_t align_node_count{0, 2, 1};
 };
@@ -1679,7 +1679,6 @@ public:
         std::size_t l_size     = avx::reg<T>::size * 2;
         std::size_t group_size = max_size / avx::reg<T>::size / 4;
         std::size_t n_groups   = 1;
-        std::size_t tw_offset  = 0;
 
         std::size_t max_size_ = max_size;
         if constexpr (Remainder != 0) {
@@ -1738,6 +1737,7 @@ public:
         }
         return twiddle_ptr;
     };
+
     template<std::size_t PDest,
              std::size_t PTform,
              bool        Inverse = false,
@@ -2391,7 +2391,7 @@ private:
             std::size_t weight     = 1;
             using namespace internal::fft;
 
-            auto misalign         = log2i(size) % log2i(Strategy_::target_size);
+            auto misalign         = log2i(size) % log2i(Strategy_::node_size);
             auto align_node_count = Strategy_::align_node_count.at(misalign);
             if (align_node_count > 0) {
                 auto align_node_size = Strategy_::align_node_size.at(misalign);
@@ -2408,9 +2408,9 @@ private:
                     size /= 1U << misalign;
                 }
             }
-            auto target_node_count = log2i(size) / log2i(Strategy_::target_size);
+            auto target_node_count = log2i(size) / log2i(Strategy_::node_size);
             node_count += target_node_count;
-            weight *= powi(log2i(Strategy_::target_size), target_node_count);
+            weight *= powi(log2i(Strategy_::node_size), target_node_count);
             return std::pair(node_count, weight);
         };
 
@@ -2432,7 +2432,7 @@ private:
         //     sub_size_ /= 2;
         // }
 
-        auto misalign         = log2i(sub_size_ / 8) % log2i(Strategy::target_size);
+        auto misalign         = log2i(sub_size_ / 8) % log2i(Strategy::node_size);
         auto align_node_count = Strategy::align_node_count.at(misalign);
         if (false && align_node_count > 0) {
             using namespace internal::fft;
