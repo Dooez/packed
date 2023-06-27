@@ -1833,107 +1833,79 @@ public:
 
     template<std::size_t PDest, std::size_t PTform, bool Inverse = false, bool Scale = false>
     inline auto apply_subtform() {
-        constexpr auto subtform_array0 = []<std::size_t... I>(std::index_sequence<I...>) constexpr {
-            constexpr auto n     = sizeof...(I);
-            constexpr auto n_rec = log2i(StrategyRec::node_size) - 1;
-            using subtform_t     = const T* (fft_unit::*)(T*, std::size_t);
-            constexpr auto iterate_rec =
-                []<std::size_t AlignCount, std::size_t AlignSize, std::size_t... Irec>(
-                    internal::Integer<AlignCount>,
-                    internal::Integer<AlignSize>,
-                    std::index_sequence<Irec...>) constexpr {
-                    return std::array<subtform_t, n_rec>{(&fft_unit::subtransform_recursive_strategic<
-                                                          PDest,
-                                                          PTform,
-                                                          Inverse,
-                                                          Scale,
-                                                          AlignCount,
-                                                          AlignSize,
-                                                          StrategyRec::align_node_count[Irec + 1],
-                                                          StrategyRec::align_node_size[Irec + 1]>)...};
-                };
-            return std::array<std::array<subtform_t, n_rec>, n>{
-                iterate_rec(internal::Integer<Strategy::align_node_count[I + 1]>{},
-                            internal::Integer<StrategyRec::align_node_size[I + 1]>{},
-                            std::make_index_sequence<n_rec>{})...};
-        }(std::make_index_sequence<log2i(Strategy::node_size) - 1>{});
+        static constexpr auto total_array = [](){
+            constexpr auto max_rem     = log2i(Strategy::node_size);
+            constexpr auto max_rem_rec = log2i(StrategyRec::node_size);
+            using subtform_t           = const T* (fft_unit::*)(T*, std::size_t);
 
-        constexpr auto subtform_array1 = []<std::size_t... I>(std::index_sequence<I...>) constexpr {
-            constexpr auto n     = sizeof...(I);
-            constexpr auto n_rec = log2i(StrategyRec::node_size) - 1;
-            using subtform_t     = const T* (fft_unit::*)(T*, std::size_t);
-            constexpr auto iterate_rec =
-                []<std::size_t AlignCount, std::size_t AlignSize, std::size_t... Irec>(
-                    internal::Integer<AlignCount>,
-                    internal::Integer<AlignSize>,
-                    std::index_sequence<Irec...>) constexpr {
-                    return std::array<subtform_t, n_rec>{
-                        (&fft_unit::subtransform_recursive_strategic<PDest,
-                                                                     PTform,
-                                                                     Inverse,
-                                                                     Scale,
-                                                                     AlignCount,
-                                                                     AlignSize,
-                                                                     1,
-                                                                     internal::fft::powi(2, Irec + 1)>)...};
-                };
-            return std::array<std::array<subtform_t, n_rec>, n>{
-                iterate_rec(internal::Integer<Strategy::align_node_count[I + 1]>{},
-                            internal::Integer<StrategyRec::align_node_size[I + 1]>{},
-                            std::make_index_sequence<n_rec>{})...};
-        }(std::make_index_sequence<log2i(Strategy::node_size) - 1>{});
+            std::array<subtform_t, max_rem * max_rem_rec * 4> subtform_table{};
 
-        constexpr auto subtform_array2 = []<std::size_t... I>(std::index_sequence<I...>) constexpr {
-            constexpr auto n     = sizeof...(I);
-            constexpr auto n_rec = log2i(StrategyRec::node_size) - 1;
-            using subtform_t     = const T* (fft_unit::*)(T*, std::size_t);
-            constexpr auto iterate_rec =
-                []<std::size_t AlignCount, std::size_t AlignSize, std::size_t... Irec>(
-                    internal::Integer<AlignCount>,
-                    internal::Integer<AlignSize>,
-                    std::index_sequence<Irec...>) constexpr {
-                    return std::array<subtform_t, n_rec>{(&fft_unit::subtransform_recursive_strategic<
-                                                          PDest,
-                                                          PTform,
-                                                          Inverse,
-                                                          Scale,
-                                                          AlignCount,
-                                                          AlignSize,
-                                                          StrategyRec::align_node_count[Irec + 1],
-                                                          StrategyRec::align_node_size[Irec + 1]>)...};
-                };
-            return std::array<std::array<subtform_t, n_rec>, n>{
-                iterate_rec(internal::Integer<1>{},
-                            internal::Integer<internal::fft::powi(2, I + 1)>{},
-                            std::make_index_sequence<n_rec>{})...};
-        }(std::make_index_sequence<log2i(Strategy::node_size) - 1>{});
+            auto fill_strat_rec = []<std::size_t AlignCount, std::size_t AlignSize, std::size_t... I>(
+                                      subtform_t* begin,
+                                      internal::Integer<AlignCount>,
+                                      internal::Integer<AlignSize>,
+                                      std::index_sequence<I...>) {
+                ((*(begin + I) =
+                      &fft_unit::subtransform_recursive_strategic<PDest,
+                                                                  PTform,
+                                                                  Inverse,
+                                                                  Scale,
+                                                                  AlignCount,
+                                                                  AlignSize,
+                                                                  StrategyRec::align_node_count[I + 1],
+                                                                  StrategyRec::align_node_size[I + 1]>),
+                 ...);
+            };
+            auto fill_direct_rec = []<std::size_t AlignCount, std::size_t AlignSize, std::size_t... I>(
+                                       subtform_t* begin,
+                                       internal::Integer<AlignCount>,
+                                       internal::Integer<AlignSize>,
+                                       std::index_sequence<I...>) {
+                ((*(begin + I) = &fft_unit::subtransform_recursive_strategic<PDest,
+                                                                             PTform,
+                                                                             Inverse,
+                                                                             Scale,
+                                                                             AlignCount,
+                                                                             AlignSize,
+                                                                             1,
+                                                                             internal::fft::powi(2, I + 1)>),
+                 ...);
+            };
+            auto fill_strat = [fill_strat_rec, fill_direct_rec, max_rem_rec]<std::size_t... I>(
+                                  subtform_t* begin, std::index_sequence<I...>) {
+                (fill_strat_rec(begin + I * max_rem_rec,
+                                internal::Integer<Strategy::align_node_count[I + 1]>{},
+                                internal::Integer<Strategy::align_node_size[I + 1]>{},
+                                std::make_index_sequence<max_rem_rec - 1>{}),
+                 ...);
+                begin += sizeof...(I) * max_rem_rec;
+                (fill_direct_rec(begin + I * max_rem_rec,
+                                 internal::Integer<Strategy::align_node_count[I + 1]>{},
+                                 internal::Integer<Strategy::align_node_size[I + 1]>{},
+                                 std::make_index_sequence<max_rem_rec - 1>{}),
+                 ...);
+            };
 
-        constexpr auto subtform_array3 = []<std::size_t... I>(std::index_sequence<I...>) constexpr {
-            constexpr auto n     = sizeof...(I);
-            constexpr auto n_rec = log2i(StrategyRec::node_size) - 1;
-            using subtform_t     = const T* (fft_unit::*)(T*, std::size_t);
-            constexpr auto iterate_rec =
-                []<std::size_t AlignCount, std::size_t AlignSize, std::size_t... Irec>(
-                    internal::Integer<AlignCount>,
-                    internal::Integer<AlignSize>,
-                    std::index_sequence<Irec...>) constexpr {
-                    return std::array<subtform_t, n_rec>{
-                        (&fft_unit::subtransform_recursive_strategic<PDest,
-                                                                     PTform,
-                                                                     Inverse,
-                                                                     Scale,
-                                                                     AlignCount,
-                                                                     AlignSize,
-                                                                     1,
-                                                                     internal::fft::powi(2, Irec + 1)>)...};
-                };
-            return std::array<std::array<subtform_t, n_rec>, n>{
-                iterate_rec(internal::Integer<1>{},
-                            internal::Integer<internal::fft::powi(2, I + 1)>{},
-                            std::make_index_sequence<n_rec>{})...};
-        }(std::make_index_sequence<log2i(Strategy::node_size) - 1>{});
+            auto fill_direct = [fill_strat_rec, fill_direct_rec, max_rem_rec]<std::size_t... I>(
+                                   subtform_t* begin, std::index_sequence<I...>) {
+                (fill_strat_rec(begin + I * max_rem_rec,
+                                internal::Integer<1>{},
+                                internal::Integer<internal::fft::powi(2, I + 1)>{},
+                                std::make_index_sequence<max_rem_rec - 1>{}),
+                 ...);
+                begin += sizeof...(I) * max_rem_rec;
+                (fill_direct_rec(begin + I * max_rem_rec,
+                                 internal::Integer<1>{},
+                                 internal::Integer<internal::fft::powi(2, I + 1)>{},
+                                 std::make_index_sequence<max_rem_rec - 1>{}),
+                 ...);
+            };
 
-        return (this->*subtform_array0[0][0])(nullptr, 0);
+            fill_strat(subtform_table.data(), std::make_index_sequence<max_rem - 1>{});
+            fill_direct(subtform_table.data() + max_rem * max_rem_rec * 2,
+                        std::make_index_sequence<max_rem - 1>{});
+            return subtform_table;
+        }();
     };
 
     template<std::size_t PDest, std::size_t PSrc, bool First = false, typename... Optional>
