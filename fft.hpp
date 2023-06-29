@@ -642,7 +642,7 @@ struct strategy4 {
     static constexpr std::size_t node_size = 4;
 
     using align_t = std::array<std::size_t, internal::fft::log2i(node_size)>;
-    static constexpr align_t align_node_size{2, 8};
+    static constexpr align_t align_node_size{2, 2};
     static constexpr align_t align_node_count{0, 1};
 };
 struct strategy8 {
@@ -728,6 +728,26 @@ public:
             fft_internal<PData>(v_traits::data(vector));
         }
     }
+
+    template<typename Vect_>
+        requires complex_vector_of<T, Vect_>
+    void do_it(Vect_& vector) {
+        using v_traits = internal::vector_traits<Vect_>;
+        if (v_traits::size(vector) != m_size) {
+            throw(std::invalid_argument(std::string("input size (which is ")
+                                            .append(std::to_string(v_traits::size(vector)))
+                                            .append(" is not equal to fft size (which is ")
+                                            .append(std::to_string(m_size))
+                                            .append(")")));
+        }
+        constexpr auto PData = v_traits::pack_size;
+        if constexpr (!sorted) {
+            fftu_internal<PData>(v_traits::data(vector));
+        } else {
+            fft_internal_strategic<PData>(v_traits::data(vector));
+        }
+    }
+
 
     template<typename DestVect_, typename SrcVect_>
         requires complex_vector_of<T, DestVect_> && complex_vector_of<T, SrcVect_>
@@ -816,7 +836,13 @@ public:
         constexpr auto PTform = std::max(PData, avx::reg<T>::size);
         depth3_and_sort<PTform, PData>(data);
         subtransform_recursive<PData, PTform>(data, size(), std::make_index_sequence<NodeSizeRec>{});
-        apply_subtform<PData, PTform, false, false>();
+    }
+
+    template<std::size_t PData>
+    inline void fft_internal_strategic(float* data) {
+        constexpr auto PTform = std::max(PData, avx::reg<T>::size);
+        depth3_and_sort<PTform, PData>(data);
+        apply_subtform<PData, PTform, false, false>(data, size());
     }
 
     template<std::size_t PData, bool Normalized = true>
@@ -1838,7 +1864,7 @@ public:
     };
 
     template<std::size_t PDest, std::size_t PTform, bool Inverse = false, bool Scale = false>
-    inline auto apply_subtform() {
+    inline auto apply_subtform(T* data, std::size_t size) {
         static constexpr auto subtform_array = []() {
             constexpr auto n_rem         = log2i(Strategy::node_size);
             constexpr auto n_rem_rec     = log2i(StrategyRec::node_size);
@@ -1912,7 +1938,7 @@ public:
             return subtform_table;
         }();
 
-        (this->*subtform_array[m_subtform_idx])(nullptr, 0);
+        (this->*subtform_array[m_subtform_idx])(data, size);
     };
 
     template<std::size_t PDest, std::size_t PSrc, bool First = false, typename... Optional>
@@ -2565,6 +2591,8 @@ private:
         idx += small_rec ? (small ? (n_rem - 1) : n_rem) * (n_rem_rec - 1) : 0;
         idx += (small_rec ? (n_rem_rec - 1) : n_rem_rec) * (small ? (misalign - 1) : misalign);
         idx += small_rec ? (misalign_rec - 1) : misalign_rec;
+        std::cout << sub_size_ << " " << idx << " " << small << " " << misalign << " " << small_rec << " "
+                  << misalign_rec << "\n";
         return idx;
     }
 

@@ -179,11 +179,26 @@ int test_fft_float(std::size_t size) {
 
     for (std::size_t sub_size = 64; sub_size <= size * 4; sub_size *= 2) {
         auto unit = pcx::fft_unit<float, pcx::fft_order::normal>(size, sub_size);
+        int ret = 0;
+
+        vec_out = vec;
+
+        unit.do_it(vec_out);
+        for (uint i = 0; i < size; ++i) {
+            auto val = std::complex<float>(ff[i].value());
+            if (!equal_eps(val, vec_out[i].value(), 1U << (depth))) {
+                std::cout << "vec  " << size << ":" << sub_size << " #" << i << ": "
+                          << abs(val - vec_out[i].value()) << "  " << val << vec_out[i].value() << "\n";
+                ++ret;
+            }
+            if (ret > 31) {
+                return ret;
+            }
+        }
 
         vec_out = vec;
 
         unit(vec_out);
-        int ret = 0;
         for (uint i = 0; i < size; ++i) {
             auto val = std::complex<float>(ff[i].value());
             if (!equal_eps(val, vec_out[i].value(), 1U << (depth))) {
@@ -468,7 +483,7 @@ constexpr float pi = 3.14159265358979323846;
 int main() {
     int ret = 0;
 
-    for (uint i = 6; i < 14; ++i) {
+    for (uint i = 9; i < 14; ++i) {
         std::cout << (1U << i) << "\n";
 
         // ret += test_fft_float<1024>(1U << i);
