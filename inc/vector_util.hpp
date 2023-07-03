@@ -13,6 +13,18 @@
 #include <tuple>
 
 namespace pcx {
+using f32 = float;
+using f64 = float;
+
+using u64 = uint64_t;
+using u32 = uint32_t;
+using u16 = uint16_t;
+using u8  = uint8_t;
+
+using i64 = int64_t;
+using i32 = int32_t;
+using i16 = int16_t;
+using i8  = int8_t;
 
 template<typename T>
     requires std::same_as<T, float> || std::same_as<T, double>
@@ -26,7 +38,7 @@ concept power_of_two = N > 0 && (N & (N - 1)) == 0;
 template<typename T, std::size_t PackSize>
 concept packed_floating_point = std::floating_point<T> && power_of_two<PackSize>;
 
-template<typename T,std::size_t PackSize, typename Allocator>
+template<typename T, std::size_t PackSize, typename Allocator>
     requires packed_floating_point<T, PackSize>
 class vector;
 

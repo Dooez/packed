@@ -1740,11 +1740,10 @@ public:
 
     template<std::size_t PDest,
              std::size_t PTform,
-             bool        Inverse    = false,
-             bool        Scale      = false,
-             std::size_t AlignCount = 0,
-             std::size_t AlignSize  = 0>
-    inline auto subtransform_strategic(T* data, std::size_t max_size) -> const float* {
+             bool        Inverse   = false,
+             bool        Scale     = false,
+             std::size_t AlignSize = 2>
+    inline auto subtransform_strategic(T* data, std::size_t max_size, u64 align_count) -> const float* {
         constexpr auto node_size = Strategy::node_size;
 
         const auto* twiddle_ptr = m_twiddles.data();
@@ -1754,23 +1753,25 @@ public:
         std::size_t n_groups   = 1;
 
         std::size_t max_size_ = max_size;
-        if constexpr (AlignCount != 0) {
-            std::size_t group_size = max_size / avx::reg<T>::size / AlignSize;
-            if constexpr (Scale) {
-                auto scaling = avx::broadcast(static_cast<T>(1 / static_cast<double>(size)));
-                twiddle_ptr  = apply_node<AlignSize, PTform, Inverse>(
-                    data, twiddle_ptr, l_size, n_groups, group_size, scaling);
-                l_size *= AlignSize;
-                n_groups *= AlignSize;
-                group_size /= AlignSize;
-            }
-            uint i = Scale ? 1 : 0;
-            for (; i < AlignCount; ++i) {
-                twiddle_ptr =
-                    apply_node<AlignSize, PTform, Inverse>(data, twiddle_ptr, l_size, n_groups, group_size);
-                l_size *= AlignSize;
-                n_groups *= AlignSize;
-                group_size /= AlignSize;
+        if constexpr (AlignSize != 0) {
+            if (align_count != 0) {
+                std::size_t group_size = max_size / avx::reg<T>::size / AlignSize;
+                if constexpr (Scale) {
+                    auto scaling = avx::broadcast(static_cast<T>(1 / static_cast<double>(size)));
+                    twiddle_ptr  = apply_node<AlignSize, PTform, Inverse>(
+                        data, twiddle_ptr, l_size, n_groups, group_size, scaling);
+                    l_size *= AlignSize;
+                    n_groups *= AlignSize;
+                    group_size /= AlignSize;
+                }
+                uint i = Scale ? 1 : 0;
+                for (; i < align_count; ++i) {
+                    twiddle_ptr = apply_node<AlignSize, PTform, Inverse>(
+                        data, twiddle_ptr, l_size, n_groups, group_size);
+                    l_size *= AlignSize;
+                    n_groups *= AlignSize;
+                    group_size /= AlignSize;
+                }
             }
         } else if constexpr (Scale) {
             auto scaling = avx::broadcast(static_cast<T>(1 / static_cast<double>(size)));
@@ -1792,75 +1793,77 @@ public:
 
     template<std::size_t PDest,
              std::size_t PTform,
-             bool        Inverse     = false,
-             bool        Scale       = false,
-             std::size_t AlignCount  = 0,
-             std::size_t AlignSize   = 0,
-             std::size_t AlignCountR = 0,
-             std::size_t AlignSizeR  = 0>
-    inline auto subtransform_recursive_strategic(T* data, std::size_t size) -> const T* {
+             bool        Inverse    = false,
+             bool        Scale      = false,
+             std::size_t AlignSize  = 2,
+             std::size_t AlignSizeR = 2>
+    inline auto subtransform_recursive_strategic(T*          data,
+                                                 std::size_t size,
+                                                 u64         align_count     = 0,
+                                                 u64         align_rec_count = 0) -> const T* {
         if (size <= sub_size()) {
-            return subtransform_strategic<PDest, PTform, Inverse, Scale, AlignCount, AlignSize>(data, size);
+            return subtransform_strategic<PDest, PTform, Inverse, Scale, AlignSize>(data, size, align_count);
         }
-        if constexpr (AlignCountR != 0) {
-            const T* twiddle_ptr;
-            for (uint i = 0; i < AlignSizeR; ++i) {
-                twiddle_ptr = subtransform_recursive_strategic<PTform,
-                                                               PTform,
-                                                               Inverse,
-                                                               false,
-                                                               AlignCount,
-                                                               AlignSize,
-                                                               AlignCountR - 1,
-                                                               AlignSizeR>(
-                    avx::ra_addr<PTform>(data, size * i / AlignSizeR), size / AlignSizeR);
-            }
-            std::size_t n_groups = size / avx::reg<T>::size / AlignSizeR;
-            auto        scaling  = [](std::size_t size) {
-                if constexpr (Scale) {
-                    return avx::broadcast(static_cast<T>(1. / static_cast<double>(size)));
-                } else {
-                    return [] {};
+        if constexpr (AlignSizeR > 1) {
+            if (align_count > 0) {
+                const T* twiddle_ptr;
+                for (uint i = 0; i < AlignSizeR; ++i) {
+                    twiddle_ptr = subtransform_recursive_strategic<PTform,
+                                                                   PTform,
+                                                                   Inverse,
+                                                                   false,
+                                                                   AlignSize,
+                                                                   AlignSizeR>(
+                        avx::ra_addr<PTform>(data, size * i / AlignSizeR),
+                        size / AlignSizeR,
+                        align_count,
+                        align_rec_count - 1);
                 }
-            }(size);
-            for (std::size_t i_group = 0; i_group < n_groups; ++i_group) {
-                auto tw = []<std::size_t... Itw>(auto* tw_ptr, std::index_sequence<Itw...>) {
-                    return std::array<avx::cx_reg<T>, sizeof...(Itw)>{
-                        avx::cxload<avx::reg<T>::size>(tw_ptr + avx::reg<T>::size * 2 * Itw)...};
-                }(twiddle_ptr, std::make_index_sequence<AlignSizeR - 1>{});
-                twiddle_ptr += avx::reg<T>::size * 2 * (AlignSizeR - 1);
-                node_along<AlignSizeR, PDest, PTform, true, Inverse>(
-                    data, size, i_group * avx::reg<T>::size, tw, scaling);
+                std::size_t n_groups = size / avx::reg<T>::size / AlignSizeR;
+                auto        scaling  = [](std::size_t size) {
+                    if constexpr (Scale) {
+                        return avx::broadcast(static_cast<T>(1. / static_cast<double>(size)));
+                    } else {
+                        return [] {};
+                    }
+                }(size);
+                for (std::size_t i_group = 0; i_group < n_groups; ++i_group) {
+                    auto tw = []<std::size_t... Itw>(auto* tw_ptr, std::index_sequence<Itw...>) {
+                        return std::array<avx::cx_reg<T>, sizeof...(Itw)>{
+                            avx::cxload<avx::reg<T>::size>(tw_ptr + avx::reg<T>::size * 2 * Itw)...};
+                    }(twiddle_ptr, std::make_index_sequence<AlignSizeR - 1>{});
+                    twiddle_ptr += avx::reg<T>::size * 2 * (AlignSizeR - 1);
+                    node_along<AlignSizeR, PDest, PTform, true, Inverse>(
+                        data, size, i_group * avx::reg<T>::size, tw, scaling);
+                }
+                return twiddle_ptr;
             }
-            return twiddle_ptr;
-        } else {
-            constexpr auto node_size = StrategyRec::node_size;
-            const T*       twiddle_ptr;
-            for (uint i = 0; i < node_size; ++i) {
-                twiddle_ptr =
-                    subtransform_recursive_strategic<PTform, PTform, Inverse, false, AlignCount, AlignSize>(
-                        avx::ra_addr<PTform>(data, size * i / node_size), size / node_size);
-            }
+        }
+        constexpr auto node_size = StrategyRec::node_size;
+        const T*       twiddle_ptr;
+        for (uint i = 0; i < node_size; ++i) {
+            subtransform_recursive_strategic<PTform, PTform, Inverse, false, AlignSize, 0>(
+                avx::ra_addr<PTform>(data, size * i / node_size), size / node_size, align_count);
+        }
 
-            std::size_t n_groups = size / avx::reg<T>::size / node_size;
-            auto        scaling  = [](std::size_t size) {
-                if constexpr (Scale) {
-                    return avx::broadcast(static_cast<T>(1. / static_cast<double>(size)));
-                } else {
-                    return [] {};
-                }
-            }(size);
-            for (std::size_t i_group = 0; i_group < n_groups; ++i_group) {
-                auto tw = []<std::size_t... Itw>(auto* tw_ptr, std::index_sequence<Itw...>) {
-                    return std::array<avx::cx_reg<T>, sizeof...(Itw)>{
-                        avx::cxload<avx::reg<T>::size>(tw_ptr + avx::reg<T>::size * 2 * Itw)...};
-                }(twiddle_ptr, std::make_index_sequence<node_size - 1>{});
-                twiddle_ptr += avx::reg<T>::size * 2 * (node_size - 1);
-                node_along<node_size, PDest, PTform, true, Inverse>(
-                    data, size, i_group * avx::reg<T>::size, tw, scaling);
+        std::size_t n_groups = size / avx::reg<T>::size / node_size;
+        auto        scaling  = [](std::size_t size) {
+            if constexpr (Scale) {
+                return avx::broadcast(static_cast<T>(1. / static_cast<double>(size)));
+            } else {
+                return [] {};
             }
-            return twiddle_ptr;
+        }(size);
+        for (std::size_t i_group = 0; i_group < n_groups; ++i_group) {
+            auto tw = []<std::size_t... Itw>(auto* tw_ptr, std::index_sequence<Itw...>) {
+                return std::array<avx::cx_reg<T>, sizeof...(Itw)>{
+                    avx::cxload<avx::reg<T>::size>(tw_ptr + avx::reg<T>::size * 2 * Itw)...};
+            }(twiddle_ptr, std::make_index_sequence<node_size - 1>{});
+            twiddle_ptr += avx::reg<T>::size * 2 * (node_size - 1);
+            node_along<node_size, PDest, PTform, true, Inverse>(
+                data, size, i_group * avx::reg<T>::size, tw, scaling);
         }
+        return twiddle_ptr;
     };
 
     template<std::size_t PDest, std::size_t PTform, bool Inverse = false, bool Scale = false>
