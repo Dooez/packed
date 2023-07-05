@@ -7,6 +7,7 @@
 #include <array>
 #include <complex>
 #include <concepts>
+#include <cstddef>
 #include <cstring>
 #include <immintrin.h>
 #include <new>
@@ -16,11 +17,13 @@ namespace pcx {
 using f32 = float;
 using f64 = float;
 
+using uZ  = std::size_t;
 using u64 = uint64_t;
 using u32 = uint32_t;
 using u16 = uint16_t;
 using u8  = uint8_t;
 
+using iZ  = std::ptrdiff_t;
 using i64 = int64_t;
 using i32 = int32_t;
 using i16 = int16_t;
