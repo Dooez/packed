@@ -183,18 +183,18 @@ int test_fft_float(std::size_t size) {
 
         vec_out = vec;
 
-        // unit.do_it(vec_out);
-        // for (uint i = 0; i < size; ++i) {
-        //     auto val = std::complex<float>(ff[i].value());
-        //     if (!equal_eps(val, vec_out[i].value(), 1U << (depth))) {
-        //         std::cout << "vec  " << size << ":" << sub_size << " #" << i << ": "
-        //                   << abs(val - vec_out[i].value()) << "  " << val << vec_out[i].value() << "\n";
-        //         ++ret;
-        //     }
-        //     if (ret > 31) {
-        //         return ret;
-        //     }
-        // }
+        unit.do_it(vec_out);
+        for (uint i = 0; i < size; ++i) {
+            auto val = std::complex<float>(ff[i].value());
+            if (!equal_eps(val, vec_out[i].value(), 1U << (depth))) {
+                std::cout << "vec  " << size << ":" << sub_size << " #" << i << ": "
+                          << abs(val - vec_out[i].value()) << "  " << val << vec_out[i].value() << "\n";
+                ++ret;
+            }
+            if (ret > 31) {
+                return ret;
+            }
+        }
 
         vec_out = vec;
 
