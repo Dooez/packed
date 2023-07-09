@@ -639,9 +639,9 @@ enum class fft_order {
 };
 
 struct strategy4 {
-    static constexpr std::size_t node_size = 4;
+    static constexpr std::size_t node_size = 2;
 
-    static constexpr std::array<std::size_t, 2> align_node_size{8, 2};
+    static constexpr std::array<std::size_t, 2> align_node_size{2, 2};
     static constexpr std::array<std::size_t, 2> align_node_count{1, 1};
 };
 struct strategy8 {
@@ -2492,26 +2492,33 @@ private:
             std::size_t weight     = 1;
             using namespace internal::fft;
 
-            auto misalign         = log2i(size) % log2i(Strategy_::node_size);
-            auto align_node_count = Strategy_::align_node_count.at(misalign);
-            if (align_node_count > 0) {
-                auto align_node_size = Strategy_::align_node_size.at(misalign);
-                auto align_size      = powi(align_node_size, align_node_count);
-                if (size >= align_size) {
-                    size /= align_size;
-                    node_count += align_node_count;
-                    node_count += align_node_count;
-                    weight *= powi(log2i(align_node_size), align_node_count);
-                } else {
-                    node_count += misalign;
-                    size /= 1U << misalign;
-                    node_count += misalign;
-                    size /= 1U << misalign;
-                }
-            }
             auto target_node_count = log2i(size) / log2i(Strategy_::node_size);
             node_count += target_node_count;
             weight *= powi(log2i(Strategy_::node_size), target_node_count);
+
+            auto misalign = log2i(size) % log2i(Strategy_::node_size);
+            if (misalign == 0) {
+                return std::pair(target_node_count, weight);
+            }
+
+            uZ align_idx   = 0;
+            uZ align_count = 0;
+
+            using namespace internal::fft;
+            for (; align_idx < Strategy_::align_node_size.size(); ++align_idx) {
+                auto i_align_size = Strategy_::align_node_size[align_idx];
+                auto l_size       = size;
+                align_count       = 0;
+                while (l_size > 1 && log2i(l_size) % log2i(Strategy::node_size) != 0) {
+                    l_size /= i_align_size;
+                    ++align_count;
+                }
+                if (l_size > 0)
+                    break;
+            }
+            weight *= powi(log2i(Strategy_::align_node_size[align_idx]), align_count);
+            node_count += align_count;
+
             return std::pair(node_count, weight);
         };
 
@@ -2539,9 +2546,9 @@ private:
             using namespace internal::fft;
             for (; align_idx < Strategy::align_node_size.size(); ++align_idx) {
                 auto i_align_size = Strategy::align_node_size[align_idx];
-                auto size         = fft_size / sub_size_;
-                align_count       = 1;
-                while (size > 1 && size % log2i(Strategy::node_size) != 0) {
+                auto size         = sub_size_ / 8;
+                align_count       = 0;
+                while (size > 1 && log2i(size) % log2i(Strategy::node_size) != 0) {
                     size /= i_align_size;
                     ++align_count;
                 }
@@ -2557,8 +2564,8 @@ private:
             for (; align_idx_rec < StrategyRec::align_node_size.size(); ++align_idx_rec) {
                 auto i_align_size = StrategyRec::align_node_size[align_idx_rec];
                 auto size         = fft_size / sub_size_;
-                align_count_rec   = 1;
-                while (size > 1 && size % log2i(StrategyRec::node_size) != 0) {
+                align_count_rec   = 0;
+                while (size > 1 && log2i(size) % log2i(StrategyRec::node_size) != 0) {
                     size /= i_align_size;
                     ++align_count_rec;
                 }
@@ -2570,11 +2577,11 @@ private:
         idx += misalign ? (StrategyRec::align_node_size.size() + 1) * (align_idx + 1) : 0;
         idx += misalign_rec ? align_idx_rec + 1 : 0;
 
-        return std::make_tuple(idx, align_count, align_idx, align_count_rec, align_idx_rec);
+        return std::make_tuple(idx, align_count, align_idx, align_count_rec, align_idx_rec, sub_size_);
     }
 
     auto get_subtform_idx_strategic(std::size_t fft_size, std::size_t sub_size) {
-        auto [idx, align_c, align_i, align_c_rec, align_i_rec] =
+        auto [idx, align_c, align_i, align_c_rec, align_i_rec, sub_size_] =
             get_subtform_idx_strategic_(fft_size, sub_size);
 
         m_align_count     = align_c;
@@ -2584,7 +2591,7 @@ private:
 
     auto get_twiddles_strategic(std::size_t fft_size, std::size_t sub_size, allocator_type allocator)
         -> pcx::vector<real_type, avx::reg<T>::size, allocator_type> {
-        auto [idx, align_c, align_i, align_c_rec, align_i_rec] =
+        auto [idx, align_c, align_i, align_c_rec, align_i_rec, sub_size_] =
             get_subtform_idx_strategic_(fft_size, sub_size);
 
         auto       wnk   = internal::fft::wnk<T>;
@@ -2598,9 +2605,6 @@ private:
 
         std::size_t l_size   = avx::reg<T>::size * 2;
         std::size_t n_groups = 1;
-
-
-        std::size_t sub_size_ = std::min(fft_size, sub_size);
 
         auto insert_tw = [](auto tw_it, auto size, auto n_groups, auto max_btfly_size) {
             using namespace internal::fft;
@@ -2617,7 +2621,6 @@ private:
             }
             return tw_it;
         };
-
 
         auto align_node_size = Strategy::align_node_size.at(align_i);
         for (uZ i = 0; i < align_c; ++i) {
@@ -2682,83 +2685,83 @@ private:
             }
             return tw_it;
         };
-
-        auto get_cost = []<typename Strategy_>(auto size, Strategy_) {
-            std::size_t node_count = 0;
-            std::size_t weight     = 1;
-            using namespace internal::fft;
-
-            auto misalign         = log2i(size) % log2i(Strategy_::node_size);
-            auto align_node_count = Strategy_::align_node_count.at(misalign);
-            if (align_node_count > 0) {
-                auto align_node_size = Strategy_::align_node_size.at(misalign);
-                auto align_size      = powi(align_node_size, align_node_count);
-                if (size >= align_size) {
-                    size /= align_size;
-                    node_count += align_node_count;
-                    node_count += align_node_count;
-                    weight *= powi(log2i(align_node_size), align_node_count);
-                } else {
-                    node_count += misalign;
-                    size /= 1U << misalign;
-                    node_count += misalign;
-                    size /= 1U << misalign;
-                }
-            }
-            auto target_node_count = log2i(size) / log2i(Strategy_::node_size);
-            node_count += target_node_count;
-            weight *= powi(log2i(Strategy_::node_size), target_node_count);
-            return std::pair(node_count, weight);
-        };
-
-        auto rec_size = fft_size / sub_size_;
-
-        auto rec_cost  = get_cost(rec_size, StrategyRec{});
-        auto targ_cost = get_cost(sub_size_ / 8, Strategy{});
-
-        auto count1  = rec_cost.first + targ_cost.first;
-        auto weight1 = rec_cost.second * targ_cost.second;
-
-        rec_cost  = get_cost(rec_size * 2, StrategyRec{});
-        targ_cost = get_cost(sub_size_ / 2 / 8, Strategy{});
-
-        auto count2  = rec_cost.first + targ_cost.first;
-        auto weight2 = rec_cost.second * targ_cost.second;
-
-        // if ((count2 < count1) || (count2 == count1) && (weight2 > weight1)) {
-        //     sub_size_ /= 2;
-        // }
-
-        auto misalign         = log2i(sub_size_ / 8) % log2i(Strategy::node_size);
-        auto align_node_count = Strategy::align_node_count.at(misalign);
-        if (false && misalign > 0) {
-            using namespace internal::fft;
-            auto size            = sub_size_ / 8;
-            auto align_node_size = Strategy::align_node_size.at(misalign);
-            auto align_size      = powi(align_node_size, align_node_count);
-            if (size >= align_size) {
-                for (uint i = 0; i < align_node_count; ++i) {
-                    tw_it = insert_tw(tw_it, l_size, n_groups, align_node_size);
-                    l_size *= align_node_size;
-                    n_groups *= align_node_size;
-                }
-            } else {
-                for (std::size_t node_size = Strategy::node_size; node_size > 1; node_size /= 2) {
-                    if (misalign % log2i(node_size) == 0) {
-                        align_node_count = misalign / log2i(node_size);
-                        align_size       = powi(node_size, align_node_count);
-                        if (size >= align_size) {
-                            for (uint i = 0; i < align_node_count; ++i) {
-                                tw_it = insert_tw(tw_it, l_size, n_groups, align_node_size);
-                                l_size *= align_node_size;
-                                n_groups *= align_node_size;
-                            }
-                            break;
-                        }
-                    }
-                }
-            }
-        }
+        //
+        //         auto get_cost = []<typename Strategy_>(auto size, Strategy_) {
+        //             std::size_t node_count = 0;
+        //             std::size_t weight     = 1;
+        //             using namespace internal::fft;
+        //
+        //             auto misalign         = log2i(size) % log2i(Strategy_::node_size);
+        //             auto align_node_count = Strategy_::align_node_count.at(misalign);
+        //             if (align_node_count > 0) {
+        //                 auto align_node_size = Strategy_::align_node_size.at(misalign);
+        //                 auto align_size      = powi(align_node_size, align_node_count);
+        //                 if (size >= align_size) {
+        //                     size /= align_size;
+        //                     node_count += align_node_count;
+        //                     node_count += align_node_count;
+        //                     weight *= powi(log2i(align_node_size), align_node_count);
+        //                 } else {
+        //                     node_count += misalign;
+        //                     size /= 1U << misalign;
+        //                     node_count += misalign;
+        //                     size /= 1U << misalign;
+        //                 }
+        //             }
+        //             auto target_node_count = log2i(size) / log2i(Strategy_::node_size);
+        //             node_count += target_node_count;
+        //             weight *= powi(log2i(Strategy_::node_size), target_node_count);
+        //             return std::pair(node_count, weight);
+        //         };
+        //
+        //         auto rec_size = fft_size / sub_size_;
+        //
+        //         auto rec_cost  = get_cost(rec_size, StrategyRec{});
+        //         auto targ_cost = get_cost(sub_size_ / 8, Strategy{});
+        //
+        //         auto count1  = rec_cost.first + targ_cost.first;
+        //         auto weight1 = rec_cost.second * targ_cost.second;
+        //
+        //         rec_cost  = get_cost(rec_size * 2, StrategyRec{});
+        //         targ_cost = get_cost(sub_size_ / 2 / 8, Strategy{});
+        //
+        //         auto count2  = rec_cost.first + targ_cost.first;
+        //         auto weight2 = rec_cost.second * targ_cost.second;
+        //
+        //         // if ((count2 < count1) || (count2 == count1) && (weight2 > weight1)) {
+        //         //     sub_size_ /= 2;
+        //         // }
+        //
+        //         auto misalign         = log2i(sub_size_ / 8) % log2i(Strategy::node_size);
+        //         auto align_node_count = Strategy::align_node_count.at(misalign);
+        //         if (false && misalign > 0) {
+        //             using namespace internal::fft;
+        //             auto size            = sub_size_ / 8;
+        //             auto align_node_size = Strategy::align_node_size.at(misalign);
+        //             auto align_size      = powi(align_node_size, align_node_count);
+        //             if (size >= align_size) {
+        //                 for (uint i = 0; i < align_node_count; ++i) {
+        //                     tw_it = insert_tw(tw_it, l_size, n_groups, align_node_size);
+        //                     l_size *= align_node_size;
+        //                     n_groups *= align_node_size;
+        //                 }
+        //             } else {
+        //                 for (std::size_t node_size = Strategy::node_size; node_size > 1; node_size /= 2) {
+        //                     if (misalign % log2i(node_size) == 0) {
+        //                         align_node_count = misalign / log2i(node_size);
+        //                         align_size       = powi(node_size, align_node_count);
+        //                         if (size >= align_size) {
+        //                             for (uint i = 0; i < align_node_count; ++i) {
+        //                                 tw_it = insert_tw(tw_it, l_size, n_groups, align_node_size);
+        //                                 l_size *= align_node_size;
+        //                                 n_groups *= align_node_size;
+        //                             }
+        //                             break;
+        //                         }
+        //                     }
+        //                 }
+        //             }
+        //         }
         // while (l_size < sub_size_) {}
 
         if (log2i(fft_size / sub_size_) % 2 != 0) {
