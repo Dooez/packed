@@ -507,7 +507,7 @@ inline void node2(std::array<T*, 2> dest, Args... args) {
     constexpr bool Inverse = ConjTw || Reverse;
 
     using src_type       = std::array<const T*, 2>;
-    using tw_type        = avx::cx_reg<T>;
+    using tw_type        = std::array<avx::cx_reg<T>, 1>;
     constexpr bool Src   = has_type<src_type, Args...>;
     constexpr bool Tw    = has_type<tw_type, Args...>;
     constexpr bool Scale = has_type<avx::reg_t<T>, Args...>;
@@ -530,12 +530,12 @@ inline void node2(std::array<T*, 2> dest, Args... args) {
         std::tie(a0, a1) = avx::ibtfly(p0, p1);
         if constexpr (Tw) {
             auto& tw = std::get<tw_type&>(std::tie(args...));
-            a1       = avx::mul(a1, tw);
+            a1       = avx::mul(a1, tw[0]);
         }
     } else {
         if constexpr (Tw) {
             auto& tw = std::get<tw_type&>(std::tie(args...));
-            p1       = avx::mul(p1, tw);
+            p1       = avx::mul(p1, tw[0]);
         }
         std::tie(a0, a1) = avx::btfly(p0, p1);
     }
@@ -639,7 +639,7 @@ enum class fft_order {
 };
 
 struct strategy4 {
-    static constexpr std::size_t node_size = 2;
+    static constexpr std::size_t node_size = 4;
 
     static constexpr std::array<std::size_t, 2> align_node_size{2, 2};
     static constexpr std::array<std::size_t, 2> align_node_count{1, 1};
@@ -2628,7 +2628,6 @@ private:
             l_size *= align_node_size;
             n_groups *= align_node_size;
         }
-
         while (l_size < sub_size_) {
             tw_it = insert_tw(tw_it, l_size, n_groups, Strategy::node_size);
             l_size *= Strategy::node_size;
