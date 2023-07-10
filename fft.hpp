@@ -639,9 +639,9 @@ enum class fft_order {
 };
 
 struct strategy4 {
-    static constexpr std::size_t node_size = 2;
+    static constexpr std::size_t node_size = 4;
 
-    static constexpr std::array<std::size_t, 2> align_node_size{2, 2};
+    static constexpr std::array<std::size_t, 2> align_node_size{8, 2};
     static constexpr std::array<std::size_t, 2> align_node_count{1, 1};
 };
 struct strategy8 {
@@ -2494,13 +2494,12 @@ private:
             std::size_t weight     = 1;
             using namespace internal::fft;
 
-            auto target_node_count = log2i(size) / log2i(Strategy_::node_size);
-            node_count += target_node_count;
-            weight *= powi(log2i(Strategy_::node_size), target_node_count);
 
             auto misalign = log2i(size) % log2i(Strategy_::node_size);
             if (misalign == 0) {
-                return std::pair(target_node_count, weight);
+                auto target_node_count = log2i(size) / log2i(Strategy_::node_size);
+                auto target_weight     = powi(log2i(Strategy_::node_size), target_node_count);
+                return std::pair(target_node_count, target_weight);
             }
 
             uZ align_idx   = 0;
@@ -2515,8 +2514,13 @@ private:
                     l_size /= i_align_size;
                     ++align_count;
                 }
-                if (l_size > 0)
+                if (l_size > 0) {
+                    auto target_node_count = log2i(l_size) / log2i(Strategy_::node_size);
+                    auto target_weight     = powi(log2i(Strategy_::node_size), target_node_count);
+                    node_count += target_node_count;
+                    weight *= target_weight;
                     break;
+                }
             }
             weight *= powi(log2i(Strategy_::align_node_size[align_idx]), align_count);
             node_count += align_count;
@@ -2635,6 +2639,7 @@ private:
             l_size *= Strategy::node_size;
             n_groups *= Strategy::node_size;
         }
+        align_node_size = StrategyRec::align_node_size.at(align_i_rec);
         fft_size /= internal::fft::powi(align_node_size, align_c_rec);
         while (l_size <= fft_size) {
             tw_it = insert_tw(tw_it, l_size, n_groups, StrategyRec::node_size);
@@ -2642,7 +2647,6 @@ private:
             n_groups *= StrategyRec::node_size;
         };
 
-        align_node_size = StrategyRec::align_node_size.at(align_i_rec);
         for (uint i = 0; i < align_c_rec; ++i) {
             tw_it = insert_tw(tw_it, l_size, n_groups, align_node_size);
             l_size *= align_node_size;
