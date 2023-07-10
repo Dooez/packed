@@ -639,7 +639,7 @@ enum class fft_order {
 };
 
 struct strategy4 {
-    static constexpr std::size_t node_size = 4;
+    static constexpr std::size_t node_size = 2;
 
     static constexpr std::array<std::size_t, 2> align_node_size{2, 2};
     static constexpr std::array<std::size_t, 2> align_node_count{1, 1};
@@ -1751,6 +1751,8 @@ public:
         std::size_t group_size = max_size / avx::reg<T>::size;
         std::size_t n_groups   = 1;
 
+        auto sadf = AlignSize;
+
         if constexpr (AlignSize > 1) {
             if constexpr (Scale) {
                 group_size /= AlignSize;
@@ -1776,7 +1778,7 @@ public:
             l_size *= node_size;
             n_groups *= node_size;
         }
-        while (l_size < max_size) {
+        while (l_size <= max_size) {
             group_size /= node_size;
             twiddle_ptr =
                 apply_node<node_size, PTform, Inverse>(data, twiddle_ptr, l_size, n_groups, group_size);
@@ -2628,13 +2630,13 @@ private:
             l_size *= align_node_size;
             n_groups *= align_node_size;
         }
-        while (l_size < sub_size_) {
+        while (l_size <= sub_size_) {
             tw_it = insert_tw(tw_it, l_size, n_groups, Strategy::node_size);
             l_size *= Strategy::node_size;
             n_groups *= Strategy::node_size;
         }
         fft_size /= internal::fft::powi(align_node_size, align_c_rec);
-        while (l_size < fft_size) {
+        while (l_size <= fft_size) {
             tw_it = insert_tw(tw_it, l_size, n_groups, StrategyRec::node_size);
             l_size *= StrategyRec::node_size;
             n_groups *= StrategyRec::node_size;
