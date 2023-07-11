@@ -8,7 +8,7 @@
 // NOLINTBEGIN
 
 void test_que(pcx::fft_unit<float, pcx::fft_order::normal>& unit, std::vector<std::complex<float>>& v1) {
-    unit(v1);
+    unit.do_it(v1);
 }
 
 template<typename T>
@@ -177,7 +177,7 @@ int test_fft_float(std::size_t size) {
 
     auto ff = fft(vec);
 
-    for (std::size_t sub_size = size; sub_size <= size ; sub_size *= 2) {
+    for (std::size_t sub_size = 64; sub_size <= size * 2 ; sub_size *= 2) {
         auto unit = pcx::fft_unit<float, pcx::fft_order::normal>(size, sub_size);
         int ret = 0;
 
@@ -195,7 +195,6 @@ int test_fft_float(std::size_t size) {
                 return ret;
             }
         }
-return ret;
         vec_out = vec;
 
         unit(vec_out);
@@ -381,7 +380,7 @@ int test_fftu_float_0(std::size_t size) {
         svec_out[i] = vec[i];
     }
 
-    for (std::size_t sub_size = size; sub_size <= size; sub_size *= 2) {
+    for (std::size_t sub_size = 64; sub_size <= size*2; sub_size *= 2) {
         vec_out = vec;
 
         auto unit = pcx::fft_unit<float, pcx::fft_order::bit_reversed>(size, sub_size);
@@ -483,7 +482,7 @@ constexpr float pi = 3.14159265358979323846;
 int main() {
     int ret = 0;
 
-    for (uint i = 7; i < 14; ++i) {
+    for (uint i = 6; i < 14; ++i) {
         std::cout << (1U << i) << "\n";
 
         // ret += test_fft_float<1024>(1U << i);
