@@ -1779,8 +1779,8 @@ public:
                 twiddles += avx::reg<T>::size * 2 * (NodeSize - 1);
                 for (std::size_t i = 0; i < group_size; ++i) {
                     node_along<NodeSize, PDest_, PTform, true, Inverse>(
-                        data, size / 2 * NodeSize, offset, tw, scaling...);
-                    offset += size / 2 * NodeSize;
+                        data, size * (NodeSize / 2), offset, tw, scaling...);
+                    offset += size * (NodeSize / 2);
                 }
             }
             return twiddles;
