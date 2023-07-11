@@ -177,9 +177,9 @@ int test_fft_float(std::size_t size) {
 
     auto ff = fft(vec);
 
-    for (std::size_t sub_size = 64; sub_size <= size * 2 ; sub_size *= 2) {
+    for (std::size_t sub_size = 64; sub_size <= size * 2; sub_size *= 2) {
         auto unit = pcx::fft_unit<float, pcx::fft_order::normal>(size, sub_size);
-        int ret = 0;
+        int  ret  = 0;
 
         vec_out = vec;
 
@@ -193,6 +193,15 @@ int test_fft_float(std::size_t size) {
             }
             if (ret > 31) {
                 return ret;
+            }
+        }
+        unit.undo_it(vec_out);
+        for (uint i = 0; i < size; ++i) {
+            auto val = std::complex<float>(vec[i].value());
+            if (!equal_eps(val, vec_out[i].value(), 1U << (depth))) {
+                std::cout << "ifftvec  " << size << ":" << sub_size << " #" << i << ": "
+                          << abs(val - vec_out[i].value()) << "  " << val << vec_out[i].value() << "\n";
+                return 1;
             }
         }
         vec_out = vec;
@@ -380,7 +389,7 @@ int test_fftu_float_0(std::size_t size) {
         svec_out[i] = vec[i];
     }
 
-    for (std::size_t sub_size = 64; sub_size <= size*2; sub_size *= 2) {
+    for (std::size_t sub_size = 64; sub_size <= size * 2; sub_size *= 2) {
         vec_out = vec;
 
         auto unit = pcx::fft_unit<float, pcx::fft_order::bit_reversed>(size, sub_size);
@@ -474,7 +483,7 @@ int test_par_fft_float(std::size_t size) {
            test_1.template operator()<pcx::fft_order::bit_reversed>(size) +
            test_1.template operator()<pcx::fft_order::bit_reversed, true>(size) +
            test_1.template operator()<pcx::fft_order::bit_reversed, false, true>(size);
-           test_1.template operator()<pcx::fft_order::bit_reversed, true, true>(size);
+    test_1.template operator()<pcx::fft_order::bit_reversed, true, true>(size);
 }
 
 constexpr float pi = 3.14159265358979323846;
