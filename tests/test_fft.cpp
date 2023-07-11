@@ -168,11 +168,12 @@ int test_fft_float(std::size_t size) {
     auto depth = log2i(size);
 
     auto vec      = pcx::vector<float, PackSize, std::allocator<float>>(size);
+    auto svec = std::vector<std::complex<float>>(size);
     auto vec_out  = pcx::vector<float, PackSize, std::allocator<float>>(size);
     auto svec_out = std::vector<std::complex<float>>(size);
     for (uint i = 0; i < size; ++i) {
         vec[i]      = std::exp(std::complex(0.F, 2 * pi * i / size * 13.37F));
-        svec_out[i] = vec[i];
+        svec[i] = vec[i];
     }
 
     auto ff = fft(vec);
@@ -187,7 +188,7 @@ int test_fft_float(std::size_t size) {
         for (uint i = 0; i < size; ++i) {
             auto val = std::complex<float>(ff[i].value());
             if (!equal_eps(val, vec_out[i].value(), 1U << (depth))) {
-                std::cout << "vec  " << size << ":" << sub_size << " #" << i << ": "
+                std::cout << "vec str " << size << ":" << sub_size << " #" << i << ": "
                           << abs(val - vec_out[i].value()) << "  " << val << vec_out[i].value() << "\n";
                 ++ret;
             }
@@ -199,11 +200,34 @@ int test_fft_float(std::size_t size) {
         for (uint i = 0; i < size; ++i) {
             auto val = std::complex<float>(vec[i].value());
             if (!equal_eps(val, vec_out[i].value(), 1U << (depth))) {
-                std::cout << "ifftvec  " << size << ":" << sub_size << " #" << i << ": "
+                std::cout << "ifftvec str  " << size << ":" << sub_size << " #" << i << ": "
                           << abs(val - vec_out[i].value()) << "  " << val << vec_out[i].value() << "\n";
                 return 1;
             }
         }
+        svec_out = svec;
+        unit.do_it(svec_out);
+        for (uint i = 0; i < size; ++i) {
+            auto val = std::complex<float>(ff[i].value());
+            if (!equal_eps(val, svec_out[i], 1U << (depth))) {
+                std::cout << "svec str  " << size << ":" << sub_size << " #" << i << ": "
+                          << abs(val - svec_out[i]) << "  " << val << svec_out[i] << "\n";
+                ++ret;
+            }
+            if (ret > 31) {
+                return ret;
+            }
+        }
+        unit.undo_it(svec_out);
+        for (uint i = 0; i < size; ++i) {
+            auto val = std::complex<float>(vec[i].value());
+            if (!equal_eps(val, svec_out[i], 1U << (depth))) {
+                std::cout << "ifft svec str " << size << ":" << sub_size << " #" << i << ": "
+                          << abs(val - svec_out[i]) << "  " << val << svec_out[i] << "\n";
+                return 1;
+            }
+        }
+        svec_out = svec;
         vec_out = vec;
 
         unit(vec_out);
@@ -491,7 +515,7 @@ constexpr float pi = 3.14159265358979323846;
 int main() {
     int ret = 0;
 
-    for (uint i = 6; i < 14; ++i) {
+    for (uint i = 8; i < 14; ++i) {
         std::cout << (1U << i) << "\n";
 
         // ret += test_fft_float<1024>(1U << i);

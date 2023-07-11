@@ -637,7 +637,13 @@ enum class fft_order {
     unordered
 };
 
-struct strategy4 {
+struct strategy42 {
+    static constexpr std::size_t node_size = 4;
+
+    static constexpr std::array<std::size_t, 2> align_node_size{2, 2};
+    static constexpr std::array<std::size_t, 2> align_node_count{1, 1};
+};
+struct strategy48 {
     static constexpr std::size_t node_size = 4;
 
     static constexpr std::array<std::size_t, 2> align_node_size{8, 2};
@@ -655,8 +661,8 @@ template<typename T,
          typename Allocator      = std::allocator<T>,
          std::size_t SubSize     = pcx::dynamic_size,
          std::size_t NodeSizeRec = 4,
-         typename Strategy       = strategy4,
-         typename StrategyRec    = strategy4>
+         typename Strategy       = strategy48,
+         typename StrategyRec    = strategy8>
     requires(std::same_as<T, float> || std::same_as<T, double>) &&
             (pcx::power_of_two<SubSize> && SubSize >= pcx::default_pack_size<T> ||
              (SubSize == pcx::dynamic_size))
@@ -726,6 +732,17 @@ public:
         }
     }
 
+    template<std::size_t PackSize = 1>
+    void fft_raw(T* data) {
+        if constexpr (!sorted) {
+            fftu_internal<PackSize>(data);
+        } else {
+            constexpr auto PTform = std::max(PackSize, avx::reg<T>::size);
+            depth3_and_sort<PTform, PackSize, false>(data);
+            apply_subtform<PackSize, PTform, false, false>(data, size());
+        }
+    }
+
     template<typename Vect_>
         requires complex_vector_of<T, Vect_>
     void do_it(Vect_& vector) {
@@ -741,7 +758,9 @@ public:
         if constexpr (!sorted) {
             fftu_internal<PData>(v_traits::data(vector));
         } else {
-            fft_internal_strategic<PData>(v_traits::data(vector));
+            constexpr auto PTform = std::max(PData, avx::reg<T>::size);
+            depth3_and_sort<PTform, PData, false>(v_traits::data(vector));
+            apply_subtform<PData, PTform, false, false>(v_traits::data(vector), size());
         }
     }
 
@@ -1730,30 +1749,6 @@ public:
         return twiddle_ptr;
     };
 
-    template<std::size_t NodeSize, std::size_t PTform, bool Inverse>
-    inline auto apply_node(T*          data,
-                           const T*    twiddles,
-                           std::size_t size,
-                           std::size_t n_groups,
-                           std::size_t group_size,
-                           auto... scaling) -> const T* {
-        for (std::size_t i_group = 0; i_group < n_groups; ++i_group) {
-            std::size_t offset = i_group * avx::reg<T>::size;
-
-            auto tw = []<std::size_t... I>(auto tw_ptr, std::index_sequence<I...>) {
-                return std::array<avx::cx_reg<T>, sizeof...(I)>{
-                    avx::cxload<avx::reg<T>::size>(tw_ptr + avx::reg<T>::size * 2 * I)...};
-            }(twiddles, std::make_index_sequence<NodeSize - 1>{});
-            twiddles += avx::reg<T>::size * 2 * (NodeSize - 1);
-            for (std::size_t i = 0; i < group_size; ++i) {
-                node_along<NodeSize, PTform, PTform, true, Inverse>(
-                    data, size / 2 * NodeSize, offset, tw, scaling...);
-                offset += size / 2 * NodeSize;
-            }
-        }
-        return twiddles;
-    }
-
     template<std::size_t PDest,
              std::size_t PTform,
              bool        Inverse   = false,
@@ -1763,9 +1758,8 @@ public:
         namespace d_                = internal;
         constexpr auto node_size    = Strategy::node_size;
         constexpr auto node_size_ce = d_::Integer<node_size>{};
-        constexpr auto ptform_ce    = d_::Integer<PDest>{};
+        constexpr auto ptform_ce    = d_::Integer<PTform>{};
         constexpr auto pdest_ce     = d_::Integer<PDest>{};
-
 
         auto apply_node_l = []<std::size_t NodeSize, std::size_t PDest_>(d_::Integer<NodeSize>,
                                                                          d_::Integer<PDest_>,
@@ -1784,7 +1778,7 @@ public:
                 }(twiddles, std::make_index_sequence<NodeSize - 1>{});
                 twiddles += avx::reg<T>::size * 2 * (NodeSize - 1);
                 for (std::size_t i = 0; i < group_size; ++i) {
-                    node_along<NodeSize, PTform, PTform, true, Inverse>(
+                    node_along<NodeSize, PDest_, PTform, true, Inverse>(
                         data, size / 2 * NodeSize, offset, tw, scaling...);
                     offset += size / 2 * NodeSize;
                 }
@@ -1829,7 +1823,7 @@ public:
         }
 
         if constexpr (PDest != PTform) {
-            max_size /= 2;
+            max_size /= node_size;
         }
         while (l_size <= max_size) {
             group_size /= node_size;
@@ -1854,10 +1848,10 @@ public:
              bool        Scale      = false,
              std::size_t AlignSize  = 2,
              std::size_t AlignSizeR = 2>
-    inline auto subtransform_recursive_strategic(T*          data,
-                                                 std::size_t size,
-                                                 u64         align_count     = 0,
-                                                 u64         align_rec_count = 0) -> const T* {
+    auto subtransform_recursive_strategic(T*          data,
+                                          std::size_t size,
+                                          u64         align_count     = 0,
+                                          u64         align_rec_count = 0) -> const T* {
         if (size <= sub_size()) {
             return subtransform_strategic<PDest, PTform, Inverse, Scale, AlignSize>(data, size, align_count);
         }
