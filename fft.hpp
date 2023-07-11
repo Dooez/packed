@@ -134,7 +134,8 @@ struct order {
         } else {
             return std::array<std::size_t, sizeof...(N)>{N...};
         }
-    }(std::make_index_sequence<Size - 1>{});
+    }
+    (std::make_index_sequence<Size - 1>{});
 };
 
 template<typename T,
@@ -662,7 +663,7 @@ template<typename T,
          std::size_t SubSize     = pcx::dynamic_size,
          std::size_t NodeSizeRec = 4,
          typename Strategy       = strategy48,
-         typename StrategyRec    = strategy8>
+         typename StrategyRec    = strategy42>
     requires(std::same_as<T, float> || std::same_as<T, double>) &&
             (pcx::power_of_two<SubSize> && SubSize >= pcx::default_pack_size<T> ||
              (SubSize == pcx::dynamic_size))
@@ -1741,14 +1742,15 @@ public:
             auto tw = []<std::size_t... Itw>(auto* tw_ptr, std::index_sequence<Itw...>) {
                 return std::array<avx::cx_reg<T>, sizeof...(Itw)>{
                     avx::cxload<avx::reg<T>::size>(tw_ptr + avx::reg<T>::size * 2 * Itw)...};
-            }(twiddle_ptr, std::make_index_sequence<NodeSize - 1>{});
+            }
+            (twiddle_ptr, std::make_index_sequence<NodeSize - 1>{});
             twiddle_ptr += avx::reg<T>::size * 2 * (NodeSize - 1);
             node_along<NodeSize, PDest, PTform, true, Inverse>(
                 data, size, i_group * avx::reg<T>::size, tw, scaling);
         }
         return twiddle_ptr;
     };
-
+    
     template<std::size_t PDest,
              std::size_t PTform,
              bool        Inverse   = false,
@@ -1757,34 +1759,6 @@ public:
     inline auto subtransform_strategic(T* data, std::size_t max_size, u64 align_count) -> const float* {
         namespace d_                = internal;
         constexpr auto node_size    = Strategy::node_size;
-        constexpr auto node_size_ce = d_::Integer<node_size>{};
-        constexpr auto ptform_ce    = d_::Integer<PTform>{};
-        constexpr auto pdest_ce     = d_::Integer<PDest>{};
-
-        auto apply_node_l = []<std::size_t NodeSize, std::size_t PDest_>(d_::Integer<NodeSize>,
-                                                                         d_::Integer<PDest_>,
-                                                                         T*          data,
-                                                                         const T*    twiddles,
-                                                                         std::size_t size,
-                                                                         std::size_t n_groups,
-                                                                         std::size_t group_size,
-                                                                         auto... scaling) -> const T* {
-            for (std::size_t i_group = 0; i_group < n_groups; ++i_group) {
-                std::size_t offset = i_group * avx::reg<T>::size;
-
-                auto tw = []<std::size_t... I>(auto tw_ptr, std::index_sequence<I...>) {
-                    return std::array<avx::cx_reg<T>, sizeof...(I)>{
-                        avx::cxload<avx::reg<T>::size>(tw_ptr + avx::reg<T>::size * 2 * I)...};
-                }(twiddles, std::make_index_sequence<NodeSize - 1>{});
-                twiddles += avx::reg<T>::size * 2 * (NodeSize - 1);
-                for (std::size_t i = 0; i < group_size; ++i) {
-                    node_along<NodeSize, PDest_, PTform, true, Inverse>(
-                        data, size * (NodeSize / 2), offset, tw, scaling...);
-                    offset += size * (NodeSize / 2);
-                }
-            }
-            return twiddles;
-        };
 
         const auto* twiddle_ptr = m_twiddles_strategic.data();
 
@@ -1797,27 +1771,69 @@ public:
             if constexpr (Scale) {
                 group_size /= AlignSize;
                 auto scaling = avx::broadcast(static_cast<T>(1 / static_cast<double>(size())));
-                twiddle_ptr  = apply_node_l(
-                    align_ce, ptform_ce, data, twiddle_ptr, l_size, n_groups, group_size, scaling);
-                // apply_node<AlignSize, PTform, Inverse>(data, twiddle_ptr, l_size, n_groups, group_size, scaling);
+                
+                for (std::size_t i_group = 0; i_group < n_groups; ++i_group) {
+                    std::size_t offset = i_group * avx::reg<T>::size;
+
+                    auto tw = []<std::size_t... I>(auto tw_ptr, std::index_sequence<I...>) {
+                        return std::array<avx::cx_reg<T>, sizeof...(I)>{
+                            avx::cxload<avx::reg<T>::size>(tw_ptr + avx::reg<T>::size * 2 * I)...};
+                    }
+                    (twiddle_ptr, std::make_index_sequence<AlignSize - 1>{});
+                    twiddle_ptr += avx::reg<T>::size * 2 * (AlignSize - 1);
+                    for (std::size_t i = 0; i < group_size; ++i) {
+                        node_along<AlignSize, PTform, PTform, true, Inverse>(
+                            data, l_size * (AlignSize / 2), offset, tw, scaling);
+                        offset += l_size * (AlignSize / 2);
+                    }
+                }
+                
                 l_size *= AlignSize;
                 n_groups *= AlignSize;
             }
             uint i = Scale ? 1 : 0;
             for (; i < align_count; ++i) {
                 group_size /= AlignSize;
-                twiddle_ptr =
-                    apply_node_l(align_ce, ptform_ce, data, twiddle_ptr, l_size, n_groups, group_size);
-                // apply_node<AlignSize, PTform, Inverse>(data, twiddle_ptr, l_size, n_groups, group_size);
+                
+                for (std::size_t i_group = 0; i_group < n_groups; ++i_group) {
+                    std::size_t offset = i_group * avx::reg<T>::size;
+
+                    auto tw = []<std::size_t... I>(auto tw_ptr, std::index_sequence<I...>) {
+                        return std::array<avx::cx_reg<T>, sizeof...(I)>{
+                            avx::cxload<avx::reg<T>::size>(tw_ptr + avx::reg<T>::size * 2 * I)...};
+                    }
+                    (twiddle_ptr, std::make_index_sequence<AlignSize - 1>{});
+                    twiddle_ptr += avx::reg<T>::size * 2 * (AlignSize - 1);
+                    for (std::size_t i = 0; i < group_size; ++i) {
+                        node_along<AlignSize, PTform, PTform, true, Inverse>(
+                            data, l_size * (AlignSize / 2), offset, tw);
+                        offset += l_size * (AlignSize / 2);
+                    }
+                }
+
                 l_size *= AlignSize;
                 n_groups *= AlignSize;
             }
         } else if constexpr (Scale) {
             group_size /= node_size;
             auto scaling = avx::broadcast(static_cast<T>(1 / static_cast<double>(size())));
-            twiddle_ptr  = apply_node_l(
-                node_size_ce, ptform_ce, data, twiddle_ptr, l_size, n_groups, group_size, scaling);
-            // apply_node<node_size, PTform, Inverse>(data, twiddle_ptr, l_size, n_groups, group_size, scaling);
+
+            for (std::size_t i_group = 0; i_group < n_groups; ++i_group) {
+                std::size_t offset = i_group * avx::reg<T>::size;
+
+                auto tw = []<std::size_t... I>(auto tw_ptr, std::index_sequence<I...>) {
+                    return std::array<avx::cx_reg<T>, sizeof...(I)>{
+                        avx::cxload<avx::reg<T>::size>(tw_ptr + avx::reg<T>::size * 2 * I)...};
+                }
+                (twiddle_ptr, std::make_index_sequence<node_size - 1>{});
+                twiddle_ptr += avx::reg<T>::size * 2 * (node_size - 1);
+                for (std::size_t i = 0; i < group_size; ++i) {
+                    node_along<node_size, PTform, PTform, true, Inverse>(
+                        data, l_size * (node_size / 2), offset, tw, scaling);
+                    offset += l_size * (node_size / 2);
+                }
+            }
+
             l_size *= node_size;
             n_groups *= node_size;
         }
@@ -1827,17 +1843,42 @@ public:
         }
         while (l_size <= max_size) {
             group_size /= node_size;
-            twiddle_ptr =
-                apply_node_l(node_size_ce, ptform_ce, data, twiddle_ptr, l_size, n_groups, group_size);
-            // apply_node<node_size, PTform, Inverse>(data, twiddle_ptr, l_size, n_groups, group_size);
+            for (std::size_t i_group = 0; i_group < n_groups; ++i_group) {
+                std::size_t offset = i_group * avx::reg<T>::size;
+
+                auto tw = []<std::size_t... I>(auto tw_ptr, std::index_sequence<I...>) {
+                    return std::array<avx::cx_reg<T>, sizeof...(I)>{
+                        avx::cxload<avx::reg<T>::size>(tw_ptr + avx::reg<T>::size * 2 * I)...};
+                }
+                (twiddle_ptr, std::make_index_sequence<node_size - 1>{});
+                twiddle_ptr += avx::reg<T>::size * 2 * (node_size - 1);
+                for (std::size_t i = 0; i < group_size; ++i) {
+                    node_along<node_size, PTform, PTform, true, Inverse>(
+                        data, l_size * (node_size / 2), offset, tw);
+                    offset += l_size * (node_size / 2);
+                }
+            }
             l_size *= node_size;
             n_groups *= node_size;
         }
         if constexpr (PDest != PTform) {
             group_size /= node_size;
-            twiddle_ptr =
-                apply_node_l(node_size_ce, pdest_ce, data, twiddle_ptr, l_size, n_groups, group_size);
-            // apply_node<node_size, PTform, Inverse>(data, twiddle_ptr, l_size, n_groups, group_size);
+
+            for (std::size_t i_group = 0; i_group < n_groups; ++i_group) {
+                std::size_t offset = i_group * avx::reg<T>::size;
+
+                auto tw = []<std::size_t... I>(auto tw_ptr, std::index_sequence<I...>) {
+                    return std::array<avx::cx_reg<T>, sizeof...(I)>{
+                        avx::cxload<avx::reg<T>::size>(tw_ptr + avx::reg<T>::size * 2 * I)...};
+                }
+                (twiddle_ptr, std::make_index_sequence<node_size - 1>{});
+                twiddle_ptr += avx::reg<T>::size * 2 * (node_size - 1);
+                for (std::size_t i = 0; i < group_size; ++i) {
+                    node_along<node_size, PDest, PTform, true, Inverse>(
+                        data, l_size * (node_size / 2), offset, tw);
+                    offset += l_size * (node_size / 2);
+                }
+            }
         }
         return twiddle_ptr;
     };
@@ -1882,7 +1923,8 @@ public:
                     auto tw = []<std::size_t... Itw>(auto* tw_ptr, std::index_sequence<Itw...>) {
                         return std::array<avx::cx_reg<T>, sizeof...(Itw)>{
                             avx::cxload<avx::reg<T>::size>(tw_ptr + avx::reg<T>::size * 2 * Itw)...};
-                    }(twiddle_ptr, std::make_index_sequence<AlignSizeR - 1>{});
+                    }
+                    (twiddle_ptr, std::make_index_sequence<AlignSizeR - 1>{});
                     twiddle_ptr += avx::reg<T>::size * 2 * (AlignSizeR - 1);
                     node_along<AlignSizeR, PDest, PTform, true, Inverse>(
                         data, size, i_group * avx::reg<T>::size, tw, scaling);
@@ -1909,7 +1951,8 @@ public:
             auto tw = []<std::size_t... Itw>(auto* tw_ptr, std::index_sequence<Itw...>) {
                 return std::array<avx::cx_reg<T>, sizeof...(Itw)>{
                     avx::cxload<avx::reg<T>::size>(tw_ptr + avx::reg<T>::size * 2 * Itw)...};
-            }(twiddle_ptr, std::make_index_sequence<node_size - 1>{});
+            }
+            (twiddle_ptr, std::make_index_sequence<node_size - 1>{});
             twiddle_ptr += avx::reg<T>::size * 2 * (node_size - 1);
             node_along<node_size, PDest, PTform, true, Inverse>(
                 data, size, i_group * avx::reg<T>::size, tw, scaling);
@@ -1934,9 +1977,9 @@ public:
             std::array<subtform_t, n_combine_rem> subtform_table{};
 
             constexpr auto fill_rec = [=]<std::size_t AlignSize, std::size_t... I>(    //
-                                          subtform_t* begin,
-                                          internal::Integer<AlignSize>,
-                                          std::index_sequence<I...>) {
+                subtform_t * begin,
+                internal::Integer<AlignSize>,
+                std::index_sequence<I...>) {
                 ((*(begin + I) = &fft_unit::subtransform_recursive_strategic<PDest,
                                                                              PTform,
                                                                              Inverse,
@@ -1945,13 +1988,14 @@ public:
                                                                              align_rec[I]>),
                  ...);
             };
-            [=]<std::size_t... I>(subtform_t* begin, std::index_sequence<I...>) {
+            [=]<std::size_t... I>(subtform_t * begin, std::index_sequence<I...>) {
                 fill_rec(begin, internal::Integer<0>{}, std::make_index_sequence<align_rec.size()>{});
                 (fill_rec(begin + (I + 1) * align_rec.size(),
                           internal::Integer<Strategy::align_node_size[I]>{},
                           std::make_index_sequence<align_rec.size()>{}),
                  ...);
-            }(subtform_table.data(), std::make_index_sequence<Strategy::align_node_size.size()>{});
+            }
+            (subtform_table.data(), std::make_index_sequence<Strategy::align_node_size.size()>{});
             return subtform_table;
         }();
         (this->*subtform_array[m_subtform_idx])(data, size, m_align_count, m_align_count_rec);
@@ -2147,7 +2191,8 @@ public:
                     ...
                 };
             }
-        }(twiddle_ptr, std::make_index_sequence<NodeSize - 1>{});
+        }
+        (twiddle_ptr, std::make_index_sequence<NodeSize - 1>{});
         twiddle_ptr += 2 * (NodeSize - 1);
         for (std::size_t i_group = 0; i_group < size / NodeSize / avx::reg<T>::size; ++i_group) {
             node_along<NodeSize, PTform, PSrc, false>(
@@ -2383,7 +2428,7 @@ public:
              bool        ConjTw  = false,
              bool        Reverse = false,
              typename... Optional>
-    static inline void node_along(T* dest, std::size_t l_size, std::size_t offset, Optional... optional) {
+    static void node_along(T* dest, std::size_t l_size, std::size_t offset, Optional... optional) {
         constexpr auto PLoad  = std::max(PSrc, avx::reg<T>::size);
         constexpr auto PStore = std::max(PDest, avx::reg<T>::size);
 
@@ -2399,10 +2444,10 @@ public:
         constexpr auto Idxs = std::make_index_sequence<NodeSize>{};
         constexpr auto get_data_array =
             []<std::size_t... I>(auto data, auto offset, auto l_size, std::index_sequence<I...>) {
-                constexpr auto Size = sizeof...(I);
-                return std::array<decltype(data), Size>{
-                    avx::ra_addr<PStore>(data, offset + l_size / Size * I)...};
-            };
+            constexpr auto Size = sizeof...(I);
+            return std::array<decltype(data), Size>{
+                avx::ra_addr<PStore>(data, offset + l_size / Size * I)...};
+        };
 
         auto dst = get_data_array(dest, offset, l_size, Idxs);
 
@@ -2420,7 +2465,8 @@ public:
                     auto src = []<std::size_t... I>(const T* ptr, std::index_sequence<I...>) {
                         constexpr auto Size = sizeof...(I);
                         return std::array<const T*, Size>{ptr + 0 * I...};
-                    }(zeros.data(), Idxs);
+                    }
+                    (zeros.data(), Idxs);
 
                     for (uint i = 0; i < NodeSize; ++i) {
                         auto           l_offset = offset + l_size / NodeSize * i;
