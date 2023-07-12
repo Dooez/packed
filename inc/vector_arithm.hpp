@@ -11,7 +11,7 @@
 
 namespace pcx {
 
-namespace avx {
+namespace simd {
 
 inline auto add(reg_t<float> lhs, reg_t<float> rhs) -> reg_t<float> {
     return _mm256_add_ps(lhs, rhs);
@@ -126,51 +126,51 @@ inline auto mul(cx_reg<T, true> lhs, cx_reg<T, true> rhs) -> cx_reg<T, false> {
 
 template<typename T>
 inline auto div(cx_reg<T, false> lhs, cx_reg<T, false> rhs) -> cx_reg<T, false> {
-    auto rhs_abs = avx::mul(rhs.real, rhs.real);
-    auto real_   = avx::mul(lhs.real, rhs.real);
-    auto imag_   = avx::mul(lhs.real, rhs.imag);
+    auto rhs_abs = simd::mul(rhs.real, rhs.real);
+    auto real_   = simd::mul(lhs.real, rhs.real);
+    auto imag_   = simd::mul(lhs.real, rhs.imag);
 
-    rhs_abs = avx::fmadd(rhs.imag, rhs.imag, rhs_abs);
-    real_   = avx::fmadd(lhs.imag, rhs.imag, real_);
-    imag_   = avx::fmsub(lhs.imag, rhs.real, imag_);
+    rhs_abs = simd::fmadd(rhs.imag, rhs.imag, rhs_abs);
+    real_   = simd::fmadd(lhs.imag, rhs.imag, real_);
+    imag_   = simd::fmsub(lhs.imag, rhs.real, imag_);
 
-    return {avx::div(real_, rhs_abs), avx::div(imag_, rhs_abs)};
+    return {simd::div(real_, rhs_abs), simd::div(imag_, rhs_abs)};
 }
 template<typename T>
 inline auto div(cx_reg<T, true> lhs, cx_reg<T, false> rhs) -> cx_reg<T, false> {
-    auto rhs_abs = avx::mul(rhs.real, rhs.real);
-    auto real_   = avx::mul(lhs.real, rhs.real);
-    auto imag_   = avx::mul(lhs.real, rhs.imag);
+    auto rhs_abs = simd::mul(rhs.real, rhs.real);
+    auto real_   = simd::mul(lhs.real, rhs.real);
+    auto imag_   = simd::mul(lhs.real, rhs.imag);
 
-    rhs_abs = avx::fmadd(rhs.imag, rhs.imag, rhs_abs);
-    real_   = avx::fnmadd(lhs.imag, rhs.imag, real_);
-    imag_   = avx::fnmsub(lhs.imag, rhs.real, imag_);
+    rhs_abs = simd::fmadd(rhs.imag, rhs.imag, rhs_abs);
+    real_   = simd::fnmadd(lhs.imag, rhs.imag, real_);
+    imag_   = simd::fnmsub(lhs.imag, rhs.real, imag_);
 
-    return {avx::div(real_, rhs_abs), avx::div(imag_, rhs_abs)};
+    return {simd::div(real_, rhs_abs), simd::div(imag_, rhs_abs)};
 }
 template<typename T>
 inline auto div(cx_reg<T, false> lhs, cx_reg<T, true> rhs) -> cx_reg<T, false> {
-    auto rhs_abs = avx::mul(rhs.real, rhs.real);
-    auto real_   = avx::mul(lhs.real, rhs.real);
-    auto imag_   = avx::mul(lhs.real, rhs.imag);
+    auto rhs_abs = simd::mul(rhs.real, rhs.real);
+    auto real_   = simd::mul(lhs.real, rhs.real);
+    auto imag_   = simd::mul(lhs.real, rhs.imag);
 
-    rhs_abs = avx::fmadd(rhs.imag, rhs.imag, rhs_abs);
-    real_   = avx::fnmadd(lhs.imag, rhs.imag, real_);
-    imag_   = avx::fmadd(lhs.imag, rhs.real, imag_);
+    rhs_abs = simd::fmadd(rhs.imag, rhs.imag, rhs_abs);
+    real_   = simd::fnmadd(lhs.imag, rhs.imag, real_);
+    imag_   = simd::fmadd(lhs.imag, rhs.real, imag_);
 
-    return {avx::div(real_, rhs_abs), avx::div(imag_, rhs_abs)};
+    return {simd::div(real_, rhs_abs), simd::div(imag_, rhs_abs)};
 }
 template<typename T>
 inline auto div(cx_reg<T, true> lhs, cx_reg<T, true> rhs) -> cx_reg<T, false> {
-    auto rhs_abs = avx::mul(rhs.real, rhs.real);
-    auto real_   = avx::mul(lhs.real, rhs.real);
-    auto imag_   = avx::mul(lhs.real, rhs.imag);
+    auto rhs_abs = simd::mul(rhs.real, rhs.real);
+    auto real_   = simd::mul(lhs.real, rhs.real);
+    auto imag_   = simd::mul(lhs.real, rhs.imag);
 
-    rhs_abs = avx::fmadd(rhs.imag, rhs.imag, rhs_abs);
-    real_   = avx::fmadd(lhs.imag, rhs.imag, real_);
-    imag_   = avx::fnmadd(lhs.imag, rhs.real, imag_);
+    rhs_abs = simd::fmadd(rhs.imag, rhs.imag, rhs_abs);
+    real_   = simd::fmadd(lhs.imag, rhs.imag, real_);
+    imag_   = simd::fnmadd(lhs.imag, rhs.real, imag_);
 
-    return {avx::div(real_, rhs_abs), avx::div(imag_, rhs_abs)};
+    return {simd::div(real_, rhs_abs), simd::div(imag_, rhs_abs)};
 }
 
 template<typename T, bool Conj>
@@ -193,15 +193,15 @@ inline auto sub(reg_t<T> lhs, cx_reg<T, Conj> rhs) -> cx_reg<T, false> {
 }
 template<typename T, bool Conj>
 inline auto mul(reg_t<T> lhs, cx_reg<T, Conj> rhs) -> cx_reg<T, Conj> {
-    return {avx::mul(lhs, rhs.real), avx::mul(lhs, rhs.imag)};
+    return {simd::mul(lhs, rhs.real), simd::mul(lhs, rhs.imag)};
 }
 template<typename T, bool Conj>
 inline auto div(reg_t<T> lhs, cx_reg<T, Conj> rhs) -> cx_reg<T, false> {
-    auto     rhs_abs = avx::mul(rhs.real, rhs.real);
-    auto     real_   = avx::mul(lhs, rhs.real);
+    auto     rhs_abs = simd::mul(rhs.real, rhs.real);
+    auto     real_   = simd::mul(lhs, rhs.real);
     reg_t<T> imag_;
     if constexpr (Conj) {
-        imag_ = avx::mul(lhs, rhs.imag);
+        imag_ = simd::mul(lhs, rhs.imag);
     } else {
         reg_t<T> zero;
         if constexpr (std::same_as<T, float>) {
@@ -209,11 +209,11 @@ inline auto div(reg_t<T> lhs, cx_reg<T, Conj> rhs) -> cx_reg<T, false> {
         } else {
             zero = _mm256_setzero_pd();
         }
-        imag_ = avx::mul(lhs, avx::sub(zero, rhs.imag));
+        imag_ = simd::mul(lhs, simd::sub(zero, rhs.imag));
     }
-    rhs_abs = avx::fmadd(rhs.imag, rhs.imag, rhs_abs);
+    rhs_abs = simd::fmadd(rhs.imag, rhs.imag, rhs_abs);
 
-    return {avx::div(real_, rhs_abs), avx::div(imag_, rhs_abs)};
+    return {simd::div(real_, rhs_abs), simd::div(imag_, rhs_abs)};
 }
 
 template<typename T, bool Conj>
@@ -226,11 +226,11 @@ inline auto sub(cx_reg<T, Conj> lhs, reg_t<T> rhs) -> cx_reg<T, Conj> {
 }
 template<typename T, bool Conj>
 inline auto mul(cx_reg<T, Conj> lhs, reg_t<T> rhs) -> cx_reg<T, Conj> {
-    return {avx::mul(lhs.real, rhs), avx::mul(lhs.imag, rhs)};
+    return {simd::mul(lhs.real, rhs), simd::mul(lhs.imag, rhs)};
 }
 template<typename T, bool Conj>
 inline auto div(cx_reg<T, Conj> lhs, reg_t<T> rhs) -> cx_reg<T, Conj> {
-    return {avx::div(lhs.real, rhs), avx::div(lhs.imag, rhs)};
+    return {simd::div(lhs.real, rhs), simd::div(lhs.imag, rhs)};
 }
 
 /**
@@ -325,8 +325,8 @@ inline auto mul(const cx_reg<Args> (&... args)[2]) {
     auto real_mul = [](auto opearands) {
         auto lhs  = opearands[0];
         auto rhs  = opearands[1];
-        auto real = avx::mul(lhs.real, rhs.real);
-        auto imag = avx::mul(lhs.real, rhs.imag);
+        auto real = simd::mul(lhs.real, rhs.real);
+        auto imag = simd::mul(lhs.real, rhs.imag);
         return std::make_tuple(lhs, rhs, real, imag);
     };
     auto imag_mul = [](auto opearands) {
@@ -337,17 +337,17 @@ inline auto mul(const cx_reg<Args> (&... args)[2]) {
 
         using reg_t = decltype(lhs);
 
-        auto real = avx::fnmadd(lhs.imag, rhs.imag, real_);
-        auto imag = avx::fmadd(lhs.imag, rhs.real, imag_);
+        auto real = simd::fnmadd(lhs.imag, rhs.imag, real_);
+        auto imag = simd::fmadd(lhs.imag, rhs.real, imag_);
         return reg_t{real, imag};
     };
 
-    auto tmp = internal::apply_for_each(real_mul, tup);
-    return internal::apply_for_each(imag_mul, tmp);
+    auto tmp = detail_::apply_for_each(real_mul, tup);
+    return detail_::apply_for_each(imag_mul, tmp);
 }
-}    // namespace avx
+}    // namespace simd
 
-namespace internal {
+namespace detail_ {
 
 struct expression_traits {
     /**
@@ -361,7 +361,7 @@ struct expression_traits {
     template<std::size_t PackSize, typename I>
     [[nodiscard]] static constexpr auto cx_reg(const I& iterator, std::size_t offset) {
         auto data    = iterator.cx_reg(offset);
-        auto [data_] = avx::convert<typename I::real_type>::template repack<I::pack_size, PackSize>(data);
+        auto [data_] = simd::convert<typename I::real_type>::template repack<I::pack_size, PackSize>(data);
         return data_;
     }
     /**
@@ -374,11 +374,11 @@ struct expression_traits {
     template<std::size_t PackSize, typename T, bool Const, std::size_t IPackSize>
     [[nodiscard]] static constexpr auto cx_reg(const iterator<T, Const, IPackSize>& iterator,
                                                std::size_t                          offset) {
-        constexpr auto PLoad = std::max(avx::reg<T>::size, IPackSize);
+        constexpr auto PLoad = std::max(simd::reg<T>::size, IPackSize);
 
-        auto addr      = avx::ra_addr<IPackSize>(&(*iterator), offset);
-        auto data      = avx::cxload<PLoad>(addr);
-        std::tie(data) = avx::convert<T>::template repack<IPackSize, PackSize>(data);
+        auto addr      = simd::ra_addr<IPackSize>(&(*iterator), offset);
+        auto data      = simd::cxload<PLoad>(addr);
+        std::tie(data) = simd::convert<T>::template repack<IPackSize, PackSize>(data);
         return data;
     }
 
@@ -407,13 +407,13 @@ concept vector_expression =    //
     (
         requires(E expression, std::size_t idx) {
             {
-                expression_traits::cx_reg<avx::reg<typename E::real_type>::size>(expression.begin(), idx)
-            } -> std::same_as<avx::cx_reg<typename E::real_type, false>>;
+                expression_traits::cx_reg<simd::reg<typename E::real_type>::size>(expression.begin(), idx)
+            } -> std::same_as<simd::cx_reg<typename E::real_type, false>>;
         } ||
         requires(E expression, std::size_t idx) {
             {
-                expression_traits::cx_reg<avx::reg<typename E::real_type>::size>(expression.begin(), idx)
-            } -> std::same_as<avx::cx_reg<typename E::real_type, true>>;
+                expression_traits::cx_reg<simd::reg<typename E::real_type>::size>(expression.begin(), idx)
+            } -> std::same_as<simd::cx_reg<typename E::real_type, true>>;
         });
 
 template<typename E1, typename E2>
@@ -425,58 +425,58 @@ concept compatible_scalar =
     vector_expression<Expression> && (std::same_as<typename Expression::real_type, Scalar> ||
                                       std::same_as<std::complex<typename Expression::real_type>, Scalar>);
 
-}    // namespace internal
+}    // namespace detail_
 
 // #region operator forward declarations
 
 template<typename E1, typename E2>
-    requires internal::compatible_expression<E1, E2>
+    requires detail_::compatible_expression<E1, E2>
 auto operator+(const E1& lhs, const E2& rhs);
 template<typename E1, typename E2>
-    requires internal::compatible_expression<E1, E2>
+    requires detail_::compatible_expression<E1, E2>
 auto operator-(const E1& lhs, const E2& rhs);
 template<typename E1, typename E2>
-    requires internal::compatible_expression<E1, E2>
+    requires detail_::compatible_expression<E1, E2>
 auto operator*(const E1& lhs, const E2& rhs);
 template<typename E1, typename E2>
-    requires internal::compatible_expression<E1, E2>
+    requires detail_::compatible_expression<E1, E2>
 auto operator/(const E1& lhs, const E2& rhs);
 
 template<typename E, typename S>
-    requires internal::compatible_scalar<E, S>
+    requires detail_::compatible_scalar<E, S>
 auto operator+(const E& vector, S scalar);
 template<typename E, typename S>
-    requires internal::compatible_scalar<E, S>
+    requires detail_::compatible_scalar<E, S>
 auto operator+(S scalar, const E& vector);
 
 template<typename E, typename S>
-    requires internal::compatible_scalar<E, S>
+    requires detail_::compatible_scalar<E, S>
 auto operator-(const E& vector, S scalar);
 template<typename E, typename S>
-    requires internal::compatible_scalar<E, S>
+    requires detail_::compatible_scalar<E, S>
 auto operator-(S scalar, const E& vector);
 
 template<typename E, typename S>
-    requires internal::compatible_scalar<E, S>
+    requires detail_::compatible_scalar<E, S>
 auto operator*(const E& vector, S scalar);
 template<typename E, typename S>
-    requires internal::compatible_scalar<E, S>
+    requires detail_::compatible_scalar<E, S>
 auto operator*(S scalar, const E& vector);
 
 template<typename E, typename S>
-    requires internal::compatible_scalar<E, S>
+    requires detail_::compatible_scalar<E, S>
 auto operator/(const E& vector, S scalar);
 template<typename E, typename S>
-    requires internal::compatible_scalar<E, S>
+    requires detail_::compatible_scalar<E, S>
 auto operator/(S scalar, const E& vector);
 
 template<typename E>
-    requires internal::vector_expression<E>
+    requires detail_::vector_expression<E>
 auto conj(const E& vector);
 
 // #endregion operator forward declarations
 
-namespace internal {
+namespace detail_ {
 
 template<typename E1, typename E2>
     requires compatible_expression<E1, E2>
@@ -488,7 +488,7 @@ class add : public std::ranges::view_base {
 public:
     using real_type = typename E1::real_type;
     static constexpr auto pack_size =
-        std::min(std::max(E1::pack_size, E2::pack_size), avx::reg<real_type>::size);
+        std::min(std::max(E1::pack_size, E2::pack_size), simd::reg<real_type>::size);
     class iterator {
         friend class add;
 
@@ -579,7 +579,7 @@ public:
             const auto lhs = expression_traits::cx_reg<pack_size>(m_lhs, idx);
             const auto rhs = expression_traits::cx_reg<pack_size>(m_rhs, idx);
 
-            return avx::add(lhs, rhs);
+            return simd::add(lhs, rhs);
         }
 
         [[nodiscard]] constexpr bool aligned(std::size_t offset = 0) const noexcept {
@@ -646,7 +646,7 @@ class sub : public std::ranges::view_base {
 public:
     using real_type = typename E1::real_type;
     static constexpr auto pack_size =
-        std::min(std::max(E1::pack_size, E2::pack_size), avx::reg<real_type>::size);
+        std::min(std::max(E1::pack_size, E2::pack_size), simd::reg<real_type>::size);
     class iterator {
         friend class sub;
 
@@ -737,7 +737,7 @@ public:
             const auto lhs = expression_traits::cx_reg<pack_size>(m_lhs, idx);
             const auto rhs = expression_traits::cx_reg<pack_size>(m_rhs, idx);
 
-            return avx::sub(lhs, rhs);
+            return simd::sub(lhs, rhs);
         }
 
         [[nodiscard]] constexpr bool aligned(std::size_t offset = 0) const noexcept {
@@ -804,7 +804,7 @@ class mul : public std::ranges::view_base {
 public:
     using real_type = typename E1::real_type;
 
-    static constexpr auto pack_size = avx::reg<real_type>::size;
+    static constexpr auto pack_size = simd::reg<real_type>::size;
     class iterator {
         friend class mul;
 
@@ -895,7 +895,7 @@ public:
             const auto lhs = expression_traits::cx_reg<pack_size>(m_lhs, idx);
             const auto rhs = expression_traits::cx_reg<pack_size>(m_rhs, idx);
 
-            return avx::mul(lhs, rhs);
+            return simd::mul(lhs, rhs);
         }
 
         [[nodiscard]] constexpr bool aligned(std::size_t offset = 0) const noexcept {
@@ -962,7 +962,7 @@ class div : public std::ranges::view_base {
 public:
     using real_type = typename E1::real_type;
 
-    static constexpr auto pack_size = avx::reg<real_type>::size;
+    static constexpr auto pack_size = simd::reg<real_type>::size;
     class iterator {
         friend class div;
 
@@ -1053,7 +1053,7 @@ public:
             const auto lhs = expression_traits::cx_reg<pack_size>(m_lhs, idx);
             const auto rhs = expression_traits::cx_reg<pack_size>(m_rhs, idx);
 
-            return avx::div(lhs, rhs);
+            return simd::div(lhs, rhs);
         }
 
         [[nodiscard]] constexpr bool aligned(std::size_t offset = 0) const noexcept {
@@ -1120,7 +1120,7 @@ class scalar_add : public std::ranges::view_base {
 public:
     using real_type = typename E::real_type;
 
-    static constexpr auto pack_size = avx::reg<real_type>::size;
+    static constexpr auto pack_size = simd::reg<real_type>::size;
     class iterator {
         friend class scalar_add;
 
@@ -1208,10 +1208,10 @@ public:
             return m_scalar + value_type(*(m_vector + idx));
         }
         [[nodiscard]] auto cx_reg(std::size_t idx) const {
-            const auto scalar = avx::broadcast(m_scalar);
+            const auto scalar = simd::broadcast(m_scalar);
             const auto vector = expression_traits::cx_reg<pack_size>(m_vector, idx);
 
-            return avx::add(scalar, vector);
+            return simd::add(scalar, vector);
         }
 
         [[nodiscard]] constexpr bool aligned(std::size_t offset = 0) const noexcept {
@@ -1270,7 +1270,7 @@ class scalar_sub : public std::ranges::view_base {
 public:
     using real_type = typename E::real_type;
 
-    static constexpr auto pack_size = avx::reg<real_type>::size;
+    static constexpr auto pack_size = simd::reg<real_type>::size;
     class iterator {
         friend class scalar_sub;
 
@@ -1358,10 +1358,10 @@ public:
             return m_scalar - value_type(*(m_vector + idx));
         }
         [[nodiscard]] auto cx_reg(std::size_t idx) const {
-            const auto scalar = avx::broadcast(m_scalar);
+            const auto scalar = simd::broadcast(m_scalar);
             const auto vector = expression_traits::cx_reg<pack_size>(m_vector, idx);
 
-            return avx::sub(scalar, vector);
+            return simd::sub(scalar, vector);
         }
 
         [[nodiscard]] constexpr bool aligned(std::size_t offset = 0) const noexcept {
@@ -1423,8 +1423,8 @@ public:
     using real_type = typename E::real_type;
 
     static constexpr auto pack_size = std::same_as<S, std::complex<real_type>>
-                                          ? avx::reg<real_type>::size
-                                          : std::min(E::pack_size, avx::reg<real_type>::size);
+                                          ? simd::reg<real_type>::size
+                                          : std::min(E::pack_size, simd::reg<real_type>::size);
     class iterator {
         friend class scalar_mul;
 
@@ -1512,10 +1512,10 @@ public:
             return m_scalar * value_type(*(m_vector + idx));
         }
         [[nodiscard]] auto cx_reg(std::size_t idx) const {
-            const auto scalar = avx::broadcast(m_scalar);
+            const auto scalar = simd::broadcast(m_scalar);
             const auto vector = expression_traits::cx_reg<pack_size>(m_vector, idx);
 
-            return avx::mul(scalar, vector);
+            return simd::mul(scalar, vector);
         }
 
         [[nodiscard]] constexpr bool aligned(std::size_t offset = 0) const noexcept {
@@ -1574,7 +1574,7 @@ class scalar_div : public std::ranges::view_base {
 public:
     using real_type = typename E::real_type;
 
-    static constexpr auto pack_size = avx::reg<real_type>::size;
+    static constexpr auto pack_size = simd::reg<real_type>::size;
     class iterator {
         friend class scalar_div;
 
@@ -1662,10 +1662,10 @@ public:
             return m_scalar / value_type(*(m_vector + idx));
         }
         [[nodiscard]] auto cx_reg(std::size_t idx) const {
-            const auto scalar = avx::broadcast(m_scalar);
+            const auto scalar = simd::broadcast(m_scalar);
             const auto vector = expression_traits::cx_reg<pack_size>(m_vector, idx);
 
-            return avx::div(scalar, vector);
+            return simd::div(scalar, vector);
         }
 
         [[nodiscard]] constexpr bool aligned(std::size_t offset = 0) const noexcept {
@@ -1725,7 +1725,7 @@ class conjugate : public std::ranges::view_base {
 public:
     using real_type = typename E::real_type;
 
-    static constexpr auto pack_size = avx::reg<real_type>::size;
+    static constexpr auto pack_size = simd::reg<real_type>::size;
     class iterator {
         friend class conjugate;
 
@@ -1813,7 +1813,7 @@ public:
         }
         [[nodiscard]] auto cx_reg(std::size_t idx) const {
             const auto vector = expression_traits::cx_reg<pack_size>(m_vector, idx);
-            return avx::conj(vector);
+            return simd::conj(vector);
         }
 
         [[nodiscard]] constexpr bool aligned(std::size_t offset = 0) const noexcept {
@@ -1860,79 +1860,79 @@ private:
     const E m_vector;
 };
 
-}    // namespace internal
+}    // namespace detail_
 
 // #region operator definitions
 
 template<typename E1, typename E2>
-    requires internal::compatible_expression<E1, E2>
+    requires detail_::compatible_expression<E1, E2>
 inline auto operator+(const E1& lhs, const E2& rhs) {
-    return internal::add(lhs, rhs);
+    return detail_::add(lhs, rhs);
 };
 template<typename E1, typename E2>
-    requires internal::compatible_expression<E1, E2>
+    requires detail_::compatible_expression<E1, E2>
 inline auto operator-(const E1& lhs, const E2& rhs) {
-    return internal::sub(lhs, rhs);
+    return detail_::sub(lhs, rhs);
 };
 template<typename E1, typename E2>
-    requires internal::compatible_expression<E1, E2>
+    requires detail_::compatible_expression<E1, E2>
 inline auto operator*(const E1& lhs, const E2& rhs) {
-    return internal::mul(lhs, rhs);
+    return detail_::mul(lhs, rhs);
 };
 template<typename E1, typename E2>
-    requires internal::compatible_expression<E1, E2>
+    requires detail_::compatible_expression<E1, E2>
 inline auto operator/(const E1& lhs, const E2& rhs) {
-    return internal::div(lhs, rhs);
+    return detail_::div(lhs, rhs);
 };
 
 template<typename E, typename S>
-    requires internal::compatible_scalar<E, S>
+    requires detail_::compatible_scalar<E, S>
 inline auto operator+(const E& vector, S scalar) {
-    return internal::scalar_add(scalar, vector);
+    return detail_::scalar_add(scalar, vector);
 }
 template<typename E, typename S>
-    requires internal::compatible_scalar<E, S>
+    requires detail_::compatible_scalar<E, S>
 inline auto operator+(S scalar, const E& vector) {
-    return internal::scalar_add(scalar, vector);
+    return detail_::scalar_add(scalar, vector);
 }
 
 template<typename E, typename S>
-    requires internal::compatible_scalar<E, S>
+    requires detail_::compatible_scalar<E, S>
 inline auto operator-(const E& vector, S scalar) {
-    return internal::scalar_add(-scalar, vector);
+    return detail_::scalar_add(-scalar, vector);
 }
 template<typename E, typename S>
-    requires internal::compatible_scalar<E, S>
+    requires detail_::compatible_scalar<E, S>
 inline auto operator-(S scalar, const E& vector) {
-    return internal::scalar_sub(scalar, vector);
+    return detail_::scalar_sub(scalar, vector);
 }
 
 template<typename E, typename S>
-    requires internal::compatible_scalar<E, S>
+    requires detail_::compatible_scalar<E, S>
 inline auto operator*(const E& vector, S scalar) {
-    return internal::scalar_mul(scalar, vector);
+    return detail_::scalar_mul(scalar, vector);
 }
 template<typename E, typename S>
-    requires internal::compatible_scalar<E, S>
+    requires detail_::compatible_scalar<E, S>
 inline auto operator*(S scalar, const E& vector) {
-    return internal::scalar_mul(scalar, vector);
+    return detail_::scalar_mul(scalar, vector);
 }
 
 template<typename E, typename S>
-    requires internal::compatible_scalar<E, S>
+    requires detail_::compatible_scalar<E, S>
 inline auto operator/(const E& vector, S scalar) {
-    return internal::scalar_mul(S(1) / scalar, vector);
+    return detail_::scalar_mul(S(1) / scalar, vector);
 }
 template<typename E, typename S>
-    requires internal::compatible_scalar<E, S>
+    requires detail_::compatible_scalar<E, S>
 inline auto operator/(S scalar, const E& vector) {
-    return internal::scalar_div(scalar, vector);
+    return detail_::scalar_div(scalar, vector);
 }
 
 template<typename E>
-    requires internal::vector_expression<E>
+    requires detail_::vector_expression<E>
 auto conj(const E& vector) {
-    return internal::conjugate<E>(vector);
+    return detail_::conjugate<E>(vector);
 }
 
 template<typename E, typename T, std::size_t PackSize, typename Allocator>

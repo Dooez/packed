@@ -34,7 +34,7 @@ int main() {
                                 2048>;
     auto fft_unit = std::make_shared<fft_t>(8192);
 
-    auto pseudo_factory = pcx::internal::pseudo_vector_factory<float, std::allocator<float>>(8192);
+    auto pseudo_factory = pcx::detail_::pseudo_vector_factory<float, std::allocator<float>>(8192);
 
     auto fxcorr = pcx::fxcorr_unit(g, fft_unit, [&] { return pseudo_factory(); });
 

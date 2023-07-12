@@ -23,7 +23,7 @@ template<typename T,
          typename Allocator   = pcx::aligned_allocator<T>>
     requires packed_floating_point<T, PackSize>
 class vector {
-    friend class internal::expression_traits;
+    friend class detail_::expression_traits;
     template<typename OT, std::size_t OPackSize, typename OAllocator>
         requires packed_floating_point<OT, OPackSize>
     friend class pcx::vector;
@@ -181,7 +181,7 @@ public:
     }
 
     template<typename E>
-        requires(!std::same_as<E, vector>) && internal::vector_expression<E>
+        requires(!std::same_as<E, vector>) && detail_::vector_expression<E>
     vector& operator=(const E& other) {
         assert(size() == other.size());
 
@@ -197,8 +197,8 @@ public:
             for (uint i = 0; i < aligned_size; ++i) {
                 for (uint i_reg = 0; i_reg < store_size; i_reg += reg_size) {
                     auto offset = i * store_size + i_reg;
-                    auto data   = internal::expression_traits::cx_reg<pack_size>(it_expr, offset);
-                    avx::cxstore<store_size>(avx::ra_addr<store_size>(ptr, offset), data);
+                    auto data   = detail_::expression_traits::cx_reg<pack_size>(it_expr, offset);
+                    simd::cxstore<store_size>(simd::ra_addr<store_size>(ptr, offset), data);
                 }
             }
             it_this += aligned_size * store_size;
@@ -326,9 +326,9 @@ public:
 
         auto ptr = &(*it_this);
         for (uint i = 0; i < aligned_size; i += pack_size) {
-            for (uint i_reg = 0; i_reg < pack_size; i_reg += avx::reg<real_type>::size) {
-                auto data = avx::cxload<pack_size>(m_ptr, i + i_reg);
-                avx::cxstore<avx::reg<real_type>::size>(avx::ra_addr<1>(svec_ptr, i + i_reg), data);
+            for (uint i_reg = 0; i_reg < pack_size; i_reg += simd::reg<real_type>::size) {
+                auto data = simd::cxload<pack_size>(m_ptr, i + i_reg);
+                simd::cxstore<simd::reg<real_type>::size>(simd::ra_addr<1>(svec_ptr, i + i_reg), data);
             }
         }
         it_this += aligned_size;
@@ -647,7 +647,7 @@ class subrange : public std::ranges::view_base {
         requires packed_floating_point<VT, VPackSize>
     friend class vector;
 
-    friend class internal::expression_traits;
+    friend class detail_::expression_traits;
 
 public:
     using real_type       = T;
@@ -737,10 +737,10 @@ public:
     };
 
     template<typename R>
-        requires(!Const) && (!internal::vector_expression<R>) && std::ranges::input_range<R> &&
+        requires(!Const) && (!detail_::vector_expression<R>) && std::ranges::input_range<R> &&
                 std::indirectly_copyable<std::ranges::iterator_t<R>, iterator>
     void assign(const R& range) {
-        if (range.size() != size()){
+        if (range.size() != size()) {
             throw(std::invalid_argument(std::string("source size (which is ")
                                             .append(std::to_string(range.size()))
                                             .append(" is not equal to subrange size (which is ")
@@ -751,9 +751,9 @@ public:
     };
 
     template<typename E>
-        requires(!Const) && internal::vector_expression<E>
+        requires(!Const) && detail_::vector_expression<E>
     void assign(const E& expression) {
-        if (expression.size() != size()){
+        if (expression.size() != size()) {
             throw(std::invalid_argument(std::string("source size (which is ")
                                             .append(std::to_string(expression.size()))
                                             .append(" is not equal to subrange size (which is ")
@@ -780,8 +780,8 @@ public:
             for (uint i = 0; i < aligned_size; ++i) {
                 for (uint i_reg = 0; i_reg < store_size; i_reg += reg_size) {
                     auto offset = i * store_size + i_reg;
-                    auto data   = internal::expression_traits::cx_reg<pack_size>(it_expr, offset);
-                    avx::cxstore<store_size>(avx::ra_addr<store_size>(ptr, offset), data);
+                    auto data   = detail_::expression_traits::cx_reg<pack_size>(it_expr, offset);
+                    simd::cxstore<store_size>(simd::ra_addr<store_size>(ptr, offset), data);
                 }
             }
             it_this += aligned_size * store_size;

@@ -7,7 +7,7 @@
 
 namespace pcx {
 
-namespace internal {
+namespace detail_ {
 template<typename T, typename Allocator = pcx::aligned_allocator<T>>
 class pseudo_vector_factory {
 public:
@@ -29,7 +29,7 @@ public:
 private:
     pcx::vector<T, default_pack_size<T>, Allocator> m_vector;
 };
-}    // namespace internal
+}    // namespace detail_
 
 
 /**
@@ -44,7 +44,7 @@ private:
 template<typename T,
          typename Allocator   = pcx::aligned_allocator<T>,
          typename FFT_        = pcx::fft_unit<T, pcx::fft_order::unordered, Allocator>,
-         typename TmpFactory_ = internal::pseudo_vector_factory<T, Allocator>>
+         typename TmpFactory_ = detail_::pseudo_vector_factory<T, Allocator>>
     requires std::floating_point<T> && std::same_as<typename Allocator::value_type, T>
 class fxcorr_unit {
 public:
@@ -113,9 +113,9 @@ public:
     }
 
 private:
-    std::shared_ptr<FFT_>          m_fft;
+    std::shared_ptr<FFT_>                                m_fft;
     pcx::vector<T, default_pack_size<T>, allocator_type> m_kernel;
-    TmpFactory_                    m_tmp_factory;
-    std::size_t                    m_overlap;
+    TmpFactory_                                          m_tmp_factory;
+    std::size_t                                          m_overlap;
 };
 }    // namespace pcx

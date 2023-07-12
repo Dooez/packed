@@ -12,7 +12,7 @@
 // }
 
 void test_repack(float* data) {
-    using namespace pcx::avx;
+    using namespace pcx::simd;
     auto a   = cxload<8>(data);
     auto [b] = convert<float>::split<1>(a);
     cxstore<8>(data, b);

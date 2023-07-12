@@ -13,10 +13,10 @@ void test_que(pcx::fft_unit<float, pcx::fft_order::normal>& unit, std::vector<st
 
 template<typename T>
 auto fmul(std::complex<T> lhs, std::complex<T> rhs) -> std::complex<T> {
-    auto lhsv = pcx::avx::broadcast(lhs);
-    auto rhsv = pcx::avx::broadcast(rhs);
+    auto lhsv = pcx::simd::broadcast(lhs);
+    auto rhsv = pcx::simd::broadcast(rhs);
 
-    auto resv = pcx::avx::mul(lhsv, rhsv);
+    auto resv = pcx::simd::mul(lhsv, rhsv);
 
     T re;
     T im;
@@ -168,11 +168,11 @@ int test_fft_float(std::size_t size) {
     auto depth = log2i(size);
 
     auto vec      = pcx::vector<float, PackSize, std::allocator<float>>(size);
-    auto svec = std::vector<std::complex<float>>(size);
+    auto svec     = std::vector<std::complex<float>>(size);
     auto vec_out  = pcx::vector<float, PackSize, std::allocator<float>>(size);
     auto svec_out = std::vector<std::complex<float>>(size);
     for (uint i = 0; i < size; ++i) {
-        vec[i]      = std::exp(std::complex(0.F, 2 * pi * i / size * 13.37F));
+        vec[i]  = std::exp(std::complex(0.F, 2 * pi * i / size * 13.37F));
         svec[i] = vec[i];
     }
 
@@ -228,7 +228,7 @@ int test_fft_float(std::size_t size) {
             }
         }
         svec_out = svec;
-        vec_out = vec;
+        vec_out  = vec;
 
         unit(vec_out);
         for (uint i = 0; i < size; ++i) {
@@ -421,7 +421,7 @@ int test_fftu_float_0(std::size_t size) {
         auto ffu   = fftu(vec);
         auto eps_u = 1U << (depth - 1);
 
-        for (auto n_empty = size / 2; n_empty < std::min(size, size / 2 + pcx::avx::reg<float>::size);
+        for (auto n_empty = size / 2; n_empty < std::min(size, size / 2 + pcx::simd::reg<float>::size);
              ++n_empty) {
             auto vec_short = pcx::vector<float, PackSize, std::allocator<float>>(size - n_empty);
             auto vec_zero  = pcx::vector<float, PackSize, std::allocator<float>>(size);
