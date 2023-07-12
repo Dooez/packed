@@ -662,7 +662,7 @@ template<typename T,
          typename Allocator      = std::allocator<T>,
          std::size_t SubSize     = pcx::dynamic_size,
          std::size_t NodeSizeRec = 4,
-         typename Strategy       = strategy48,
+         typename Strategy       = strategy42,
          typename StrategyRec    = strategy42>
     requires(std::same_as<T, float> || std::same_as<T, double>) &&
             (pcx::power_of_two<SubSize> && SubSize >= pcx::default_pack_size<T> ||
@@ -1619,7 +1619,7 @@ public:
     }
 
     template<std::size_t PDest, std::size_t PTform, bool Inverse = false, bool Scale = false>
-    auto subtransform(float* data, std::size_t max_size) -> const float* {
+    inline auto subtransform(float* data, std::size_t max_size) -> const float* {
         const auto* twiddle_ptr = m_twiddles.data();
 
         std::size_t l_size     = avx::reg<T>::size * 2;
@@ -1889,7 +1889,7 @@ public:
              bool        Scale      = false,
              std::size_t AlignSize  = 2,
              std::size_t AlignSizeR = 2>
-    auto subtransform_recursive_strategic(T*          data,
+    inline auto subtransform_recursive_strategic(T*          data,
                                           std::size_t size,
                                           u64         align_count     = 0,
                                           u64         align_rec_count = 0) -> const T* {
@@ -2428,7 +2428,7 @@ public:
              bool        ConjTw  = false,
              bool        Reverse = false,
              typename... Optional>
-    static void node_along(T* dest, std::size_t l_size, std::size_t offset, Optional... optional) {
+    inline static void node_along(T* dest, std::size_t l_size, std::size_t offset, Optional... optional) {
         constexpr auto PLoad  = std::max(PSrc, avx::reg<T>::size);
         constexpr auto PStore = std::max(PDest, avx::reg<T>::size);
 
