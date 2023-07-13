@@ -728,7 +728,9 @@ public:
         if constexpr (!sorted) {
             fftu_internal<PData>(v_traits::data(vector));
         } else {
-            fft_internal<PData>(v_traits::data(vector));
+            constexpr auto PTform = std::max(PData, simd::reg<T>::size);
+            depth3_and_sort<PTform, PData, false>(v_traits::data(vector));
+            apply_subtform<PData, PTform, false, false>(v_traits::data(vector), size());
         }
     }
 
@@ -743,47 +745,47 @@ public:
         }
     }
 
-    template<typename Vect_>
-        requires complex_vector_of<T, Vect_>
-    void do_it(Vect_& vector) {
-        using v_traits = detail_::vector_traits<Vect_>;
-        if (v_traits::size(vector) != m_size) {
-            throw(std::invalid_argument(std::string("input size (which is ")
-                                            .append(std::to_string(v_traits::size(vector)))
-                                            .append(" is not equal to fft size (which is ")
-                                            .append(std::to_string(m_size))
-                                            .append(")")));
-        }
-        constexpr auto PData = v_traits::pack_size;
-        if constexpr (!sorted) {
-            fftu_internal<PData>(v_traits::data(vector));
-        } else {
-            constexpr auto PTform = std::max(PData, simd::reg<T>::size);
-            depth3_and_sort<PTform, PData, false>(v_traits::data(vector));
-            apply_subtform<PData, PTform, false, false>(v_traits::data(vector), size());
-        }
-    }
-
-    template<typename Vect_>
-        requires complex_vector_of<T, Vect_>
-    void undo_it(Vect_& vector) {
-        using v_traits = detail_::vector_traits<Vect_>;
-        if (v_traits::size(vector) != m_size) {
-            throw(std::invalid_argument(std::string("input size (which is ")
-                                            .append(std::to_string(v_traits::size(vector)))
-                                            .append(" is not equal to fft size (which is ")
-                                            .append(std::to_string(m_size))
-                                            .append(")")));
-        }
-        constexpr auto PData = v_traits::pack_size;
-        if constexpr (!sorted) {
-            ifftu_internal<PData>(v_traits::data(vector));
-        } else {
-            constexpr auto PTform = std::max(PData, simd::reg<T>::size);
-            depth3_and_sort<PTform, PData, true>(v_traits::data(vector));
-            apply_subtform<PData, PTform, true, true>(v_traits::data(vector), size());
-        }
-    }
+//     template<typename Vect_>
+//         requires complex_vector_of<T, Vect_>
+//     void do_it(Vect_& vector) {
+//         using v_traits = detail_::vector_traits<Vect_>;
+//         if (v_traits::size(vector) != m_size) {
+//             throw(std::invalid_argument(std::string("input size (which is ")
+//                                             .append(std::to_string(v_traits::size(vector)))
+//                                             .append(" is not equal to fft size (which is ")
+//                                             .append(std::to_string(m_size))
+//                                             .append(")")));
+//         }
+//         constexpr auto PData = v_traits::pack_size;
+//         if constexpr (!sorted) {
+//             fftu_internal<PData>(v_traits::data(vector));
+//         } else {
+//             constexpr auto PTform = std::max(PData, simd::reg<T>::size);
+//             depth3_and_sort<PTform, PData, false>(v_traits::data(vector));
+//             apply_subtform<PData, PTform, false, false>(v_traits::data(vector), size());
+//         }
+//     }
+// 
+//     template<typename Vect_>
+//         requires complex_vector_of<T, Vect_>
+//     void undo_it(Vect_& vector) {
+//         using v_traits = detail_::vector_traits<Vect_>;
+//         if (v_traits::size(vector) != m_size) {
+//             throw(std::invalid_argument(std::string("input size (which is ")
+//                                             .append(std::to_string(v_traits::size(vector)))
+//                                             .append(" is not equal to fft size (which is ")
+//                                             .append(std::to_string(m_size))
+//                                             .append(")")));
+//         }
+//         constexpr auto PData = v_traits::pack_size;
+//         if constexpr (!sorted) {
+//             ifftu_internal<PData>(v_traits::data(vector));
+//         } else {
+//             constexpr auto PTform = std::max(PData, simd::reg<T>::size);
+//             depth3_and_sort<PTform, PData, true>(v_traits::data(vector));
+//             apply_subtform<PData, PTform, true, true>(v_traits::data(vector), size());
+//         }
+//     }
 
     template<typename DestVect_, typename SrcVect_>
         requires complex_vector_of<T, DestVect_> && complex_vector_of<T, SrcVect_>
@@ -816,10 +818,13 @@ public:
                 fftu_internal<PDest, PSrc>(dst_ptr, src_ptr);
             }
         } else {
+                constexpr auto PTform = std::max(PDest, simd::reg<T>::size);
             if (dst_ptr == src_ptr) {
-                fft_internal<PDest>(dst_ptr);
+                depth3_and_sort<PTform, PDest, false>(dst_traits::data(dest));
+                apply_subtform<PDest, PTform, false, false>(dst_traits::data(dest), size());
             } else {
-                fft_internal<PDest, PSrc>(dst_ptr, src_ptr);
+                depth3_and_sort<PTform, PSrc, false>(dst_traits::data(dest));
+                apply_subtform<PDest, PTform, false, false>(dst_traits::data(dest), size());
             }
         }
     }
@@ -839,7 +844,9 @@ public:
         if constexpr (!sorted) {
             ifftu_internal<PData>(v_traits::data(vector));
         } else {
-            ifft_internal<PData>(v_traits::data(vector));
+            constexpr auto PTform = std::max(PData, simd::reg<T>::size);
+            depth3_and_sort<PTform, PData, true>(v_traits::data(vector));
+            apply_subtform<PData, PTform, true, true>(v_traits::data(vector), size());
         }
     }
 
@@ -866,35 +873,6 @@ private:
     }
 
 public:
-    template<std::size_t PData>
-    inline void fft_internal(float* data) {
-        constexpr auto PTform = std::max(PData, simd::reg<T>::size);
-        depth3_and_sort<PTform, PData>(data);
-        subtransform_recursive<PData, PTform>(data, size(), std::make_index_sequence<NodeSizeRec>{});
-    }
-
-    template<std::size_t PData>
-    inline void fft_internal_strategic(float* data) {
-        constexpr auto PTform = std::max(PData, simd::reg<T>::size);
-        depth3_and_sort<PTform, PData>(data);
-        apply_subtform<PData, PTform, false, false>(data, size());
-    }
-
-    template<std::size_t PData, bool Normalized = true>
-    inline void ifft_internal(float* data) {
-        constexpr auto PTform = std::max(PData, simd::reg<T>::size);
-        depth3_and_sort<PTform, PData, true>(data);
-        subtransform_recursive<PData, PTform, true, Normalized>(
-            data, size(), std::make_index_sequence<NodeSizeRec>{});
-    }
-
-    template<std::size_t PDest, std::size_t PSrc>
-    inline void fft_internal(float* dest, const float* source) {
-        constexpr auto PTform = std::max(PDest, simd::reg<T>::size);
-        depth3_and_sort<PTform, PSrc>(dest, source);
-        subtransform_recursive<PDest, PTform>(dest, size(), std::make_index_sequence<NodeSizeRec>{});
-    };
-
     template<std::size_t PData>
     void fftu_internal(float* data) {
         auto* twiddle_ptr = m_twiddles.data();
@@ -1712,7 +1690,6 @@ public:
         return twiddle_ptr;
     };
 
-
     template<std::size_t PDest,
              std::size_t PTform,
              bool        Inverse = false,
@@ -2060,7 +2037,6 @@ public:
             l_size /= 4;
             n_groups *= 4;
         }
-
 
         for (std::size_t i_group = 0; i_group < size / simd::reg<T>::size / 4; ++i_group) {
             reg_t tw0 = {simd::broadcast(twiddle_ptr++), simd::broadcast(twiddle_ptr++)};
