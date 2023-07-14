@@ -745,48 +745,6 @@ public:
         }
     }
 
-//     template<typename Vect_>
-//         requires complex_vector_of<T, Vect_>
-//     void do_it(Vect_& vector) {
-//         using v_traits = detail_::vector_traits<Vect_>;
-//         if (v_traits::size(vector) != m_size) {
-//             throw(std::invalid_argument(std::string("input size (which is ")
-//                                             .append(std::to_string(v_traits::size(vector)))
-//                                             .append(" is not equal to fft size (which is ")
-//                                             .append(std::to_string(m_size))
-//                                             .append(")")));
-//         }
-//         constexpr auto PData = v_traits::pack_size;
-//         if constexpr (!sorted) {
-//             fftu_internal<PData>(v_traits::data(vector));
-//         } else {
-//             constexpr auto PTform = std::max(PData, simd::reg<T>::size);
-//             depth3_and_sort<PTform, PData, false>(v_traits::data(vector));
-//             apply_subtform<PData, PTform, false, false>(v_traits::data(vector), size());
-//         }
-//     }
-// 
-//     template<typename Vect_>
-//         requires complex_vector_of<T, Vect_>
-//     void undo_it(Vect_& vector) {
-//         using v_traits = detail_::vector_traits<Vect_>;
-//         if (v_traits::size(vector) != m_size) {
-//             throw(std::invalid_argument(std::string("input size (which is ")
-//                                             .append(std::to_string(v_traits::size(vector)))
-//                                             .append(" is not equal to fft size (which is ")
-//                                             .append(std::to_string(m_size))
-//                                             .append(")")));
-//         }
-//         constexpr auto PData = v_traits::pack_size;
-//         if constexpr (!sorted) {
-//             ifftu_internal<PData>(v_traits::data(vector));
-//         } else {
-//             constexpr auto PTform = std::max(PData, simd::reg<T>::size);
-//             depth3_and_sort<PTform, PData, true>(v_traits::data(vector));
-//             apply_subtform<PData, PTform, true, true>(v_traits::data(vector), size());
-//         }
-//     }
-
     template<typename DestVect_, typename SrcVect_>
         requires complex_vector_of<T, DestVect_> && complex_vector_of<T, SrcVect_>
     void operator()(DestVect_& dest, const SrcVect_& source) {
@@ -818,7 +776,7 @@ public:
                 fftu_internal<PDest, PSrc>(dst_ptr, src_ptr);
             }
         } else {
-                constexpr auto PTform = std::max(PDest, simd::reg<T>::size);
+            constexpr auto PTform = std::max(PDest, simd::reg<T>::size);
             if (dst_ptr == src_ptr) {
                 depth3_and_sort<PTform, PDest, false>(dst_traits::data(dest));
                 apply_subtform<PDest, PTform, false, false>(dst_traits::data(dest), size());
@@ -859,8 +817,6 @@ private:
     size_type m_align_count     = 0;
     size_type m_align_count_rec = 0;
     size_type m_subtform_idx    = get_subtform_idx_strategic(m_size, sub_size());
-    const pcx::vector<real_type, simd::reg<T>::size, allocator_type> m_twiddles_strategic =
-        get_twiddles_strategic(m_size, sub_size(), allocator_type());
 
     static constexpr std::size_t s_sort_tform_size = 8;
 
@@ -1595,147 +1551,16 @@ public:
         }
     }
 
-    template<std::size_t PDest, std::size_t PTform, bool Inverse = false, bool Scale = false>
-    inline auto subtransform(float* data, std::size_t max_size) -> const float* {
-        const auto* twiddle_ptr = m_twiddles.data();
-
-        std::size_t l_size     = simd::reg<T>::size * 2;
-        std::size_t group_size = max_size / simd::reg<T>::size / 4;
-        std::size_t n_groups   = 1;
-        std::size_t tw_offset  = 0;
-
-        std::size_t max_size_ = max_size;
-        if constexpr ((PDest < simd::reg<T>::size) || Scale) {
-            max_size_ = max_size_ / 2;
-        }
-        if (log2i(max_size / (simd::reg<T>::size * 2)) % 2 == 0) {
-            std::size_t offset = 0;
-
-            auto scaling = std::conditional_t<Scale, typename simd::reg<float>::type, decltype([] {})>{};
-            if constexpr (Scale) {
-                scaling = simd::broadcast(static_cast<float>(1 / static_cast<double>(max_size)));
-            }
-
-            std::array<simd::cx_reg<T>, 7> tw{
-                simd::cxload<simd::reg<T>::size>(twiddle_ptr),
-                simd::cxload<simd::reg<T>::size>(twiddle_ptr + simd::reg<T>::size * 2),
-                simd::cxload<simd::reg<T>::size>(twiddle_ptr + simd::reg<T>::size * 4),
-                simd::cxload<simd::reg<T>::size>(twiddle_ptr + simd::reg<T>::size * 6),
-                simd::cxload<simd::reg<T>::size>(twiddle_ptr + simd::reg<T>::size * 8),
-                simd::cxload<simd::reg<T>::size>(twiddle_ptr + simd::reg<T>::size * 10),
-                simd::cxload<simd::reg<T>::size>(twiddle_ptr + simd::reg<T>::size * 12),
-            };
-            twiddle_ptr += simd::reg<T>::size * 14;
-
-            group_size /= 2;
-            if (max_size / (simd::reg<T>::size * 2) == 4) {
-                for (std::size_t i = 0; i < group_size; ++i) {
-                    node_along<8, PDest, PTform, true, Inverse>(data, l_size * 4, offset, tw, scaling);
-                    offset += l_size * 4;
-                }
-                return twiddle_ptr;
-            }
-
-            for (std::size_t i = 0; i < group_size; ++i) {
-                node_along<8, PTform, PTform, true, Inverse>(data, l_size * 4, offset, tw);
-                offset += l_size * 4;
-            }
-
-            l_size *= 8;
-            n_groups *= 8;
-            group_size /= 4;
-        }
-        while (l_size < max_size_) {
-            for (std::size_t i_group = 0; i_group < n_groups; ++i_group) {
-                std::size_t offset = i_group * simd::reg<T>::size;
-
-                std::array<simd::cx_reg<T>, 3> tw{
-                    simd::cxload<simd::reg<T>::size>(twiddle_ptr),
-                    simd::cxload<simd::reg<T>::size>(twiddle_ptr + simd::reg<T>::size * 2),
-                    simd::cxload<simd::reg<T>::size>(twiddle_ptr + simd::reg<T>::size * 4),
-                };
-                twiddle_ptr += simd::reg<T>::size * 6;
-                for (std::size_t i = 0; i < group_size; ++i) {
-                    node_along<4, PTform, PTform, true, Inverse>(data, l_size * 2, offset, tw);
-                    offset += l_size * 2;
-                }
-            }
-            l_size *= 4;
-            n_groups *= 4;
-            group_size /= 4;
-        }
-        if constexpr ((PDest < simd::reg<T>::size) || Scale) {
-            auto scaling = std::conditional_t<Scale, typename simd::reg<float>::type, decltype([] {})>{};
-            if constexpr (Scale) {
-                scaling = simd::broadcast(static_cast<float>(1 / static_cast<double>(max_size)));
-            }
-            if (l_size == max_size / 2) {
-                for (std::size_t i_group = 0; i_group < n_groups; ++i_group) {
-                    std::size_t offset = i_group * simd::reg<T>::size;
-
-                    std::array<simd::cx_reg<T>, 3> tw{
-                        simd::cxload<simd::reg<T>::size>(twiddle_ptr),
-                        simd::cxload<simd::reg<T>::size>(twiddle_ptr + simd::reg<T>::size * 2),
-                        simd::cxload<simd::reg<T>::size>(twiddle_ptr + simd::reg<T>::size * 4),
-                    };
-                    twiddle_ptr += simd::reg<T>::size * 6;
-                    for (std::size_t i = 0; i < group_size; ++i) {
-                        node_along<4, PDest, PTform, true, Inverse>(data, l_size * 2, offset, tw, scaling);
-                        offset += l_size * 2;
-                    }
-                }
-                return twiddle_ptr;
-            }
-        }
-        return twiddle_ptr;
-    };
-
-    template<std::size_t PDest,
-             std::size_t PTform,
-             bool        Inverse = false,
-             bool        Scale   = false,
-             std::size_t... I>
-    inline auto subtransform_recursive(T*          data,
-                                       std::size_t size,
-                                       std::index_sequence<I...> = std::index_sequence<I...>{}) -> const T* {
-        constexpr std::size_t NodeSize = sizeof...(I);
-        if (size <= sub_size()) {
-            return subtransform<PDest, PTform, Inverse, Scale>(data, size);
-        }
-        auto twiddle_ptr = (subtransform_recursive<PTform, PTform, Inverse, false, I...>(
-                                simd::ra_addr<PTform>(data, size * I / NodeSize), size / NodeSize),
-                            ...);
-
-        std::size_t n_groups = size / simd::reg<T>::size / NodeSize;
-        auto        scaling  = [](std::size_t size) {
-            if constexpr (Scale) {
-                return simd::broadcast(static_cast<T>(1. / static_cast<double>(size)));
-            } else {
-                return [] {};
-            }
-        }(size);
-        for (std::size_t i_group = 0; i_group < n_groups; ++i_group) {
-            auto tw = []<std::size_t... Itw>(auto* tw_ptr, std::index_sequence<Itw...>) {
-                return std::array<simd::cx_reg<T>, sizeof...(Itw)>{
-                    simd::cxload<simd::reg<T>::size>(tw_ptr + simd::reg<T>::size * 2 * Itw)...};
-            }(twiddle_ptr, std::make_index_sequence<NodeSize - 1>{});
-            twiddle_ptr += simd::reg<T>::size * 2 * (NodeSize - 1);
-            node_along<NodeSize, PDest, PTform, true, Inverse>(
-                data, size, i_group * simd::reg<T>::size, tw, scaling);
-        }
-        return twiddle_ptr;
-    };
-
     template<std::size_t PDest,
              std::size_t PTform,
              bool        Inverse   = false,
              bool        Scale     = false,
              std::size_t AlignSize = 2>
-    inline auto subtransform_strategic(T* data, std::size_t max_size, u64 align_count) -> const float* {
+    inline auto subtransform(T* data, std::size_t max_size, u64 align_count) -> const float* {
         namespace d_             = detail_;
         constexpr auto node_size = Strategy::node_size;
 
-        const auto* twiddle_ptr = m_twiddles_strategic.data();
+        const auto* twiddle_ptr = m_twiddles.data();
 
         std::size_t l_size     = simd::reg<T>::size * 2;
         std::size_t group_size = max_size / simd::reg<T>::size;
@@ -1859,27 +1684,23 @@ public:
              bool        Scale      = false,
              std::size_t AlignSize  = 2,
              std::size_t AlignSizeR = 2>
-    inline auto subtransform_recursive_strategic(T*          data,
-                                                 std::size_t size,
-                                                 u64         align_count     = 0,
-                                                 u64         align_rec_count = 0) -> const T* {
+    inline auto subtransform_recursive(T*          data,
+                                       std::size_t size,
+                                       u64         align_count     = 0,
+                                       u64         align_rec_count = 0) -> const T* {
         if (size <= sub_size()) {
-            return subtransform_strategic<PDest, PTform, Inverse, Scale, AlignSize>(data, size, align_count);
+            return subtransform<PDest, PTform, Inverse, Scale, AlignSize>(data, size, align_count);
         }
         if constexpr (AlignSizeR > 1) {
             if (align_rec_count > 0) {
                 const T* twiddle_ptr;
                 for (uint i = 0; i < AlignSizeR; ++i) {
-                    twiddle_ptr = subtransform_recursive_strategic<PTform,
-                                                                   PTform,
-                                                                   Inverse,
-                                                                   false,
-                                                                   AlignSize,
-                                                                   AlignSizeR>(
-                        simd::ra_addr<PTform>(data, size * i / AlignSizeR),
-                        size / AlignSizeR,
-                        align_count,
-                        align_rec_count - 1);
+                    twiddle_ptr =
+                        subtransform_recursive<PTform, PTform, Inverse, false, AlignSize, AlignSizeR>(
+                            simd::ra_addr<PTform>(data, size * i / AlignSizeR),
+                            size / AlignSizeR,
+                            align_count,
+                            align_rec_count - 1);
                 }
                 std::size_t n_groups = size / simd::reg<T>::size / AlignSizeR;
                 auto        scaling  = [](std::size_t size) {
@@ -1904,7 +1725,7 @@ public:
         constexpr auto node_size = StrategyRec::node_size;
         const T*       twiddle_ptr;
         for (uint i = 0; i < node_size; ++i) {
-            twiddle_ptr = subtransform_recursive_strategic<PTform, PTform, Inverse, false, AlignSize, 0>(
+            twiddle_ptr = subtransform_recursive<PTform, PTform, Inverse, false, AlignSize, 0>(
                 simd::ra_addr<PTform>(data, size * i / node_size), size / node_size, align_count);
         }
 
@@ -1948,12 +1769,9 @@ public:
                                           subtform_t* begin,
                                           detail_::Integer<AlignSize>,
                                           std::index_sequence<I...>) {
-                ((*(begin + I) = &fft_unit::subtransform_recursive_strategic<PDest,
-                                                                             PTform,
-                                                                             Inverse,
-                                                                             Scale,
-                                                                             AlignSize,
-                                                                             align_rec[I]>),
+                ((*(begin + I) =
+                      &fft_unit::
+                          subtransform_recursive<PDest, PTform, Inverse, Scale, AlignSize, align_rec[I]>),
                  ...);
             };
             [=]<std::size_t... I>(subtform_t* begin, std::index_sequence<I...>) {
@@ -2655,8 +2473,10 @@ private:
         return idx;
     }
 
-    auto get_twiddles_strategic(std::size_t fft_size, std::size_t sub_size, allocator_type allocator)
-        -> pcx::vector<real_type, simd::reg<T>::size, allocator_type> {
+    auto get_twiddles(std::size_t fft_size, std::size_t sub_size, allocator_type allocator)
+        -> pcx::vector<real_type, simd::reg<T>::size, allocator_type>
+        requires(sorted)
+    {
         auto [idx, align_c, align_i, align_c_rec, align_i_rec, sub_size_] =
             get_subtform_idx_strategic_(fft_size, sub_size);
 
@@ -2712,154 +2532,6 @@ private:
             l_size *= align_node_size;
             n_groups *= align_node_size;
         }
-        return twiddles;
-    }
-
-
-    static auto get_twiddles(std::size_t fft_size, std::size_t sub_size, allocator_type allocator)
-        -> pcx::vector<real_type, simd::reg<T>::size, allocator_type>
-        requires(sorted)
-    {
-        auto       wnk   = detail_::fft::wnk<T>;
-        const auto depth = log2i(fft_size);
-
-        const std::size_t n_twiddles = 8 * ((1U << (depth - 3)) - 1U);
-
-        auto twiddles = pcx::vector<real_type, simd::reg<T>::size, allocator_type>(n_twiddles, allocator);
-
-        auto tw_it = twiddles.begin();
-
-        std::size_t l_size   = simd::reg<T>::size * 2;
-        std::size_t n_groups = 1;
-
-
-        std::size_t sub_size_ = std::min(fft_size, sub_size);
-
-        auto insert_tw = [](auto tw_it, auto size, auto n_groups, auto max_btfly_size) {
-            using namespace detail_::fft;
-            for (uint i_group = 0; i_group < n_groups; ++i_group) {
-                for (uint i_btfly = 0; i_btfly < log2i(max_btfly_size); ++i_btfly) {
-                    for (uint i_subgroup = 0; i_subgroup < (1U << i_btfly); ++i_subgroup) {
-                        for (uint k = 0; k < simd::reg<T>::size; ++k) {
-                            *(tw_it++) = detail_::fft::wnk<T>(size * (1U << i_btfly),
-                                                              k + i_group * simd::reg<T>::size +
-                                                                  i_subgroup * size / 2);
-                        }
-                    }
-                }
-            }
-            return tw_it;
-        };
-        //
-        //         auto get_cost = []<typename Strategy_>(auto size, Strategy_) {
-        //             std::size_t node_count = 0;
-        //             std::size_t weight     = 1;
-        //             using namespace detail_::fft;
-        //
-        //             auto misalign         = log2i(size) % log2i(Strategy_::node_size);
-        //             auto align_node_count = Strategy_::align_node_count.at(misalign);
-        //             if (align_node_count > 0) {
-        //                 auto align_node_size = Strategy_::align_node_size.at(misalign);
-        //                 auto align_size      = powi(align_node_size, align_node_count);
-        //                 if (size >= align_size) {
-        //                     size /= align_size;
-        //                     node_count += align_node_count;
-        //                     node_count += align_node_count;
-        //                     weight *= powi(log2i(align_node_size), align_node_count);
-        //                 } else {
-        //                     node_count += misalign;
-        //                     size /= 1U << misalign;
-        //                     node_count += misalign;
-        //                     size /= 1U << misalign;
-        //                 }
-        //             }
-        //             auto target_node_count = log2i(size) / log2i(Strategy_::node_size);
-        //             node_count += target_node_count;
-        //             weight *= powi(log2i(Strategy_::node_size), target_node_count);
-        //             return std::pair(node_count, weight);
-        //         };
-        //
-        //         auto rec_size = fft_size / sub_size_;
-        //
-        //         auto rec_cost  = get_cost(rec_size, StrategyRec{});
-        //         auto targ_cost = get_cost(sub_size_ / 8, Strategy{});
-        //
-        //         auto count1  = rec_cost.first + targ_cost.first;
-        //         auto weight1 = rec_cost.second * targ_cost.second;
-        //
-        //         rec_cost  = get_cost(rec_size * 2, StrategyRec{});
-        //         targ_cost = get_cost(sub_size_ / 2 / 8, Strategy{});
-        //
-        //         auto count2  = rec_cost.first + targ_cost.first;
-        //         auto weight2 = rec_cost.second * targ_cost.second;
-        //
-        //         // if ((count2 < count1) || (count2 == count1) && (weight2 > weight1)) {
-        //         //     sub_size_ /= 2;
-        //         // }
-        //
-        //         auto misalign         = log2i(sub_size_ / 8) % log2i(Strategy::node_size);
-        //         auto align_node_count = Strategy::align_node_count.at(misalign);
-        //         if (false && misalign > 0) {
-        //             using namespace detail_::fft;
-        //             auto size            = sub_size_ / 8;
-        //             auto align_node_size = Strategy::align_node_size.at(misalign);
-        //             auto align_size      = powi(align_node_size, align_node_count);
-        //             if (size >= align_size) {
-        //                 for (uint i = 0; i < align_node_count; ++i) {
-        //                     tw_it = insert_tw(tw_it, l_size, n_groups, align_node_size);
-        //                     l_size *= align_node_size;
-        //                     n_groups *= align_node_size;
-        //                 }
-        //             } else {
-        //                 for (std::size_t node_size = Strategy::node_size; node_size > 1; node_size /= 2) {
-        //                     if (misalign % log2i(node_size) == 0) {
-        //                         align_node_count = misalign / log2i(node_size);
-        //                         align_size       = powi(node_size, align_node_count);
-        //                         if (size >= align_size) {
-        //                             for (uint i = 0; i < align_node_count; ++i) {
-        //                                 tw_it = insert_tw(tw_it, l_size, n_groups, align_node_size);
-        //                                 l_size *= align_node_size;
-        //                                 n_groups *= align_node_size;
-        //                             }
-        //                             break;
-        //                         }
-        //                     }
-        //                 }
-        //             }
-        //         }
-        // while (l_size < sub_size_) {}
-
-        if (log2i(fft_size / sub_size_) % 2 != 0) {
-            sub_size_ /= 2;
-        }
-
-        if (log2i(fft_size / (simd::reg<T>::size * 2)) % 2 == 0) {
-            tw_it = insert_tw(tw_it, l_size, n_groups, 8);
-            l_size *= 8;
-            n_groups *= 8;
-        }
-        while (l_size < sub_size_) {
-            tw_it = insert_tw(tw_it, l_size, n_groups, 4);
-            l_size *= 4;
-            n_groups *= 4;
-        }
-
-        if (l_size == sub_size_) {
-            tw_it = insert_tw(tw_it, l_size, n_groups, 2);
-            l_size *= 2;
-            n_groups *= 2;
-        };
-
-        while (l_size < fft_size) {
-            tw_it = insert_tw(tw_it, l_size, n_groups, NodeSizeRec);
-            l_size *= NodeSizeRec;
-            n_groups *= NodeSizeRec;
-        };
-        if (l_size == fft_size) {
-            tw_it = insert_tw(tw_it, l_size, n_groups, 2);
-            l_size *= 2;
-            n_groups *= 2;
-        };
         return twiddles;
     }
 
