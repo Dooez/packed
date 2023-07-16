@@ -134,7 +134,8 @@ struct order {
         } else {
             return std::array<std::size_t, sizeof...(N)>{N...};
         }
-    }(std::make_index_sequence<Size - 1>{});
+    }
+    (std::make_index_sequence<Size - 1>{});
 };
 
 template<typename T,
@@ -1578,7 +1579,8 @@ public:
                     auto tw = []<std::size_t... I>(auto tw_ptr, std::index_sequence<I...>) {
                         return std::array<simd::cx_reg<T>, sizeof...(I)>{
                             simd::cxload<simd::reg<T>::size>(tw_ptr + simd::reg<T>::size * 2 * I)...};
-                    }(twiddle_ptr, std::make_index_sequence<AlignSize - 1>{});
+                    }
+                    (twiddle_ptr, std::make_index_sequence<AlignSize - 1>{});
                     twiddle_ptr += simd::reg<T>::size * 2 * (AlignSize - 1);
                     for (std::size_t i = 0; i < group_size; ++i) {
                         node_along<AlignSize, PTform, PTform, true, Inverse>(
@@ -1600,7 +1602,8 @@ public:
                     auto tw = []<std::size_t... I>(auto tw_ptr, std::index_sequence<I...>) {
                         return std::array<simd::cx_reg<T>, sizeof...(I)>{
                             simd::cxload<simd::reg<T>::size>(tw_ptr + simd::reg<T>::size * 2 * I)...};
-                    }(twiddle_ptr, std::make_index_sequence<AlignSize - 1>{});
+                    }
+                    (twiddle_ptr, std::make_index_sequence<AlignSize - 1>{});
                     twiddle_ptr += simd::reg<T>::size * 2 * (AlignSize - 1);
                     for (std::size_t i = 0; i < group_size; ++i) {
                         node_along<AlignSize, PTform, PTform, true, Inverse>(
@@ -1622,7 +1625,8 @@ public:
                 auto tw = []<std::size_t... I>(auto tw_ptr, std::index_sequence<I...>) {
                     return std::array<simd::cx_reg<T>, sizeof...(I)>{
                         simd::cxload<simd::reg<T>::size>(tw_ptr + simd::reg<T>::size * 2 * I)...};
-                }(twiddle_ptr, std::make_index_sequence<node_size - 1>{});
+                }
+                (twiddle_ptr, std::make_index_sequence<node_size - 1>{});
                 twiddle_ptr += simd::reg<T>::size * 2 * (node_size - 1);
                 for (std::size_t i = 0; i < group_size; ++i) {
                     node_along<node_size, PTform, PTform, true, Inverse>(
@@ -1646,7 +1650,8 @@ public:
                 auto tw = []<std::size_t... I>(auto tw_ptr, std::index_sequence<I...>) {
                     return std::array<simd::cx_reg<T>, sizeof...(I)>{
                         simd::cxload<simd::reg<T>::size>(tw_ptr + simd::reg<T>::size * 2 * I)...};
-                }(twiddle_ptr, std::make_index_sequence<node_size - 1>{});
+                }
+                (twiddle_ptr, std::make_index_sequence<node_size - 1>{});
                 twiddle_ptr += simd::reg<T>::size * 2 * (node_size - 1);
                 for (std::size_t i = 0; i < group_size; ++i) {
                     node_along<node_size, PTform, PTform, true, Inverse>(
@@ -1666,7 +1671,8 @@ public:
                 auto tw = []<std::size_t... I>(auto tw_ptr, std::index_sequence<I...>) {
                     return std::array<simd::cx_reg<T>, sizeof...(I)>{
                         simd::cxload<simd::reg<T>::size>(tw_ptr + simd::reg<T>::size * 2 * I)...};
-                }(twiddle_ptr, std::make_index_sequence<node_size - 1>{});
+                }
+                (twiddle_ptr, std::make_index_sequence<node_size - 1>{});
                 twiddle_ptr += simd::reg<T>::size * 2 * (node_size - 1);
                 for (std::size_t i = 0; i < group_size; ++i) {
                     node_along<node_size, PDest, PTform, true, Inverse>(
@@ -1714,7 +1720,8 @@ public:
                     auto tw = []<std::size_t... Itw>(auto* tw_ptr, std::index_sequence<Itw...>) {
                         return std::array<simd::cx_reg<T>, sizeof...(Itw)>{
                             simd::cxload<simd::reg<T>::size>(tw_ptr + simd::reg<T>::size * 2 * Itw)...};
-                    }(twiddle_ptr, std::make_index_sequence<AlignSizeR - 1>{});
+                    }
+                    (twiddle_ptr, std::make_index_sequence<AlignSizeR - 1>{});
                     twiddle_ptr += simd::reg<T>::size * 2 * (AlignSizeR - 1);
                     node_along<AlignSizeR, PDest, PTform, true, Inverse>(
                         data, size, i_group * simd::reg<T>::size, tw, scaling);
@@ -1741,7 +1748,8 @@ public:
             auto tw = []<std::size_t... Itw>(auto* tw_ptr, std::index_sequence<Itw...>) {
                 return std::array<simd::cx_reg<T>, sizeof...(Itw)>{
                     simd::cxload<simd::reg<T>::size>(tw_ptr + simd::reg<T>::size * 2 * Itw)...};
-            }(twiddle_ptr, std::make_index_sequence<node_size - 1>{});
+            }
+            (twiddle_ptr, std::make_index_sequence<node_size - 1>{});
             twiddle_ptr += simd::reg<T>::size * 2 * (node_size - 1);
             node_along<node_size, PDest, PTform, true, Inverse>(
                 data, size, i_group * simd::reg<T>::size, tw, scaling);
@@ -1766,21 +1774,22 @@ public:
             std::array<subtform_t, n_combine_rem> subtform_table{};
 
             constexpr auto fill_rec = [=]<std::size_t AlignSize, std::size_t... I>(    //
-                                          subtform_t* begin,
-                                          detail_::Integer<AlignSize>,
-                                          std::index_sequence<I...>) {
+                subtform_t * begin,
+                detail_::Integer<AlignSize>,
+                std::index_sequence<I...>) {
                 ((*(begin + I) =
                       &fft_unit::
                           subtransform_recursive<PDest, PTform, Inverse, Scale, AlignSize, align_rec[I]>),
                  ...);
             };
-            [=]<std::size_t... I>(subtform_t* begin, std::index_sequence<I...>) {
+            [=]<std::size_t... I>(subtform_t * begin, std::index_sequence<I...>) {
                 fill_rec(begin, detail_::Integer<0>{}, std::make_index_sequence<align_rec.size()>{});
                 (fill_rec(begin + (I + 1) * align_rec.size(),
                           detail_::Integer<Strategy::align_node_size[I]>{},
                           std::make_index_sequence<align_rec.size()>{}),
                  ...);
-            }(subtform_table.data(), std::make_index_sequence<Strategy::align_node_size.size()>{});
+            }
+            (subtform_table.data(), std::make_index_sequence<Strategy::align_node_size.size()>{});
             return subtform_table;
         }();
         (this->*subtform_array[m_subtform_idx])(data, size, m_align_count, m_align_count_rec);
@@ -1977,11 +1986,12 @@ public:
                             dest, l_size, i * simd::reg<T>::size, optional...);
                     }
                 } else {
-                    std::array<simd::reg_t<T>, AlignSize - 1> tw{
-                        // {simd::broadcast(twiddle_ptr++), simd::broadcast(twiddle_ptr++)},
-                        // {simd::broadcast(twiddle_ptr++), simd::broadcast(twiddle_ptr++)},
-                        // {simd::broadcast(twiddle_ptr++), simd::broadcast(twiddle_ptr++)},
-                    };
+                    auto tw = []<std::size_t... I>(auto tw_ptr, std::index_sequence<I...>) {
+                        return std::array<simd::cx_reg<T>, sizeof...(I)>{
+                            simd::cxload<simd::reg<T>::size>(tw_ptr + simd::reg<T>::size * 2 * I)...};
+                    }
+                    (twiddle_ptr, std::make_index_sequence<AlignSize - 1>{});
+
                     for (std::size_t i = 0; i < l_size / simd::reg<T>::size / AlignSize; ++i) {
                         node_along<AlignSize, PTform, PSrc, false>(
                             dest, l_size, i * simd::reg<T>::size, tw, optional...);
@@ -2002,11 +2012,16 @@ public:
                     ++i_group;
                 }
                 for (; i_group < n_groups; ++i_group) {
-                    std::array<simd::cx_reg<T>, AlignSize - 1> tw{
-                        // {{simd::broadcast(twiddle_ptr++), simd::broadcast(twiddle_ptr++)},
-                        //  {simd::broadcast(twiddle_ptr++), simd::broadcast(twiddle_ptr++)},
-                        //  {simd::broadcast(twiddle_ptr++), simd::broadcast(twiddle_ptr++)}}
-                    };
+                    auto tw = []<std::size_t... I>(auto tw_ptr, std::index_sequence<I...>) {
+                        return std::array<simd::cx_reg<T>, sizeof...(I)>{
+                            simd::cxload<simd::reg<T>::size>(tw_ptr + simd::reg<T>::size * 2 * I)...};
+                    }
+                    (twiddle_ptr, std::make_index_sequence<AlignSize - 1>{});
+                    // std::array<simd::cx_reg<T>, AlignSize - 1> tw{
+                    //     // {{simd::broadcast(twiddle_ptr++), simd::broadcast(twiddle_ptr++)},
+                    //     //  {simd::broadcast(twiddle_ptr++), simd::broadcast(twiddle_ptr++)},
+                    //     //  {simd::broadcast(twiddle_ptr++), simd::broadcast(twiddle_ptr++)}}
+                    // };
                     auto* group_ptr = simd::ra_addr<PTform>(dest, i_group * l_size);
                     for (std::size_t i = 0; i < l_size / simd::reg<T>::size / AlignSize; ++i) {
                         node_along<AlignSize, PTform, PTform, false>(
@@ -2029,15 +2044,17 @@ public:
                 ++i_group;
             }
             for (; i_group < n_groups; ++i_group) {
-                std::array<simd::cx_reg<T>, node_size - 1> tw{
-                    // {{simd::broadcast(twiddle_ptr++), simd::broadcast(twiddle_ptr++)},
-                    //  {simd::broadcast(twiddle_ptr++), simd::broadcast(twiddle_ptr++)},
-                    //  {simd::broadcast(twiddle_ptr++), simd::broadcast(twiddle_ptr++)}}
-                };
+                auto tw = []<std::size_t... I>(auto tw_ptr, std::index_sequence<I...>) {
+                    return std::array<simd::cx_reg<T>, sizeof...(I)>{
+                        simd::cxload<simd::reg<T>::size>(tw_ptr + simd::reg<T>::size * 2 * I)...};
+                }
+                (twiddle_ptr, std::make_index_sequence<node_size - 1>{});
+
                 twiddle_ptr += 2 * (node_size - 1);
                 auto* group_ptr = simd::ra_addr<PTform>(dest, i_group * l_size);
                 for (std::size_t i = 0; i < l_size / simd::reg<T>::size / node_size; ++i) {
-                    node_along<node_size, PTform, PTform, false>(group_ptr, l_size, i * simd::reg<T>::size, tw);
+                    node_along<node_size, PTform, PTform, false>(
+                        group_ptr, l_size, i * simd::reg<T>::size, tw);
                 }
             }
             l_size /= node_size;
@@ -2164,7 +2181,8 @@ public:
                     ...
                 };
             }
-        }(twiddle_ptr, std::make_index_sequence<NodeSize - 1>{});
+        }
+        (twiddle_ptr, std::make_index_sequence<NodeSize - 1>{});
         twiddle_ptr += 2 * (NodeSize - 1);
         for (std::size_t i_group = 0; i_group < size / NodeSize / simd::reg<T>::size; ++i_group) {
             node_along<NodeSize, PTform, PSrc, false>(
@@ -2416,10 +2434,10 @@ public:
         constexpr auto Idxs = std::make_index_sequence<NodeSize>{};
         constexpr auto get_data_array =
             []<std::size_t... I>(auto data, auto offset, auto l_size, std::index_sequence<I...>) {
-                constexpr auto Size = sizeof...(I);
-                return std::array<decltype(data), Size>{
-                    simd::ra_addr<PStore>(data, offset + l_size / Size * I)...};
-            };
+            constexpr auto Size = sizeof...(I);
+            return std::array<decltype(data), Size>{
+                simd::ra_addr<PStore>(data, offset + l_size / Size * I)...};
+        };
 
         auto dst = get_data_array(dest, offset, l_size, Idxs);
 
@@ -2437,7 +2455,8 @@ public:
                     auto src = []<std::size_t... I>(const T* ptr, std::index_sequence<I...>) {
                         constexpr auto Size = sizeof...(I);
                         return std::array<const T*, Size>{ptr + 0 * I...};
-                    }(zeros.data(), Idxs);
+                    }
+                    (zeros.data(), Idxs);
 
                     for (uint i = 0; i < NodeSize; ++i) {
                         auto           l_offset = offset + l_size / NodeSize * i;
