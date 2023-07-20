@@ -814,7 +814,7 @@ private:
     [[no_unique_address]] const subsize_t m_sub_size;
     [[no_unique_address]] const sort_t    m_sort;
     const twiddle_t                       m_twiddles;
-    const s_twiddle_t                     m_twiddles_strategic;
+    const s_twiddle_t                     m_twiddles_strategic = get_twiddles_strategic(m_size, sub_size());
 
     size_type m_align_count     = 0;
     size_type m_align_count_rec = 0;
@@ -2993,7 +2993,7 @@ private:
         return twiddles;
     }
 
-    static auto get_twiddles_strategic(uZ fft_size, uZ sub_size, allocator_type allocator)
+    static auto get_twiddles_strategic(uZ fft_size, uZ sub_size, allocator_type allocator = {})
         -> std::vector<T, allocator_type>
     // requires(!sorted)
     {
@@ -3004,8 +3004,15 @@ private:
         auto twiddles = std::vector<T, allocator_type>(allocator);
 
         uZ l_size = 2;
-        insert_tw_unsorted_strategic(
-            fft_size, l_size, sub_size, 0, twiddles, align_i, align_c, align_i_rec, align_c_rec);
+        insert_tw_unsorted_strategic(fft_size,
+                                     l_size,
+                                     sub_size,
+                                     0,
+                                     twiddles,
+                                     Strategy::align_node_size[align_i],
+                                     align_c,
+                                     StrategyRec::align_node_size[align_i_rec],
+                                     align_c_rec);
 
         return twiddles;
     }
@@ -3019,7 +3026,7 @@ private:
                                              uZ           align_size_rec,
                                              uZ           align_count_rec) {
         constexpr auto wnk = detail_::fft::wnk<T>;
-        if ((fft_size / l_size) <= sub_size) {
+        if ((fft_size / l_size) < sub_size) {
             uZ start_size       = twiddles.size();
             uZ single_load_size = fft_size / (simd::reg<T>::size * 2);    // TODO: single load strategic
             uZ group_size       = 1;
