@@ -746,6 +746,17 @@ public:
         }
     }
 
+    template<std::size_t PackSize = 1>
+    void fft_raw_s(T* data) {
+        if constexpr (!sorted) {
+            constexpr auto PTform = std::max(PackSize, simd::reg<T>::size);
+            apply_unsorted<PTform, PackSize, false>(data, size());
+        } else {
+            constexpr auto PTform = std::max(PackSize, simd::reg<T>::size);
+            depth3_and_sort<PTform, PackSize, false>(data);
+            apply_subtform<PackSize, PTform, false, false>(data, size());
+        }
+    }
     template<typename DestVect_, typename SrcVect_>
         requires complex_vector_of<T, DestVect_> && complex_vector_of<T, SrcVect_>
     void operator()(DestVect_& dest, const SrcVect_& source) {
@@ -1826,7 +1837,7 @@ public:
                 ++i_align;
             }
 
-            constexpr bool countable_misalign = Strategy::align_size.size() > 1;
+            constexpr bool countable_misalign = Strategy::align_node_size.size() > 1;
             if constexpr (countable_misalign) {
                 for (; i_align < align_count; ++i_align) {
                     uint i_group = 0;
@@ -2104,16 +2115,17 @@ public:
         }
     };
 
-    template<std::size_t PDest,
-             std::size_t PSrc,
-             bool        First        = false,
-             bool        Reverse      = false,
-             uZ          AlignSize    = 0,
-             uZ          AlignSizeRec = 0>
+    template<uZ   PDest,
+             uZ   PSrc,
+             bool First        = false,
+             bool Reverse      = false,
+             uZ   AlignSize    = 0,
+             uZ   AlignSizeRec = 0>
     inline auto usubtform_recursive_strategic(T*       dest,    //
                                               uZ       size,
                                               const T* twiddle_ptr,
-                                              uZ       align_count = 0,
+                                              uZ       align_count     = 0,
+                                              uZ       align_count_rec = 0,
                                               auto... optional) -> const T* {
         if (size <= sub_size()) {
             return unsorted_subtform_strategic<PDest, PSrc, First, AlignSize>(
@@ -2124,7 +2136,7 @@ public:
 
         if constexpr (AlignSizeRec > 1) {
             // TODO:double check if logic works
-            constexpr bool countable_misalign = StrategyRec::align_size.size() > 1;
+            constexpr bool countable_misalign = StrategyRec::align_node_size.size() > 1;
             constexpr auto next_align         = countable_misalign ? AlignSizeRec : 0;
             if (!countable_misalign || align_count > 0) {
                 if constexpr (Reverse) {
@@ -2196,23 +2208,23 @@ public:
         }
 
         if constexpr (!Reverse) {
-            twiddle_ptr = usubtform_recursive_strategic<node_size, PDest, PTform, First, Reverse>(
+            twiddle_ptr = usubtform_recursive_strategic<PDest, PTform, First, Reverse, AlignSize>(
                 dest, size / node_size, twiddle_ptr);
             for (uZ i = 1; i < node_size; ++i) {
-                twiddle_ptr = usubtform_recursive_strategic<node_size, PDest, PTform, false, Reverse>(
+                twiddle_ptr = usubtform_recursive_strategic<PDest, PTform, false, Reverse, AlignSize>(
                     simd::ra_addr<PTform>(dest, i * size / node_size), size / node_size, twiddle_ptr);
             };
         }
         return twiddle_ptr;
     };
 
-    template<std::size_t PDest, std::size_t PTform, bool Inverse = false, bool Scale = false>
+    template<uZ PDest, uZ PSrc, bool Reverse = false>
     inline auto apply_unsorted(T* data, std::size_t size) {
         static constexpr auto subtform_array = []() {
             auto add_first_zero = []<uZ... I>(std::array<uZ, sizeof...(I)> sizes, std::index_sequence<I...>) {
                 return std::array<uZ, sizeof...(I) + 1>{0, sizes[I]...};
             };
-            using subtform_t     = const T* (fft_unit::*)(T*, std::size_t, uZ, uZ);
+            using subtform_t     = const T* (fft_unit::*)(T*, uZ, const T*, uZ, uZ);
             constexpr auto align = add_first_zero(
                 Strategy::align_node_size, std::make_index_sequence<Strategy::align_node_size.size()>{});
             constexpr auto align_rec =
@@ -2228,7 +2240,7 @@ public:
                                           std::index_sequence<I...>) {
                 ((*(begin + I) =
                       &fft_unit::
-                          subtransform_recursive<PDest, PTform, Inverse, Scale, AlignSize, align_rec[I]>),
+                          usubtform_recursive_strategic<PDest, PSrc, true, Reverse, AlignSize, align_rec[I]>),
                  ...);
             };
             [=]<std::size_t... I>(subtform_t* begin, std::index_sequence<I...>) {
@@ -2240,7 +2252,8 @@ public:
             }(subtform_table.data(), std::make_index_sequence<Strategy::align_node_size.size()>{});
             return subtform_table;
         }();
-        (this->*subtform_array[m_subtform_idx])(data, size, m_align_count, m_align_count_rec);
+        (this->*subtform_array[m_subtform_idx])(
+            data, size, m_twiddles_strategic.data(), m_align_count, m_align_count_rec);
     };
 
 

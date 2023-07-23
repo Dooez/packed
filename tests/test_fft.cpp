@@ -183,6 +183,8 @@ int test_fft_float(std::size_t size) {
         int  ret  = 0;
 
         vec_out = vec;
+        unit.fft_raw_s(vec_out.data());
+        vec_out = vec;
         //
         //         unit.do_it(vec_out);
         //         for (uint i = 0; i < size; ++i) {
@@ -326,6 +328,11 @@ int test_fftu_float(std::size_t size) {
 
         auto unit   = pcx::fft_unit<float, pcx::fft_order::bit_reversed>(size, sub_size);
         auto unit_u = pcx::fft_unit<float, pcx::fft_order::unordered>(size, sub_size);
+
+
+        vec_out = vec;
+        unit.fft_raw_s(vec_out.data());
+        vec_out = vec;
 
         auto ffu   = fftu(vec);
         auto eps_u = 1U << (depth - 1);
@@ -519,8 +526,8 @@ int main() {
         std::cout << (1U << i) << "\n";
 
         // ret += test_fft_float<1024>(1U << i);
-        ret += test_fft_float(1U << i);
-        // ret += test_fftu_float(1U << i);
+        // ret += test_fft_float(1U << i);
+        ret += test_fftu_float(1U << i);
         // ret += test_par_fft_float(1U << i);
 
         if (ret > 0) {
