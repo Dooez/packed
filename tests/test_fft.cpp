@@ -330,15 +330,30 @@ int test_fftu_float(std::size_t size) {
         auto unit_u = pcx::fft_unit<float, pcx::fft_order::unordered>(size, sub_size);
 
 
+        auto eps_u = 1U << (depth - 1);
+        auto ffu   = fftu(vec);
+
         vec_out = vec;
         unit.fft_raw_s(vec_out.data());
+        int ret = 0;
+        for (uint i = 0; i < size; ++i) {
+            auto val = std::complex<float>(ffu[i].value());
+            if (!equal_eps(val, vec_out[i].value(), eps_u)) {
+                std::cout << PackSize << " fftu " << size << ":" << sub_size << " #" << i << ": "
+                          << abs(val - vec_out[i].value()) << "  " << val << vec_out[i].value() << "\n";
+                ++ret;
+            }
+            if (ret > 32) {
+                return ret;
+            }
+        }
+        if (ret != 0) {
+            return ret;
+        }
         vec_out = vec;
 
-        auto ffu   = fftu(vec);
-        auto eps_u = 1U << (depth - 1);
-        vec_out    = vec;
+        vec_out = vec;
         unit(vec_out);
-        int ret = 0;
         for (uint i = 0; i < size; ++i) {
             auto val = std::complex<float>(ffu[i].value());
             if (!equal_eps(val, vec_out[i].value(), eps_u)) {
@@ -522,7 +537,7 @@ constexpr float pi = 3.14159265358979323846;
 int main() {
     int ret = 0;
 
-    for (uint i = 8; i < 14; ++i) {
+    for (uint i = 6; i < 14; ++i) {
         std::cout << (1U << i) << "\n";
 
         // ret += test_fft_float<1024>(1U << i);

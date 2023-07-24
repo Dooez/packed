@@ -1812,6 +1812,10 @@ public:
         uZ l_size   = size;
         uZ n_groups = 1;
 
+        auto as    = AlignSize;
+        auto first = First;
+
+
         if constexpr (AlignSize > 1) {
             uZ i_align = 0;
             if constexpr (PSrc < PTform || Src) {
@@ -2711,7 +2715,7 @@ public:
             if constexpr (Upsize) {
                 auto data_size = std::get<std::size_t&>(std::tie(optional...));
 
-                if (offset + l_size / 4 * 3 + simd::reg<T>::size <= data_size) {
+                if (offset + l_size / NodeSize * (NodeSize - 1) + simd::reg<T>::size <= data_size) {
                     auto src = get_data_array(source, offset, l_size, Idxs);
                     perform(dst, src, optional...);
                 } else {
