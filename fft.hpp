@@ -829,7 +829,7 @@ private:
 
     size_type m_align_count     = 0;
     size_type m_align_count_rec = 0;
-    size_type m_subtform_idx    = get_subtform_idx_strategic(m_size, sub_size());
+    size_type m_subtform_idx    = get_subtform_idx_strategic(m_size, sub_size(), sorted ? 8 : 32);
 
     static constexpr std::size_t s_sort_tform_size = 8;
 
@@ -1814,6 +1814,8 @@ public:
 
         auto as    = AlignSize;
         auto first = First;
+        auto pd    = PDest;
+        auto ps    = PSrc;
 
 
         if constexpr (AlignSize > 1) {
@@ -1842,7 +1844,7 @@ public:
             }
 
             constexpr bool countable_misalign = Strategy::align_node_size.size() > 1;
-            if constexpr (countable_misalign) {
+            if constexpr (countable_misalign || !(PSrc < PTform || Src)) {
                 for (; i_align < align_count; ++i_align) {
                     uint i_group = 0;
                     if constexpr (First) {
@@ -1904,7 +1906,103 @@ public:
             n_groups *= node_size;
         }
 
-        return node_specific<4>::template single_load<PDest, PTform>(dest, twiddle_ptr, size);
+        // return node_specific<4>::template single_load<PDest, PTform>(dest, twiddle_ptr, size);
+
+        //         for (std::size_t i_group = 0; i_group < size / simd::reg<T>::size / 4; ++i_group) {
+        //             reg_t tw0 = {simd::broadcast(twiddle_ptr++), simd::broadcast(twiddle_ptr++)};
+        //
+        //             reg_t tw1 = {simd::broadcast(twiddle_ptr++), simd::broadcast(twiddle_ptr++)};
+        //             reg_t tw2 = {simd::broadcast(twiddle_ptr++), simd::broadcast(twiddle_ptr++)};
+        //
+        //             auto* ptr0 = simd::ra_addr<PTform>(dest, simd::reg<T>::size * (i_group * 4));
+        //             auto* ptr1 = simd::ra_addr<PTform>(dest, simd::reg<T>::size * (i_group * 4 + 1));
+        //             auto* ptr2 = simd::ra_addr<PTform>(dest, simd::reg<T>::size * (i_group * 4 + 2));
+        //             auto* ptr3 = simd::ra_addr<PTform>(dest, simd::reg<T>::size * (i_group * 4 + 3));
+        //
+        //             auto p2 = simd::cxload<PTform>(ptr2);
+        //             auto p3 = simd::cxload<PTform>(ptr3);
+        //             auto p0 = simd::cxload<PTform>(ptr0);
+        //             auto p1 = simd::cxload<PTform>(ptr1);
+        //
+        //             auto [p2tw, p3tw] = simd::mul({p2, tw0}, {p3, tw0});
+        //
+        //             auto [a1, a3] = simd::btfly(p1, p3tw);
+        //             auto [a0, a2] = simd::btfly(p0, p2tw);
+        //
+        //             auto [a1tw, a3tw] = simd::mul({a1, tw1}, {a3, tw2});
+        //
+        //             auto tw3 = simd::cxload<simd::reg<T>::size>(twiddle_ptr);
+        //             auto tw4 = simd::cxload<simd::reg<T>::size>(twiddle_ptr + simd::reg<T>::size * 2);
+        //             twiddle_ptr += simd::reg<T>::size * 4;
+        //
+        //             auto [b0, b1] = simd::btfly(a0, a1tw);
+        //             auto [b2, b3] = simd::btfly(a2, a3tw);
+        //
+        //             auto [shb0, shb1] = simd::unpack_128(b0, b1);
+        //             auto [shb2, shb3] = simd::unpack_128(b2, b3);
+        //
+        //             auto [shb1tw, shb3tw] = simd::mul({shb1, tw3}, {shb3, tw4});
+        //
+        //             auto tw5 = simd::cxload<simd::reg<T>::size>(twiddle_ptr);
+        //             auto tw6 = simd::cxload<simd::reg<T>::size>(twiddle_ptr + simd::reg<T>::size * 2);
+        //             twiddle_ptr += simd::reg<T>::size * 4;
+        //
+        //             auto [c0, c1] = simd::btfly(shb0, shb1tw);
+        //             auto [c2, c3] = simd::btfly(shb2, shb3tw);
+        //
+        //             auto [shc0, shc1] = simd::unpack_pd(c0, c1);
+        //             auto [shc2, shc3] = simd::unpack_pd(c2, c3);
+        //
+        //             auto [shc1tw, shc3tw] = simd::mul({shc1, tw5}, {shc3, tw6});
+        //
+        //             auto tw7 = simd::cxload<simd::reg<T>::size>(twiddle_ptr);
+        //             auto tw8 = simd::cxload<simd::reg<T>::size>(twiddle_ptr + simd::reg<T>::size * 2);
+        //             twiddle_ptr += simd::reg<T>::size * 4;
+        //
+        //             auto [d0, d1] = simd::btfly(shc0, shc1tw);
+        //             auto [d2, d3] = simd::btfly(shc2, shc3tw);
+        //
+        //             auto shuf = [](reg_t lhs, reg_t rhs) {
+        //                 auto lhs_re = _mm256_shuffle_ps(lhs.real, rhs.real, 0b10001000);
+        //                 auto rhs_re = _mm256_shuffle_ps(lhs.real, rhs.real, 0b11011101);
+        //                 auto lhs_im = _mm256_shuffle_ps(lhs.imag, rhs.imag, 0b10001000);
+        //                 auto rhs_im = _mm256_shuffle_ps(lhs.imag, rhs.imag, 0b11011101);
+        //                 return std::make_tuple(reg_t{lhs_re, lhs_im}, reg_t{rhs_re, rhs_im});
+        //             };
+        //             auto [shd0, shd1] = shuf(d0, d1);
+        //             auto [shd2, shd3] = shuf(d2, d3);
+        //
+        //             auto [shd1tw, shd3tw] = simd::mul({shd1, tw7}, {shd3, tw8});
+        //
+        //             auto [e0, e1] = simd::btfly(shd0, shd1tw);
+        //             auto [e2, e3] = simd::btfly(shd2, shd3tw);
+        //
+        //             reg_t she0, she1, she2, she3;
+        //             if constexpr (Order == fft_order::bit_reversed) {
+        //                 if constexpr (PDest < 4) {
+        //                     std::tie(she0, she1) = simd::unpack_ps(e0, e1);
+        //                     std::tie(she2, she3) = simd::unpack_ps(e2, e3);
+        //                     std::tie(she0, she1) = simd::unpack_128(she0, she1);
+        //                     std::tie(she2, she3) = simd::unpack_128(she2, she3);
+        //                 } else {
+        //                     std::tie(she0, she1) = simd::unpack_ps(e0, e1);
+        //                     std::tie(she2, she3) = simd::unpack_ps(e2, e3);
+        //                     std::tie(she0, she1) = simd::unpack_pd(she0, she1);
+        //                     std::tie(she2, she3) = simd::unpack_pd(she2, she3);
+        //                     std::tie(she0, she1) = simd::unpack_128(she0, she1);
+        //                     std::tie(she2, she3) = simd::unpack_128(she2, she3);
+        //                 }
+        //                 std::tie(she0, she1, she2, she3) =
+        //                     simd::convert<float>::combine<PDest>(she0, she1, she2, she3);
+        //             } else {
+        //                 std::tie(she0, she1, she2, she3) = std::tie(e0, e1, e2, e3);
+        //             }
+        //             cxstore<PTform>(ptr0, she0);
+        //             cxstore<PTform>(ptr1, she1);
+        //             cxstore<PTform>(ptr2, she2);
+        //             cxstore<PTform>(ptr3, she3);
+        //         }
+        return twiddle_ptr;
     };
 
 
@@ -2133,7 +2231,7 @@ public:
                                               auto... optional) -> const T* {
         if (size <= sub_size()) {
             return unsorted_subtform_strategic<PDest, PSrc, First, AlignSize>(
-                dest, size, twiddle_ptr, optional...);
+                dest, size, twiddle_ptr, align_count, optional...);
         }
         constexpr auto PTform    = std::max(PSrc, simd::reg<T>::size);
         constexpr auto node_size = StrategyRec::node_size;
@@ -2330,101 +2428,101 @@ public:
             l_size /= 4;
             n_groups *= 4;
         }
-
-        for (std::size_t i_group = 0; i_group < size / simd::reg<T>::size / 4; ++i_group) {
-            reg_t tw0 = {simd::broadcast(twiddle_ptr++), simd::broadcast(twiddle_ptr++)};
-
-            reg_t tw1 = {simd::broadcast(twiddle_ptr++), simd::broadcast(twiddle_ptr++)};
-            reg_t tw2 = {simd::broadcast(twiddle_ptr++), simd::broadcast(twiddle_ptr++)};
-
-            auto* ptr0 = simd::ra_addr<PTform>(dest, simd::reg<T>::size * (i_group * 4));
-            auto* ptr1 = simd::ra_addr<PTform>(dest, simd::reg<T>::size * (i_group * 4 + 1));
-            auto* ptr2 = simd::ra_addr<PTform>(dest, simd::reg<T>::size * (i_group * 4 + 2));
-            auto* ptr3 = simd::ra_addr<PTform>(dest, simd::reg<T>::size * (i_group * 4 + 3));
-
-            auto p2 = simd::cxload<PTform>(ptr2);
-            auto p3 = simd::cxload<PTform>(ptr3);
-            auto p0 = simd::cxload<PTform>(ptr0);
-            auto p1 = simd::cxload<PTform>(ptr1);
-
-            auto [p2tw, p3tw] = simd::mul({p2, tw0}, {p3, tw0});
-
-            auto [a1, a3] = simd::btfly(p1, p3tw);
-            auto [a0, a2] = simd::btfly(p0, p2tw);
-
-            auto [a1tw, a3tw] = simd::mul({a1, tw1}, {a3, tw2});
-
-            auto tw3 = simd::cxload<simd::reg<T>::size>(twiddle_ptr);
-            auto tw4 = simd::cxload<simd::reg<T>::size>(twiddle_ptr + simd::reg<T>::size * 2);
-            twiddle_ptr += simd::reg<T>::size * 4;
-
-            auto [b0, b1] = simd::btfly(a0, a1tw);
-            auto [b2, b3] = simd::btfly(a2, a3tw);
-
-            auto [shb0, shb1] = simd::unpack_128(b0, b1);
-            auto [shb2, shb3] = simd::unpack_128(b2, b3);
-
-            auto [shb1tw, shb3tw] = simd::mul({shb1, tw3}, {shb3, tw4});
-
-            auto tw5 = simd::cxload<simd::reg<T>::size>(twiddle_ptr);
-            auto tw6 = simd::cxload<simd::reg<T>::size>(twiddle_ptr + simd::reg<T>::size * 2);
-            twiddle_ptr += simd::reg<T>::size * 4;
-
-            auto [c0, c1] = simd::btfly(shb0, shb1tw);
-            auto [c2, c3] = simd::btfly(shb2, shb3tw);
-
-            auto [shc0, shc1] = simd::unpack_pd(c0, c1);
-            auto [shc2, shc3] = simd::unpack_pd(c2, c3);
-
-            auto [shc1tw, shc3tw] = simd::mul({shc1, tw5}, {shc3, tw6});
-
-            auto tw7 = simd::cxload<simd::reg<T>::size>(twiddle_ptr);
-            auto tw8 = simd::cxload<simd::reg<T>::size>(twiddle_ptr + simd::reg<T>::size * 2);
-            twiddle_ptr += simd::reg<T>::size * 4;
-
-            auto [d0, d1] = simd::btfly(shc0, shc1tw);
-            auto [d2, d3] = simd::btfly(shc2, shc3tw);
-
-            auto shuf = [](reg_t lhs, reg_t rhs) {
-                auto lhs_re = _mm256_shuffle_ps(lhs.real, rhs.real, 0b10001000);
-                auto rhs_re = _mm256_shuffle_ps(lhs.real, rhs.real, 0b11011101);
-                auto lhs_im = _mm256_shuffle_ps(lhs.imag, rhs.imag, 0b10001000);
-                auto rhs_im = _mm256_shuffle_ps(lhs.imag, rhs.imag, 0b11011101);
-                return std::make_tuple(reg_t{lhs_re, lhs_im}, reg_t{rhs_re, rhs_im});
-            };
-            auto [shd0, shd1] = shuf(d0, d1);
-            auto [shd2, shd3] = shuf(d2, d3);
-
-            auto [shd1tw, shd3tw] = simd::mul({shd1, tw7}, {shd3, tw8});
-
-            auto [e0, e1] = simd::btfly(shd0, shd1tw);
-            auto [e2, e3] = simd::btfly(shd2, shd3tw);
-
-            reg_t she0, she1, she2, she3;
-            if constexpr (Order == fft_order::bit_reversed) {
-                if constexpr (PDest < 4) {
-                    std::tie(she0, she1) = simd::unpack_ps(e0, e1);
-                    std::tie(she2, she3) = simd::unpack_ps(e2, e3);
-                    std::tie(she0, she1) = simd::unpack_128(she0, she1);
-                    std::tie(she2, she3) = simd::unpack_128(she2, she3);
-                } else {
-                    std::tie(she0, she1) = simd::unpack_ps(e0, e1);
-                    std::tie(she2, she3) = simd::unpack_ps(e2, e3);
-                    std::tie(she0, she1) = simd::unpack_pd(she0, she1);
-                    std::tie(she2, she3) = simd::unpack_pd(she2, she3);
-                    std::tie(she0, she1) = simd::unpack_128(she0, she1);
-                    std::tie(she2, she3) = simd::unpack_128(she2, she3);
-                }
-                std::tie(she0, she1, she2, she3) =
-                    simd::convert<float>::combine<PDest>(she0, she1, she2, she3);
-            } else {
-                std::tie(she0, she1, she2, she3) = std::tie(e0, e1, e2, e3);
-            }
-            cxstore<PTform>(ptr0, she0);
-            cxstore<PTform>(ptr1, she1);
-            cxstore<PTform>(ptr2, she2);
-            cxstore<PTform>(ptr3, she3);
-        }
+        //
+        //         for (std::size_t i_group = 0; i_group < size / simd::reg<T>::size / 4; ++i_group) {
+        //             reg_t tw0 = {simd::broadcast(twiddle_ptr++), simd::broadcast(twiddle_ptr++)};
+        //
+        //             reg_t tw1 = {simd::broadcast(twiddle_ptr++), simd::broadcast(twiddle_ptr++)};
+        //             reg_t tw2 = {simd::broadcast(twiddle_ptr++), simd::broadcast(twiddle_ptr++)};
+        //
+        //             auto* ptr0 = simd::ra_addr<PTform>(dest, simd::reg<T>::size * (i_group * 4));
+        //             auto* ptr1 = simd::ra_addr<PTform>(dest, simd::reg<T>::size * (i_group * 4 + 1));
+        //             auto* ptr2 = simd::ra_addr<PTform>(dest, simd::reg<T>::size * (i_group * 4 + 2));
+        //             auto* ptr3 = simd::ra_addr<PTform>(dest, simd::reg<T>::size * (i_group * 4 + 3));
+        //
+        //             auto p2 = simd::cxload<PTform>(ptr2);
+        //             auto p3 = simd::cxload<PTform>(ptr3);
+        //             auto p0 = simd::cxload<PTform>(ptr0);
+        //             auto p1 = simd::cxload<PTform>(ptr1);
+        //
+        //             auto [p2tw, p3tw] = simd::mul({p2, tw0}, {p3, tw0});
+        //
+        //             auto [a1, a3] = simd::btfly(p1, p3tw);
+        //             auto [a0, a2] = simd::btfly(p0, p2tw);
+        //
+        //             auto [a1tw, a3tw] = simd::mul({a1, tw1}, {a3, tw2});
+        //
+        //             auto tw3 = simd::cxload<simd::reg<T>::size>(twiddle_ptr);
+        //             auto tw4 = simd::cxload<simd::reg<T>::size>(twiddle_ptr + simd::reg<T>::size * 2);
+        //             twiddle_ptr += simd::reg<T>::size * 4;
+        //
+        //             auto [b0, b1] = simd::btfly(a0, a1tw);
+        //             auto [b2, b3] = simd::btfly(a2, a3tw);
+        //
+        //             auto [shb0, shb1] = simd::unpack_128(b0, b1);
+        //             auto [shb2, shb3] = simd::unpack_128(b2, b3);
+        //
+        //             auto [shb1tw, shb3tw] = simd::mul({shb1, tw3}, {shb3, tw4});
+        //
+        //             auto tw5 = simd::cxload<simd::reg<T>::size>(twiddle_ptr);
+        //             auto tw6 = simd::cxload<simd::reg<T>::size>(twiddle_ptr + simd::reg<T>::size * 2);
+        //             twiddle_ptr += simd::reg<T>::size * 4;
+        //
+        //             auto [c0, c1] = simd::btfly(shb0, shb1tw);
+        //             auto [c2, c3] = simd::btfly(shb2, shb3tw);
+        //
+        //             auto [shc0, shc1] = simd::unpack_pd(c0, c1);
+        //             auto [shc2, shc3] = simd::unpack_pd(c2, c3);
+        //
+        //             auto [shc1tw, shc3tw] = simd::mul({shc1, tw5}, {shc3, tw6});
+        //
+        //             auto tw7 = simd::cxload<simd::reg<T>::size>(twiddle_ptr);
+        //             auto tw8 = simd::cxload<simd::reg<T>::size>(twiddle_ptr + simd::reg<T>::size * 2);
+        //             twiddle_ptr += simd::reg<T>::size * 4;
+        //
+        //             auto [d0, d1] = simd::btfly(shc0, shc1tw);
+        //             auto [d2, d3] = simd::btfly(shc2, shc3tw);
+        //
+        //             auto shuf = [](reg_t lhs, reg_t rhs) {
+        //                 auto lhs_re = _mm256_shuffle_ps(lhs.real, rhs.real, 0b10001000);
+        //                 auto rhs_re = _mm256_shuffle_ps(lhs.real, rhs.real, 0b11011101);
+        //                 auto lhs_im = _mm256_shuffle_ps(lhs.imag, rhs.imag, 0b10001000);
+        //                 auto rhs_im = _mm256_shuffle_ps(lhs.imag, rhs.imag, 0b11011101);
+        //                 return std::make_tuple(reg_t{lhs_re, lhs_im}, reg_t{rhs_re, rhs_im});
+        //             };
+        //             auto [shd0, shd1] = shuf(d0, d1);
+        //             auto [shd2, shd3] = shuf(d2, d3);
+        //
+        //             auto [shd1tw, shd3tw] = simd::mul({shd1, tw7}, {shd3, tw8});
+        //
+        //             auto [e0, e1] = simd::btfly(shd0, shd1tw);
+        //             auto [e2, e3] = simd::btfly(shd2, shd3tw);
+        //
+        //             reg_t she0, she1, she2, she3;
+        //             if constexpr (Order == fft_order::bit_reversed) {
+        //                 if constexpr (PDest < 4) {
+        //                     std::tie(she0, she1) = simd::unpack_ps(e0, e1);
+        //                     std::tie(she2, she3) = simd::unpack_ps(e2, e3);
+        //                     std::tie(she0, she1) = simd::unpack_128(she0, she1);
+        //                     std::tie(she2, she3) = simd::unpack_128(she2, she3);
+        //                 } else {
+        //                     std::tie(she0, she1) = simd::unpack_ps(e0, e1);
+        //                     std::tie(she2, she3) = simd::unpack_ps(e2, e3);
+        //                     std::tie(she0, she1) = simd::unpack_pd(she0, she1);
+        //                     std::tie(she2, she3) = simd::unpack_pd(she2, she3);
+        //                     std::tie(she0, she1) = simd::unpack_128(she0, she1);
+        //                     std::tie(she2, she3) = simd::unpack_128(she2, she3);
+        //                 }
+        //                 std::tie(she0, she1, she2, she3) =
+        //                     simd::convert<float>::combine<PDest>(she0, she1, she2, she3);
+        //             } else {
+        //                 std::tie(she0, she1, she2, she3) = std::tie(e0, e1, e2, e3);
+        //             }
+        //             cxstore<PTform>(ptr0, she0);
+        //             cxstore<PTform>(ptr1, she1);
+        //             cxstore<PTform>(ptr2, she2);
+        //             cxstore<PTform>(ptr3, she3);
+        //         }
         return twiddle_ptr;
     };
 
@@ -2836,11 +2934,11 @@ private:
         return sort_t{};
     };
 
-    static auto get_subtform_idx_strategic_(std::size_t fft_size, std::size_t sub_size) {
+    static auto get_subtform_idx_strategic_(uZ fft_size, uZ sub_size, uZ specific_size) {
         constexpr auto n_rem     = log2i(Strategy::node_size);
         constexpr auto n_rem_rec = log2i(StrategyRec::node_size);
 
-        std::size_t sub_size_ = std::min(fft_size, sub_size);
+        auto sub_size_ = std::min(fft_size, sub_size);
 
         auto get_cost = []<typename Strategy_>(auto size, Strategy_) {
             std::size_t node_count = 0;
@@ -2884,13 +2982,13 @@ private:
         auto rec_size = fft_size / sub_size_;
 
         auto rec_cost  = get_cost(rec_size, StrategyRec{});
-        auto targ_cost = get_cost(sub_size_ / 8, Strategy{});
+        auto targ_cost = get_cost(sub_size_ / specific_size, Strategy{});
 
         auto count1  = rec_cost.first + targ_cost.first;
         auto weight1 = rec_cost.second * targ_cost.second;
 
         rec_cost  = get_cost(rec_size * 2, StrategyRec{});
-        targ_cost = get_cost(sub_size_ / 2 / 8, Strategy{});
+        targ_cost = get_cost(sub_size_ / 2 / specific_size, Strategy{});
 
         auto count2  = rec_cost.first + targ_cost.first;
         auto weight2 = rec_cost.second * targ_cost.second;
@@ -2898,7 +2996,7 @@ private:
         if ((count2 < count1) || (count2 == count1) && (weight2 > weight1)) {
             sub_size_ /= 2;
         }
-        auto misalign    = log2i(sub_size_ / 8) % log2i(Strategy::node_size);
+        auto misalign    = log2i(sub_size_ / specific_size) % log2i(Strategy::node_size);
         uZ   align_idx   = 0;
         uZ   align_count = 0;
         if (misalign > 0) {
@@ -2939,9 +3037,9 @@ private:
         return std::make_tuple(idx, align_count, align_idx, align_count_rec, align_idx_rec, sub_size_);
     }
 
-    auto get_subtform_idx_strategic(std::size_t fft_size, std::size_t sub_size) {
+    auto get_subtform_idx_strategic(uZ fft_size, uZ sub_size, uZ specific_size) {
         auto [idx, align_c, align_i, align_c_rec, align_i_rec, sub_size_] =
-            get_subtform_idx_strategic_(fft_size, sub_size);
+            get_subtform_idx_strategic_(fft_size, sub_size, specific_size);
 
         m_align_count     = align_c;
         m_align_count_rec = align_c_rec;
@@ -3015,7 +3113,7 @@ private:
     // requires(!sorted)
     {
         auto [idx, align_c, align_i, align_c_rec, align_i_rec, sub_size_] =
-            get_subtform_idx_strategic_(fft_size, sub_size);
+            get_subtform_idx_strategic_(fft_size, sub_size, 32);
         constexpr auto wnk = detail_::fft::wnk<T>;
 
         auto twiddles = std::vector<T, allocator_type>(allocator);

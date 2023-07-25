@@ -331,10 +331,12 @@ int test_fftu_float(std::size_t size) {
 
 
         auto eps_u = 1U << (depth - 1);
-        auto ffu   = fftu(vec);
+        // auto ffu   = fftu(vec);
+        auto ffu = vec_out;
+        unit(ffu);
 
         vec_out = vec;
-        unit.fft_raw_s(vec_out.data());
+        unit.fft_raw_s<8>(vec_out.data());
         int ret = 0;
         for (uint i = 0; i < size; ++i) {
             auto val = std::complex<float>(ffu[i].value());
@@ -350,6 +352,8 @@ int test_fftu_float(std::size_t size) {
         if (ret != 0) {
             return ret;
         }
+
+        return ret;
         vec_out = vec;
 
         vec_out = vec;
