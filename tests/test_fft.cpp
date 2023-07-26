@@ -359,37 +359,37 @@ int test_fftu_float(std::size_t size) {
 
         vec_out = vec;
         unit(vec_out);
-        // for (uint i = 0; i < size; ++i) {
-        //     auto val = std::complex<float>(ffu[i].value());
-        //     if (!equal_eps(val, vec_out[i].value(), eps_u)) {
-        //         std::cout << PackSize << " fftu " << size << ":" << sub_size << " #" << i << ": "
-        //                   << abs(val - vec_out[i].value()) << "  " << val << vec_out[i].value() << "\n";
-        //         ++ret;
-        //     }
-        //     if (ret > 16) {
-        //         return ret;
-        //     }
-        // }
-        // if (ret != 0) {
-        //     return ret;
-        // }
+        for (uint i = 0; i < size; ++i) {
+            auto val = std::complex<float>(ffu[i].value());
+            if (!equal_eps(val, vec_out[i].value(), eps_u)) {
+                std::cout << PackSize << " fftu " << size << ":" << sub_size << " #" << i << ": "
+                          << abs(val - vec_out[i].value()) << "  " << val << vec_out[i].value() << "\n";
+                ++ret;
+            }
+            if (ret > 16) {
+                return ret;
+            }
+        }
+        if (ret != 0) {
+            return ret;
+        }
 
         ret = 0;
-        // unit.ifftu_internal<PackSize>(vec_out.data());
-        // for (uint i = 0; i < size; ++i) {
-        //     auto val = std::complex<float>(vec[i].value());
-        //     if (!equal_eps(val, vec_out[i].value(), 1U << (depth))) {
-        //         std::cout << "ifftvec  " << size << ":" << sub_size << " #" << i << ": "
-        //                   << abs(val - vec_out[i].value()) << "  " << val << vec_out[i].value() << "\n";
-        //         ret++;
-        //     }
-        //     if (ret > 16) {
-        //         return ret;
-        //     }
-        // }
-        // if (ret != 0) {
-        //     return ret;
-        // }
+        unit.ifftu_internal<PackSize>(vec_out.data());
+        for (uint i = 0; i < size; ++i) {
+            auto val = std::complex<float>(vec[i].value());
+            if (!equal_eps(val, vec_out[i].value(), 1U << (depth))) {
+                std::cout << "ifftvec  " << size << ":" << sub_size << " #" << i << ": "
+                          << abs(val - vec_out[i].value()) << "  " << val << vec_out[i].value() << "\n";
+                ret++;
+            }
+            if (ret > 16) {
+                return ret;
+            }
+        }
+        if (ret != 0) {
+            return ret;
+        }
 
         for (uint i = 0; i < size; ++i) {
             svec_out[i] = vec[i];
