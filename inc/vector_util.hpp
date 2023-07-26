@@ -217,6 +217,7 @@ template<typename T, bool Conj = false>
 struct cx_reg {
     typename reg<T>::type real;
     typename reg<T>::type imag;
+    static constexpr uZ size = reg<T>::size;
 };
 
 template<typename T, bool Conj>

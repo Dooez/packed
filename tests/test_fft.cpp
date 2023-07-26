@@ -324,7 +324,7 @@ int test_fftu_float(std::size_t size) {
     }
 
     for (std::size_t sub_size = 64; sub_size <= size; sub_size *= 2) {
-    // for (std::size_t sub_size = size; sub_size <= size; sub_size *= 2) {
+        // for (std::size_t sub_size = size; sub_size <= size; sub_size *= 2) {
         vec_out = vec;
 
         auto unit   = pcx::fft_unit<float, pcx::fft_order::bit_reversed>(size, sub_size);
@@ -336,9 +336,10 @@ int test_fftu_float(std::size_t size) {
         auto ffu = vec_out;
         unit(ffu);
 
-        vec_out = vec;
-        unit.fft_raw_s<8>(vec_out.data());
         int ret = 0;
+
+        vec_out = vec;
+        unit.fft_raw_s<PackSize>(vec_out.data());
         for (uint i = 0; i < size; ++i) {
             auto val = std::complex<float>(ffu[i].value());
             if (!equal_eps(val, vec_out[i].value(), eps_u)) {
@@ -353,55 +354,64 @@ int test_fftu_float(std::size_t size) {
         if (ret != 0) {
             return ret;
         }
-
-        return ret;
+        // return ret;
         vec_out = vec;
 
         vec_out = vec;
         unit(vec_out);
-        for (uint i = 0; i < size; ++i) {
-            auto val = std::complex<float>(ffu[i].value());
-            if (!equal_eps(val, vec_out[i].value(), eps_u)) {
-                std::cout << PackSize << " fftu " << size << ":" << sub_size << " #" << i << ": "
-                          << abs(val - vec_out[i].value()) << "  " << val << vec_out[i].value() << "\n";
-                ++ret;
-            }
-            if (ret > 16) {
-                return ret;
-            }
-        }
-        if (ret != 0) {
-            return ret;
-        }
+        // for (uint i = 0; i < size; ++i) {
+        //     auto val = std::complex<float>(ffu[i].value());
+        //     if (!equal_eps(val, vec_out[i].value(), eps_u)) {
+        //         std::cout << PackSize << " fftu " << size << ":" << sub_size << " #" << i << ": "
+        //                   << abs(val - vec_out[i].value()) << "  " << val << vec_out[i].value() << "\n";
+        //         ++ret;
+        //     }
+        //     if (ret > 16) {
+        //         return ret;
+        //     }
+        // }
+        // if (ret != 0) {
+        //     return ret;
+        // }
 
         ret = 0;
-        unit.ifftu_internal<PackSize>(vec_out.data());
-        for (uint i = 0; i < size; ++i) {
-            auto val = std::complex<float>(vec[i].value());
-            if (!equal_eps(val, vec_out[i].value(), 1U << (depth))) {
-                std::cout << "ifftvec  " << size << ":" << sub_size << " #" << i << ": "
-                          << abs(val - vec_out[i].value()) << "  " << val << vec_out[i].value() << "\n";
-                ret++;
-            }
-            if (ret > 16) {
-                return ret;
-            }
-        }
-        if (ret != 0) {
-            return ret;
-        }
+        // unit.ifftu_internal<PackSize>(vec_out.data());
+        // for (uint i = 0; i < size; ++i) {
+        //     auto val = std::complex<float>(vec[i].value());
+        //     if (!equal_eps(val, vec_out[i].value(), 1U << (depth))) {
+        //         std::cout << "ifftvec  " << size << ":" << sub_size << " #" << i << ": "
+        //                   << abs(val - vec_out[i].value()) << "  " << val << vec_out[i].value() << "\n";
+        //         ret++;
+        //     }
+        //     if (ret > 16) {
+        //         return ret;
+        //     }
+        // }
+        // if (ret != 0) {
+        //     return ret;
+        // }
 
         for (uint i = 0; i < size; ++i) {
             svec_out[i] = vec[i];
         }
-        unit(svec_out);
+        auto svec_out2 = svec_out;
+
+        unit(svec_out2);
+        unit.fft_raw_s<1>(reinterpret_cast<float*>(svec_out.data()));
         for (uint i = 0; i < size; ++i) {
             auto val = std::complex<float>(ffu[i].value());
+            // auto val = std::complex<float>(svec_out2[i]);
             if (!equal_eps(val, svec_out[i], eps_u)) {
                 std::cout << PackSize << " fftu svec " << size << ":" << sub_size << " #" << i << ": "
                           << abs(val - svec_out[i]) << "  " << val << svec_out[i] << "\n";
-                return 1;
+                ret++;
             }
+            if (ret > 32) {
+                return ret;
+            }
+        }
+        if (ret != 0) {
+            return ret;
         }
 
 
