@@ -2321,10 +2321,13 @@ public:
 
         if constexpr (!Reverse) {
             twiddle_ptr = usubtform_recursive_strategic<PDest, PTform, First, Reverse, AlignSize>(
-                dest, size / node_size, twiddle_ptr);
+                dest, size / node_size, twiddle_ptr, align_count);
             for (uZ i = 1; i < node_size; ++i) {
                 twiddle_ptr = usubtform_recursive_strategic<PDest, PTform, false, Reverse, AlignSize>(
-                    simd::ra_addr<PTform>(dest, i * size / node_size), size / node_size, twiddle_ptr);
+                    simd::ra_addr<PTform>(dest, i * size / node_size),
+                    size / node_size,
+                    twiddle_ptr,
+                    align_count);
             };
         }
         return twiddle_ptr;
