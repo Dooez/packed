@@ -1927,6 +1927,144 @@ public:
         return simd_size_specific<8, 16>::template unsorted<PDest, PTform>(dest, twiddle_ptr, size);
     };
 
+    template<uZ PDest, uZ PSrc, bool First = false, uZ AlignSize>
+    inline auto unsorted_subtform_strategic_reverse(
+        T* dest, uZ size, const T* twiddle_ptr, uZ align_count = 0, auto... optional) -> const T* {
+        constexpr auto PTform   = std::max(PDest, simd::reg<T>::size);
+        constexpr auto NodeSize = Strategy::node_size;
+
+        twiddle_ptr = simd_size_specific<8, 16>::template unsorted_reverse<PTform, PSrc>(
+            dest, twiddle_ptr, size, this->size(), optional...);
+
+        uZ l_size   = simd_size_specific<8, 16>::unsorted_size;
+        uZ n_groups = size / l_size / 2;
+
+        auto pd = PDest;
+        auto ps = PSrc;
+        auto as = AlignSize;
+
+//         if constexpr (AlignSize > 1) {
+//             uZ i_align = 0;
+//             if constexpr (PSrc < PTform || Src) {
+//                 auto tw = []<uZ... I>(const T* tw_ptr, std::index_sequence<I...>) {
+//                     if constexpr (First) {
+//                         return [] {};
+//                     } else {
+//                         return std::array<simd::cx_reg<T>, sizeof...(I)>{
+//                             simd::cx_reg<T>{simd::broadcast(tw_ptr + I * 2),
+//                                             simd::broadcast(tw_ptr + I * 2 + 1)}
+//                             ...
+//                         };
+//                     }
+//                 }(twiddle_ptr, std::make_index_sequence<AlignSize - 1>{});
+//                 twiddle_ptr += 2 * (AlignSize - 1);
+// 
+//                 for (uZ i = 0; i < l_size / simd::reg<T>::size / AlignSize; ++i) {
+//                     node_along<AlignSize, PTform, PSrc, false>(
+//                         dest, l_size, i * simd::reg<T>::size, tw, optional...);
+//                 }
+//                 l_size /= AlignSize;
+//                 n_groups *= AlignSize;
+//                 ++i_align;
+//             }
+// 
+//             constexpr bool countable_misalign = Strategy::align_node_size.size() > 1;
+//             if constexpr (countable_misalign || !(PSrc < PTform || Src)) {
+//                 for (; i_align < align_count; ++i_align) {
+//                     uint i_group = 0;
+//                     if constexpr (First) {
+//                         twiddle_ptr += 2 * (AlignSize - 1);
+//                         for (uZ i = 0; i < l_size / simd::reg<T>::size / AlignSize; ++i) {
+//                             node_along<AlignSize, PTform, PTform, false>(
+//                                 dest, l_size, i * simd::reg<T>::size);
+//                         }
+//                         ++i_group;
+//                     }
+//                     for (; i_group < n_groups; ++i_group) {
+//                         auto tw = []<uZ... I>(const T* tw_ptr, std::index_sequence<I...>) {
+//                             return std::array<simd::cx_reg<T>, sizeof...(I)>{
+//                                 simd::cx_reg<T>{simd::broadcast(tw_ptr + I * 2),
+//                                                 simd::broadcast(tw_ptr + I * 2 + 1)}
+//                                 ...
+//                             };
+//                         }(twiddle_ptr, std::make_index_sequence<AlignSize - 1>{});
+//                         twiddle_ptr += 2 * (AlignSize - 1);
+//                         auto* group_ptr = simd::ra_addr<PTform>(dest, i_group * l_size);
+//                         for (uZ i = 0; i < l_size / simd::reg<T>::size / AlignSize; ++i) {
+//                             node_along<AlignSize, PTform, PTform, false>(
+//                                 group_ptr, l_size, i * simd::reg<T>::size, tw);
+//                         }
+//                     }
+//                     l_size /= AlignSize;
+//                     n_groups *= AlignSize;
+//                     ++i_align;
+//                 }
+//             }
+//         } else if constexpr (PSrc < PTform || Src) {
+//             auto tw = []<uZ... I>(const T* tw_ptr, std::index_sequence<I...>) {
+//                 if constexpr (First) {
+//                     return [] {};
+//                 } else {
+//                     return std::array<simd::cx_reg<T>, sizeof...(I)>{
+//                         simd::cx_reg<T>{simd::broadcast(tw_ptr + I * 2),
+//                                         simd::broadcast(tw_ptr + I * 2 + 1)}
+//                         ...
+//                     };
+//                 }
+//             }(twiddle_ptr, std::make_index_sequence<NodeSize - 1>{});
+//             twiddle_ptr += 2 * (NodeSize - 1);
+// 
+//             for (uZ i = 0; i < l_size / simd::reg<T>::size / NodeSize; ++i) {
+//                 node_along<NodeSize, PTform, PSrc, false>(
+//                     dest, l_size, i * simd::reg<T>::size, tw, optional...);
+//             }
+//             l_size /= NodeSize;
+//             n_groups *= NodeSize;
+//         }
+
+        if constexpr (AlignSize > 1) {
+            constexpr bool countable_misalign = Strategy::align_node_size.size() > 1;
+            if constexpr (countable_misalign) {
+                size /= detail_::fft::powi(AlignSize, align_count);
+            } else {
+                size /= AlignSize;
+            }
+        } else if constexpr (PDest < PTform) {
+            size /= NodeSize;
+        }
+
+        while (l_size < size) {
+            uint i_group = 0;
+            if constexpr (First) {
+                twiddle_ptr += 2 * (NodeSize - 1);
+                for (uZ i = 0; i < l_size / simd::reg<T>::size / NodeSize; ++i) {
+                    node_along<NodeSize, PTform, PTform, false>(dest, l_size, i * simd::reg<T>::size);
+                }
+                ++i_group;
+            }
+            for (; i_group < n_groups; ++i_group) {
+                auto tw = []<uZ... I>(const T* tw_ptr, std::index_sequence<I...>) {
+                    return std::array<simd::cx_reg<T>, sizeof...(I)>{
+                        simd::cx_reg<T>{simd::broadcast(tw_ptr + I * 2),
+                                        simd::broadcast(tw_ptr + I * 2 + 1)}
+                        ...
+                    };
+                }(twiddle_ptr, std::make_index_sequence<NodeSize - 1>{});
+
+                twiddle_ptr += 2 * (NodeSize - 1);
+                auto* group_ptr = simd::ra_addr<PTform>(dest, i_group * l_size);
+                for (uZ i = 0; i < l_size / simd::reg<T>::size / NodeSize; ++i) {
+                    node_along<NodeSize, PTform, PTform, false>(
+                        group_ptr, l_size, i * simd::reg<T>::size, tw);
+                }
+            }
+            l_size /= NodeSize;
+            n_groups *= NodeSize;
+        }
+
+        return twiddle_ptr;
+    };
+
     /**
      * @brief Contains functions specific to data type and simd sizes
      *
@@ -1935,9 +2073,11 @@ public:
      */
     template<uZ SimdSize, uZ SimdCount>
     struct simd_size_specific;
-    template<>
-    struct simd_size_specific<8, 16> {
-        static constexpr uZ unsorted_size = simd::reg<T>::size * 4;
+
+    template<uZ SimdCount>
+        requires(SimdCount >= 16)
+    struct simd_size_specific<8, SimdCount> {
+        static constexpr uZ unsorted_size = 32;
         template<uZ PDest, uZ PTform>
         static inline auto unsorted(T* dest, const T* twiddle_ptr, uZ size) {
             using cx_reg = simd::cx_reg<T>;
@@ -2040,8 +2180,16 @@ public:
         }
 
         template<uZ PTform, uZ PSrc, bool Scale>
-        static inline auto single_load_reverse(T* data, const T* twiddle_ptr, uZ size, uZ fft_size) {
-            using cx_reg = simd::cx_reg<T>;
+        static inline auto unsorted_reverse(T*       dest,    //
+                                            const T* twiddle_ptr,
+                                            uZ       size,
+                                            uZ       fft_size,
+                                            auto... optional) {
+            using cx_reg         = simd::cx_reg<T>;
+            constexpr auto PLoad = std::max(PSrc, cx_reg::size);
+
+            using source_type  = const T*;
+            constexpr bool Src = detail_::has_type<source_type, decltype(optional)...>;
 
             auto scale = [](uZ size) {
                 if constexpr (Scale)
@@ -2051,15 +2199,25 @@ public:
             }(fft_size);
 
             for (iZ i_group = size / unsorted_size - 1; i_group >= 0; --i_group) {
-                auto* ptr0 = simd::ra_addr<PTform>(data, cx_reg::size * (i_group * 4));
-                auto* ptr1 = simd::ra_addr<PTform>(data, cx_reg::size * (i_group * 4 + 1));
-                auto* ptr2 = simd::ra_addr<PTform>(data, cx_reg::size * (i_group * 4 + 2));
-                auto* ptr3 = simd::ra_addr<PTform>(data, cx_reg::size * (i_group * 4 + 3));
+                auto* ptr0 = simd::ra_addr<PTform>(dest, cx_reg::size * (i_group * 4));
+                auto* ptr1 = simd::ra_addr<PTform>(dest, cx_reg::size * (i_group * 4 + 1));
+                auto* ptr2 = simd::ra_addr<PTform>(dest, cx_reg::size * (i_group * 4 + 2));
+                auto* ptr3 = simd::ra_addr<PTform>(dest, cx_reg::size * (i_group * 4 + 3));
 
-                auto she0 = simd::cxload<PTform>(ptr0);
-                auto she1 = simd::cxload<PTform>(ptr1);
-                auto she2 = simd::cxload<PTform>(ptr2);
-                auto she3 = simd::cxload<PTform>(ptr3);
+                cx_reg she0, she1, she2, she3;
+                if constexpr (Src) {
+                    auto src = std::get<source_type&>(std::tie(optional...));
+
+                    she0 = simd::cxload<PLoad>(simd::ra_addr<PLoad>(src, cx_reg::size * (i_group * 4)));
+                    she1 = simd::cxload<PLoad>(simd::ra_addr<PLoad>(src, cx_reg::size * (i_group * 4 + 1)));
+                    she2 = simd::cxload<PLoad>(simd::ra_addr<PLoad>(src, cx_reg::size * (i_group * 4 + 2)));
+                    she3 = simd::cxload<PLoad>(simd::ra_addr<PLoad>(src, cx_reg::size * (i_group * 4 + 3)));
+                } else {
+                    she0 = simd::cxload<PLoad>(ptr0);
+                    she1 = simd::cxload<PLoad>(ptr1);
+                    she2 = simd::cxload<PLoad>(ptr2);
+                    she3 = simd::cxload<PLoad>(ptr3);
+                }
 
                 cx_reg e0, e1, e2, e3;
                 if constexpr (Order == fft_order::bit_reversed) {

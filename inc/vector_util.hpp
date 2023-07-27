@@ -399,6 +399,11 @@ struct convert<float> {
         return cx_reg<float, false>({real, imag});
     };
 
+    /**
+     * @brief Shuffles data to convert from PackFrom to PackTo pack size;
+     * 
+     * @param args arbitrary number of cx_reg<T>
+     */
     template<std::size_t PackFrom, std::size_t PackTo>
         requires(PackFrom > 0) && (PackTo > 0)
     static inline auto repack(auto... args) {
@@ -471,6 +476,14 @@ struct convert<float> {
         }
     };
 
+    /**
+     * @brief Shuffles data to put I/Q into separate simd registers.
+     * Resulting data order is dependent on input pack size.
+     * Faster than true repack.
+     * @tparam PackFrom 
+     * @param args 
+     * @return auto 
+     */
     template<std::size_t PackFrom>
     static inline auto split(auto... args) {
         auto tup = std::make_tuple(args...);
