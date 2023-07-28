@@ -1832,7 +1832,7 @@ public:
                 }(twiddle_ptr, std::make_index_sequence<AlignSize - 1>{});
                 twiddle_ptr += 2 * (AlignSize - 1);
 
-                for (uZ i = 0; i < l_size / simd::reg<T>::size / AlignSize; ++i) {
+                for (uZ i = 0; i < l_size / (simd::reg<T>::size * AlignSize); ++i) {
                     node_along<AlignSize, PTform, PSrc, false>(
                         dest, l_size, i * simd::reg<T>::size, tw, optional...);
                 }
@@ -1847,7 +1847,7 @@ public:
                     uint i_group = 0;
                     if constexpr (First) {
                         twiddle_ptr += 2 * (AlignSize - 1);
-                        for (uZ i = 0; i < l_size / simd::reg<T>::size / AlignSize; ++i) {
+                        for (uZ i = 0; i < l_size / (simd::reg<T>::size * AlignSize); ++i) {
                             node_along<AlignSize, PTform, PTform, false>(
                                 dest, l_size, i * simd::reg<T>::size);
                         }
@@ -1863,7 +1863,7 @@ public:
                         }(twiddle_ptr, std::make_index_sequence<AlignSize - 1>{});
                         twiddle_ptr += 2 * (AlignSize - 1);
                         auto* group_ptr = simd::ra_addr<PTform>(dest, i_group * l_size);
-                        for (uZ i = 0; i < l_size / simd::reg<T>::size / AlignSize; ++i) {
+                        for (uZ i = 0; i < l_size / (simd::reg<T>::size * AlignSize); ++i) {
                             node_along<AlignSize, PTform, PTform, false>(
                                 group_ptr, l_size, i * simd::reg<T>::size, tw);
                         }
@@ -1887,7 +1887,7 @@ public:
             }(twiddle_ptr, std::make_index_sequence<node_size - 1>{});
             twiddle_ptr += 2 * (node_size - 1);
 
-            for (uZ i = 0; i < l_size / simd::reg<T>::size / node_size; ++i) {
+            for (uZ i = 0; i < l_size / (simd::reg<T>::size * node_size); ++i) {
                 node_along<node_size, PTform, PSrc, false>(
                     dest, l_size, i * simd::reg<T>::size, tw, optional...);
             }
@@ -1899,7 +1899,7 @@ public:
             uint i_group = 0;
             if constexpr (First) {
                 twiddle_ptr += 2 * (node_size - 1);
-                for (uZ i = 0; i < l_size / simd::reg<T>::size / node_size; ++i) {
+                for (uZ i = 0; i < l_size / (simd::reg<T>::size * node_size); ++i) {
                     node_along<node_size, PTform, PTform, false>(dest, l_size, i * simd::reg<T>::size);
                 }
                 ++i_group;
@@ -1915,7 +1915,7 @@ public:
 
                 twiddle_ptr += 2 * (node_size - 1);
                 auto* group_ptr = simd::ra_addr<PTform>(dest, i_group * l_size);
-                for (uZ i = 0; i < l_size / simd::reg<T>::size / node_size; ++i) {
+                for (uZ i = 0; i < l_size / (simd::reg<T>::size * node_size); ++i) {
                     node_along<node_size, PTform, PTform, false>(
                         group_ptr, l_size, i * simd::reg<T>::size, tw);
                 }
@@ -1930,8 +1930,8 @@ public:
     template<uZ PDest, uZ PSrc, bool First = false, uZ AlignSize>
     inline auto unsorted_subtform_strategic_reverse(
         T* dest, uZ size, const T* twiddle_ptr, uZ align_count = 0, auto... optional) -> const T* {
-        constexpr auto PTform   = std::max(PDest, simd::reg<T>::size);
-        constexpr auto NodeSize = Strategy::node_size;
+        constexpr auto PTform    = std::max(PDest, simd::reg<T>::size);
+        constexpr auto node_size = Strategy::node_size;
 
         twiddle_ptr = simd_size_specific<8, 16>::template unsorted_reverse<PTform, PSrc>(
             dest, twiddle_ptr, size, this->size(), optional...);
@@ -1951,35 +1951,35 @@ public:
                 size /= AlignSize;
             }
         } else if constexpr (PDest < PTform) {
-            size /= NodeSize;
+            size /= node_size;
         }
 
         while (l_size < size) {
             constexpr auto min_g = First ? 1 : 0;
             for (iZ i_group = n_groups - 1; i_group > min_g; --i_group) {
-                twiddle_ptr -= 2 * (NodeSize - 1);
+                twiddle_ptr -= 2 * (node_size - 1);
                 auto tw = []<uZ... I>(const T* tw_ptr, std::index_sequence<I...>) {
                     return std::array<simd::cx_reg<T>, sizeof...(I)>{
                         simd::cx_reg<T>{simd::broadcast(tw_ptr + I * 2),
                                         simd::broadcast(tw_ptr + I * 2 + 1)}
                         ...
                     };
-                }(twiddle_ptr, std::make_index_sequence<NodeSize - 1>{});
+                }(twiddle_ptr, std::make_index_sequence<node_size - 1>{});
 
                 auto* group_ptr = simd::ra_addr<PTform>(dest, i_group * l_size);
-                for (uZ i = 0; i < l_size / simd::reg<T>::size / NodeSize; ++i) {
-                    node_along<NodeSize, PTform, PTform, false>(
+                for (uZ i = 0; i < l_size / (simd::reg<T>::size * node_size); ++i) {
+                    node_along<node_size, PTform, PTform, false>(
                         group_ptr, l_size, i * simd::reg<T>::size, tw);
                 }
             }
             if constexpr (First) {
-                twiddle_ptr -= 2 * (NodeSize - 1);
-                for (uZ i = 0; i < l_size / simd::reg<T>::size / NodeSize; ++i) {
-                    node_along<NodeSize, PTform, PTform, false>(dest, l_size, i * simd::reg<T>::size);
+                twiddle_ptr -= 2 * (node_size - 1);
+                for (uZ i = 0; i < l_size / (simd::reg<T>::size * node_size); ++i) {
+                    node_along<node_size, PTform, PTform, false>(dest, l_size, i * simd::reg<T>::size);
                 }
             }
-            l_size *= NodeSize;
-            n_groups /= NodeSize;
+            l_size *= node_size;
+            n_groups /= node_size;
         }
 
         if constexpr (AlignSize > 1) {
@@ -2000,14 +2000,14 @@ public:
                         }(twiddle_ptr, std::make_index_sequence<AlignSize - 1>{});
 
                         auto* group_ptr = simd::ra_addr<PTform>(dest, i_group * l_size);
-                        for (uZ i = 0; i < l_size / simd::reg<T>::size / AlignSize; ++i) {
+                        for (uZ i = 0; i < l_size / (simd::reg<T>::size * AlignSize); ++i) {
                             node_along<AlignSize, PTform, PTform, false>(
                                 group_ptr, l_size, i * simd::reg<T>::size, tw);
                         }
                     }
                     if constexpr (First) {
                         twiddle_ptr -= 2 * (AlignSize - 1);
-                        for (uZ i = 0; i < l_size / simd::reg<T>::size / AlignSize; ++i) {
+                        for (uZ i = 0; i < l_size / (simd::reg<T>::size * AlignSize); ++i) {
                             node_along<AlignSize, PTform, PTform, false>(
                                 dest, l_size, i * simd::reg<T>::size);
                         }
@@ -2016,7 +2016,7 @@ public:
                     n_groups /= AlignSize;
                 }
             }
-            if constexpr (PDest < PTform) {
+            if constexpr (PDest < PTform || !countable_misalign) {
                 constexpr auto min_g = First ? 1 : 0;
                 for (iZ i_group = n_groups - 1; i_group > min_g; --i_group) {
                     twiddle_ptr -= 2 * (AlignSize - 1);
@@ -2029,41 +2029,15 @@ public:
                     }(twiddle_ptr, std::make_index_sequence<AlignSize - 1>{});
 
                     auto* group_ptr = simd::ra_addr<PTform>(dest, i_group * l_size);
-                    for (uZ i = 0; i < l_size / simd::reg<T>::size / AlignSize; ++i) {
+                    for (uZ i = 0; i < l_size / (simd::reg<T>::size * AlignSize); ++i) {
                         node_along<AlignSize, PDest, PTform, false>(
                             group_ptr, l_size, i * simd::reg<T>::size, tw);
                     }
                 }
                 if constexpr (First) {
                     twiddle_ptr -= 2 * (AlignSize - 1);
-                    for (uZ i = 0; i < l_size / simd::reg<T>::size / AlignSize; ++i) {
+                    for (uZ i = 0; i < l_size / (simd::reg<T>::size * AlignSize); ++i) {
                         node_along<AlignSize, PDest, PTform, false>(dest, l_size, i * simd::reg<T>::size);
-                    }
-                }
-                l_size *= AlignSize;
-                n_groups /= AlignSize;
-            } else if constexpr (!countable_misalign) {
-                constexpr auto min_g = First ? 1 : 0;
-                for (iZ i_group = n_groups - 1; i_group > min_g; --i_group) {
-                    twiddle_ptr -= 2 * (AlignSize - 1);
-                    auto tw = []<uZ... I>(const T* tw_ptr, std::index_sequence<I...>) {
-                        return std::array<simd::cx_reg<T>, sizeof...(I)>{
-                            simd::cx_reg<T>{simd::broadcast(tw_ptr + I * 2),
-                                            simd::broadcast(tw_ptr + I * 2 + 1)}
-                            ...
-                        };
-                    }(twiddle_ptr, std::make_index_sequence<AlignSize - 1>{});
-
-                    auto* group_ptr = simd::ra_addr<PTform>(dest, i_group * l_size);
-                    for (uZ i = 0; i < l_size / simd::reg<T>::size / AlignSize; ++i) {
-                        node_along<AlignSize, PTform, PTform, false>(
-                            group_ptr, l_size, i * simd::reg<T>::size, tw);
-                    }
-                }
-                if constexpr (First) {
-                    twiddle_ptr -= 2 * (AlignSize - 1);
-                    for (uZ i = 0; i < l_size / simd::reg<T>::size / AlignSize; ++i) {
-                        node_along<AlignSize, PTform, PTform, false>(dest, l_size, i * simd::reg<T>::size);
                     }
                 }
                 l_size *= AlignSize;
@@ -2072,28 +2046,29 @@ public:
         } else if constexpr (PDest < PTform) {
             constexpr auto min_g = First ? 1 : 0;
             for (iZ i_group = n_groups - 1; i_group > min_g; --i_group) {
-                twiddle_ptr -= 2 * (NodeSize - 1);
+                twiddle_ptr -= 2 * (node_size - 1);
                 auto tw = []<uZ... I>(const T* tw_ptr, std::index_sequence<I...>) {
                     return std::array<simd::cx_reg<T>, sizeof...(I)>{
                         simd::cx_reg<T>{simd::broadcast(tw_ptr + I * 2),
                                         simd::broadcast(tw_ptr + I * 2 + 1)}
                         ...
                     };
-                }(twiddle_ptr, std::make_index_sequence<NodeSize - 1>{});
+                }(twiddle_ptr, std::make_index_sequence<node_size - 1>{});
 
                 auto* group_ptr = simd::ra_addr<PTform>(dest, i_group * l_size);
-                for (uZ i = 0; i < l_size / simd::reg<T>::size / NodeSize; ++i) {
-                    node_along<NodeSize, PDest, PTform, false>(group_ptr, l_size, i * simd::reg<T>::size, tw);
+                for (uZ i = 0; i < l_size / (simd::reg<T>::size * node_size); ++i) {
+                    node_along<node_size, PDest, PTform, false>(
+                        group_ptr, l_size, i * simd::reg<T>::size, tw);
                 }
             }
             if constexpr (First) {
-                twiddle_ptr -= 2 * (NodeSize - 1);
-                for (uZ i = 0; i < l_size / simd::reg<T>::size / NodeSize; ++i) {
-                    node_along<NodeSize, PDest, PTform, false>(dest, l_size, i * simd::reg<T>::size);
+                twiddle_ptr -= 2 * (node_size - 1);
+                for (uZ i = 0; i < l_size / (simd::reg<T>::size * node_size); ++i) {
+                    node_along<node_size, PDest, PTform, false>(dest, l_size, i * simd::reg<T>::size);
                 }
             }
-            l_size *= NodeSize;
-            n_groups /= NodeSize;
+            l_size *= node_size;
+            n_groups /= node_size;
         }
         return twiddle_ptr;
     };
