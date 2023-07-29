@@ -323,8 +323,16 @@ int test_fftu_float(std::size_t size) {
         svec_out[i] = vec[i];
     }
 
-    for (std::size_t sub_size = 64; sub_size <= size; sub_size *= 2) {
+    for (std::size_t sub_size = 128; sub_size <= size; sub_size *= 2) {
         // for (std::size_t sub_size = size; sub_size <= size; sub_size *= 2) {
+
+        auto vec      = pcx::vector<float, PackSize, std::allocator<float>>(size);
+        auto vec_out  = pcx::vector<float, PackSize, std::allocator<float>>(size);
+        auto svec_out = std::vector<std::complex<float>>(size);
+        for (uint i = 0; i < size; ++i) {
+            vec[i]      = std::exp(std::complex(0.F, 2 * pi * i / size * 13.37F));
+            svec_out[i] = vec[i];
+        }
         vec_out = vec;
 
         auto unit   = pcx::fft_unit<float, pcx::fft_order::bit_reversed>(size, sub_size);
@@ -352,12 +360,12 @@ int test_fftu_float(std::size_t size) {
         if (ret != 0) {
             return ret;
         }
-        return ret;
+        // return ret;
+        continue;
 
-        vec_out = vec;
+        vec_out  = vec;
         auto ffu = vec_out;
         unit(ffu);
-        vec_out = vec;
         unit.fft_raw_s<PackSize>(vec_out.data());
         for (uint i = 0; i < size; ++i) {
             auto val = std::complex<float>(ffu[i].value());

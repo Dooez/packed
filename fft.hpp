@@ -1947,8 +1947,8 @@ public:
             dest, twiddle_ptr, size, this->size(), optional...);
 
         uZ l_size   = simd_size_specific<8, 16>::unsorted_size;
-        uZ n_groups = size / l_size / 2;
-        // l_size *= 2;
+        uZ n_groups = size / l_size;
+
         auto pd = PDest;
         auto ps = PSrc;
         auto as = AlignSize;
@@ -1965,8 +1965,10 @@ public:
         }
 
         while (l_size < size) {
+            l_size *= node_size;
+            n_groups /= node_size;
             constexpr auto min_g = First ? 1 : 0;
-            for (iZ i_group = n_groups - 1; i_group > min_g; --i_group) {
+            for (iZ i_group = n_groups - 1; i_group >= min_g; --i_group) {
                 twiddle_ptr -= 2 * (node_size - 1);
                 auto tw = []<uZ... I>(const T* tw_ptr, std::index_sequence<I...>) {
                     return std::array<simd::cx_reg<T>, sizeof...(I)>{
@@ -1989,8 +1991,6 @@ public:
                         dest, l_size, i * simd::reg<T>::size);
                 }
             }
-            l_size *= node_size;
-            n_groups /= node_size;
         }
 
         if constexpr (AlignSize > 1) {
@@ -1998,8 +1998,9 @@ public:
             if constexpr (countable_misalign) {
                 constexpr auto min_align = PDest < PTform ? 1 : 0;
                 for (iZ i_align = align_count - 1; i_align >= min_align; --i_align) {
-                    uint           i_group = 0;
-                    constexpr auto min_g   = First ? 1 : 0;
+                    l_size *= AlignSize;
+                    n_groups /= AlignSize;
+                    constexpr auto min_g = First ? 1 : 0;
                     for (iZ i_group = n_groups - 1; i_group >= min_g; --i_group) {
                         twiddle_ptr -= 2 * (AlignSize - 1);
                         auto tw = []<uZ... I>(const T* tw_ptr, std::index_sequence<I...>) {
@@ -2023,11 +2024,11 @@ public:
                                 dest, l_size, i * simd::reg<T>::size);
                         }
                     }
-                    l_size *= AlignSize;
-                    n_groups /= AlignSize;
                 }
             }
             if constexpr (PDest < PTform || !countable_misalign) {
+                l_size *= AlignSize;
+                n_groups /= AlignSize;
                 constexpr auto min_g = First ? 1 : 0;
                 for (iZ i_group = n_groups - 1; i_group >= min_g; --i_group) {
                     twiddle_ptr -= 2 * (AlignSize - 1);
@@ -2052,12 +2053,12 @@ public:
                             dest, l_size, i * simd::reg<T>::size);
                     }
                 }
-                l_size *= AlignSize;
-                n_groups /= AlignSize;
             }
         } else if constexpr (PDest < PTform) {
+            l_size *= node_size;
+            n_groups /= node_size;
             constexpr auto min_g = First ? 1 : 0;
-            for (iZ i_group = n_groups - 1; i_group > min_g; --i_group) {
+            for (iZ i_group = n_groups - 1; i_group >= min_g; --i_group) {
                 twiddle_ptr -= 2 * (node_size - 1);
                 auto tw = []<uZ... I>(const T* tw_ptr, std::index_sequence<I...>) {
                     return std::array<simd::cx_reg<T>, sizeof...(I)>{
@@ -2080,8 +2081,6 @@ public:
                         dest, l_size, i * simd::reg<T>::size);
                 }
             }
-            l_size *= node_size;
-            n_groups /= node_size;
         }
 
         return twiddle_ptr;
@@ -2219,6 +2218,7 @@ public:
                     return static_cast<float>(1. / static_cast<double>(size));
                 else
                     return [] {};
+                // }(fft_size);
             }(size);
 
             for (iZ i_group = size / unsorted_size - 1; i_group >= 0; --i_group) {
@@ -2336,17 +2336,19 @@ public:
 
     template<uZ   PDest,
              uZ   PSrc,
-             bool First        = false,
-             uZ   AlignSize    = 0,
-             uZ   AlignSizeRec = 0>
+             bool First,
+             uZ   AlignSize,
+             uZ   AlignSizeRec>
     inline auto usubtform_recursive_strategic(T*       dest,    //
                                               uZ       size,
                                               const T* twiddle_ptr,
-                                              uZ       align_count     = 0,
-                                              uZ       align_count_rec = 0,
+                                              uZ       align_count,
+                                              uZ       align_count_rec,
                                               auto... optional) -> const T* {
-        auto pd = PDest;
-        auto ps = PSrc;
+        auto pd  = PDest;
+        auto ps  = PSrc;
+        auto as  = AlignSize;
+        auto asr = AlignSizeRec;
 
         if (size <= sub_size()) {
             return unsorted_subtform_strategic<PDest, PSrc, First, AlignSize>(
@@ -2378,10 +2380,10 @@ public:
                     //     dest, size, i_group * simd::reg<T>::size, tw, optional...);
                 }
 
-                twiddle_ptr = usubtform_recursive_strategic<PDest, PTform, First, next_align>(
+                twiddle_ptr = usubtform_recursive_strategic<PDest, PTform, First, AlignSize, next_align>(
                     dest, size / AlignSizeRec, twiddle_ptr, align_count, align_count_rec - 1);
                 for (uZ i = 1; i < AlignSizeRec; ++i) {
-                    twiddle_ptr = usubtform_recursive_strategic<PDest, PTform, false, next_align>(
+                    twiddle_ptr = usubtform_recursive_strategic<PDest, PTform, false, AlignSize, next_align>(
                         simd::ra_addr<PTform>(dest, i * size / AlignSizeRec),
                         size / AlignSizeRec,
                         twiddle_ptr,
@@ -2407,14 +2409,14 @@ public:
             //     dest, size, i_group * simd::reg<T>::size, tw, optional...);
         }
 
-        twiddle_ptr = usubtform_recursive_strategic<PDest, PTform, First, AlignSize>(
-            dest, size / node_size, twiddle_ptr, align_count);
+        twiddle_ptr = usubtform_recursive_strategic<PDest, PTform, First, AlignSize, 0>(
+            dest, size / node_size, twiddle_ptr, align_count, 0);
         for (uZ i = 1; i < node_size; ++i) {
-            twiddle_ptr = usubtform_recursive_strategic<PDest, PTform, false, AlignSize>(
+            twiddle_ptr = usubtform_recursive_strategic<PDest, PTform, false, AlignSize, 0>(
                 simd::ra_addr<PTform>(dest, i * size / node_size),
                 size / node_size,
                 twiddle_ptr,
-                align_count);
+                align_count, 0);
         };
         return twiddle_ptr;
     };
