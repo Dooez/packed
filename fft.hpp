@@ -1927,13 +1927,13 @@ public:
         return simd_size_specific<8, 16>::template unsorted<PDest, PTform>(dest, twiddle_ptr, size);
     };
 
-    template<uZ PDest, uZ PSrc, bool First = false, uZ AlignSize>
+    template<uZ PDest, uZ PSrc, bool First, bool Scale, uZ AlignSize>
     inline auto unsorted_subtform_strategic_reverse(
         T* dest, uZ size, const T* twiddle_ptr, uZ align_count = 0, auto... optional) -> const T* {
         constexpr auto PTform    = std::max(PDest, simd::reg<T>::size);
         constexpr auto node_size = Strategy::node_size;
 
-        twiddle_ptr = simd_size_specific<8, 16>::template unsorted_reverse<PTform, PSrc>(
+        twiddle_ptr = simd_size_specific<8, 16>::template unsorted_reverse<PTform, PSrc, Scale>(
             dest, twiddle_ptr, size, this->size(), optional...);
 
         uZ l_size   = simd_size_specific<8, 16>::unsorted_size;
@@ -2232,7 +2232,7 @@ public:
                     std::tie(she0, she1, she2, she3) =
                         simd::convert<T>::template repack<PSrc, PTform>(she0, she1, she2, she3);
                 }
-                std::tie(she0, she1, she2, she3) = simd::convert<T>::inverse<true>(she0, she1, she2, she3);
+                std::tie(she0, she1, she2, she3) = simd::convert<T>::template inverse<true>(she0, she1, she2, she3);
                 if constexpr (Order == fft_order::bit_reversed) {
                     std::tie(e0, e1) = simd::unpack_128(she0, she1);
                     std::tie(e2, e3) = simd::unpack_128(she2, she3);
@@ -2306,7 +2306,7 @@ public:
                     p3 = simd::mul(p3, scaling);
                 }
 
-                std::tie(p0, p2, p1, p3) = simd::convert<T>::inverse<true>(p0, p2, p1, p3);
+                std::tie(p0, p2, p1, p3) = simd::convert<T>::template inverse<true>(p0, p2, p1, p3);
 
                 simd::cxstore<PTform>(ptr0, p0);
                 simd::cxstore<PTform>(ptr2, p2);
@@ -2320,7 +2320,6 @@ public:
     template<uZ   PDest,
              uZ   PSrc,
              bool First        = false,
-             bool Reverse      = false,
              uZ   AlignSize    = 0,
              uZ   AlignSizeRec = 0>
     inline auto usubtform_recursive_strategic(T*       dest,    //
@@ -2342,23 +2341,9 @@ public:
         auto fi = First;
 
         if constexpr (AlignSizeRec > 1) {
-            // TODO:double check if logic works
             constexpr bool countable_misalign = StrategyRec::align_node_size.size() > 1;
             constexpr auto next_align         = countable_misalign ? AlignSizeRec : 0;
             if (!countable_misalign || align_count_rec > 0) {
-                // if constexpr (Reverse) {
-                //     for (uZ i = AlignSizeRec - 1; i > 0; --i) {
-                //         twiddle_ptr =
-                //             usubtform_recursive_strategic<PDest, PTform, false, Reverse, next_align>(
-                //                 simd::ra_addr<PTform>(dest, i * size / AlignSizeRec),
-                //                 size / AlignSizeRec,
-                //                 twiddle_ptr,
-                //                 align_count,
-                //                 align_count_rec - 1);
-                //     };
-                //     twiddle_ptr = usubtform_recursive_strategic<PDest, PTform, First, Reverse, next_align>(
-                //         dest, size / AlignSizeRec, twiddle_ptr, align_count, align_count_rec - 1);
-                // }
                 auto tw = []<uZ... I>(const T* tw_ptr, std::index_sequence<I...>) {
                     if constexpr (First) {
                         return [] {};
@@ -2372,34 +2357,23 @@ public:
                 }(twiddle_ptr, std::make_index_sequence<AlignSizeRec - 1>{});
                 twiddle_ptr += 2 * (AlignSizeRec - 1);
                 for (uZ i_group = 0; i_group < size / AlignSizeRec / simd::reg<T>::size; ++i_group) {
-                    node_along<AlignSizeRec, PTform, PSrc, false, false, Reverse>(
+                    node_along<AlignSizeRec, PTform, PSrc, false, false, false>(
                         dest, size, i_group * simd::reg<T>::size, tw, optional...);
                 }
 
-                if constexpr (!Reverse) {
-                    twiddle_ptr = usubtform_recursive_strategic<PDest, PTform, First, Reverse, next_align>(
-                        dest, size / AlignSizeRec, twiddle_ptr, align_count, align_count_rec - 1);
-                    for (uZ i = 1; i < AlignSizeRec; ++i) {
-                        twiddle_ptr =
-                            usubtform_recursive_strategic<PDest, PTform, false, Reverse, next_align>(
-                                simd::ra_addr<PTform>(dest, i * size / AlignSizeRec),
-                                size / AlignSizeRec,
-                                twiddle_ptr,
-                                align_count,
-                                align_count_rec - 1);
-                    };
-                }
+                twiddle_ptr = usubtform_recursive_strategic<PDest, PTform, First, next_align>(
+                    dest, size / AlignSizeRec, twiddle_ptr, align_count, align_count_rec - 1);
+                for (uZ i = 1; i < AlignSizeRec; ++i) {
+                    twiddle_ptr = usubtform_recursive_strategic<PDest, PTform, false, next_align>(
+                        simd::ra_addr<PTform>(dest, i * size / AlignSizeRec),
+                        size / AlignSizeRec,
+                        twiddle_ptr,
+                        align_count,
+                        align_count_rec - 1);
+                };
                 return twiddle_ptr;
             }
         }
-        // if constexpr (Reverse) {
-        //     for (uZ i = node_size - 1; i > 0; --i) {
-        //         twiddle_ptr = usubtform_recursive_strategic<PDest, PTform, false, Reverse>(
-        //             simd::ra_addr<PTform>(dest, i * size / node_size), size / node_size, twiddle_ptr);
-        //     };
-        //     twiddle_ptr = usubtform_recursive_strategic<PDest, PTform, First, Reverse>(
-        //         dest, size / node_size, twiddle_ptr);
-        // }
         auto tw = []<uZ... I>(const T* tw_ptr, std::index_sequence<I...>) {
             if constexpr (First) {
                 return [] {};
@@ -2412,27 +2386,26 @@ public:
         }(twiddle_ptr, std::make_index_sequence<node_size - 1>{});
         twiddle_ptr += 2 * (node_size - 1);
         for (uZ i_group = 0; i_group < size / node_size / simd::reg<T>::size; ++i_group) {
-            node_along<node_size, PTform, PSrc, false, false, Reverse>(
+            node_along<node_size, PTform, PSrc, false, false, false>(
                 dest, size, i_group * simd::reg<T>::size, tw, optional...);
         }
 
-        if constexpr (!Reverse) {
-            twiddle_ptr = usubtform_recursive_strategic<PDest, PTform, First, Reverse, AlignSize>(
-                dest, size / node_size, twiddle_ptr, align_count);
-            for (uZ i = 1; i < node_size; ++i) {
-                twiddle_ptr = usubtform_recursive_strategic<PDest, PTform, false, Reverse, AlignSize>(
-                    simd::ra_addr<PTform>(dest, i * size / node_size),
-                    size / node_size,
-                    twiddle_ptr,
-                    align_count);
-            };
-        }
+        twiddle_ptr = usubtform_recursive_strategic<PDest, PTform, First, AlignSize>(
+            dest, size / node_size, twiddle_ptr, align_count);
+        for (uZ i = 1; i < node_size; ++i) {
+            twiddle_ptr = usubtform_recursive_strategic<PDest, PTform, false, AlignSize>(
+                simd::ra_addr<PTform>(dest, i * size / node_size),
+                size / node_size,
+                twiddle_ptr,
+                align_count);
+        };
         return twiddle_ptr;
     };
 
     template<uZ   PDest,
              uZ   PSrc,
              bool First        = false,
+             bool Scale        = false,
              uZ   AlignSize    = 0,
              uZ   AlignSizeRec = 0>
     inline auto usubtform_recursive_strategic_reverse(T*       dest,    //
@@ -2445,7 +2418,7 @@ public:
         auto ps = PSrc;
 
         if (size <= sub_size()) {
-            return unsorted_subtform_strategic_reverse<PDest, PSrc, First, AlignSize>(
+            return unsorted_subtform_strategic_reverse<PDest, PSrc, First, Scale, AlignSize>(
                 dest, size, twiddle_ptr, align_count, optional...);
         }
         constexpr auto PTform    = std::max(PDest, simd::reg<T>::size);
@@ -2458,14 +2431,15 @@ public:
             constexpr auto next_align         = countable_misalign ? AlignSizeRec : 0;
             if (!countable_misalign || align_count_rec > 0) {
                 for (uZ i = AlignSizeRec - 1; i > 0; --i) {
-                    twiddle_ptr = usubtform_recursive_strategic_reverse<PTform, PSrc, false, next_align>(
-                        simd::ra_addr<PSrc>(dest, i * size / AlignSizeRec),
-                        size / AlignSizeRec,
-                        twiddle_ptr,
-                        align_count,
-                        align_count_rec - 1);
+                    twiddle_ptr =
+                        usubtform_recursive_strategic_reverse<PTform, PSrc, false, Scale, next_align>(
+                            simd::ra_addr<PSrc>(dest, i * size / AlignSizeRec),
+                            size / AlignSizeRec,
+                            twiddle_ptr,
+                            align_count,
+                            align_count_rec - 1);
                 };
-                twiddle_ptr = usubtform_recursive_strategic_reverse<PTform, PSrc, First, next_align>(
+                twiddle_ptr = usubtform_recursive_strategic_reverse<PTform, PSrc, First, Scale, next_align>(
                     dest, size / AlignSizeRec, twiddle_ptr, align_count, align_count_rec - 1);
 
                 auto tw = []<uZ... I>(const T* tw_ptr, std::index_sequence<I...>) {
@@ -2488,11 +2462,11 @@ public:
             }
         }
         for (uZ i = node_size - 1; i > 0; --i) {
-            twiddle_ptr = usubtform_recursive_strategic_reverse<PTform, PSrc, false>(
+            twiddle_ptr = usubtform_recursive_strategic_reverse<PTform, PSrc, false, Scale>(
                 simd::ra_addr<PSrc>(dest, i * size / node_size), size / node_size, twiddle_ptr);
         };
-        twiddle_ptr =
-            usubtform_recursive_strategic_reverse<PTform, PSrc, First>(dest, size / node_size, twiddle_ptr);
+        twiddle_ptr = usubtform_recursive_strategic_reverse<PTform, PSrc, First, Scale>(
+            dest, size / node_size, twiddle_ptr);
 
         auto tw = []<uZ... I>(const T* tw_ptr, std::index_sequence<I...>) {
             if constexpr (First) {
@@ -2533,10 +2507,19 @@ public:
                                           subtform_t* begin,
                                           detail_::Integer<AlignSize>,
                                           std::index_sequence<I...>) {
-                ((*(begin + I) =
-                      &fft_unit::
-                          usubtform_recursive_strategic<PDest, PSrc, true, Reverse, AlignSize, align_rec[I]>),
-                 ...);
+                if (Reverse)
+                    ((*(begin + I) = &fft_unit::usubtform_recursive_strategic_reverse<PDest,
+                                                                                      PSrc,
+                                                                                      true,
+                                                                                      true,
+                                                                                      AlignSize,
+                                                                                      align_rec[I]>),
+                     ...);
+                else
+                    ((*(begin + I) =
+                          &fft_unit::
+                              usubtform_recursive_strategic<PDest, PSrc, true, AlignSize, align_rec[I]>),
+                     ...);
             };
             [=]<uZ... I>(subtform_t* begin, std::index_sequence<I...>) {
                 fill_rec(begin, detail_::Integer<0>{}, std::make_index_sequence<align_rec.size()>{});
