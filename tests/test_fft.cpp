@@ -352,7 +352,7 @@ int test_fftu_float(std::size_t size) {
         if (ret != 0) {
             return ret;
         }
-        // return ret;
+        return ret;
 
         vec_out = vec;
         auto ffu = vec_out;

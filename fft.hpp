@@ -1934,9 +1934,7 @@ public:
             n_groups *= node_size;
         }
 
-        twiddle_ptr = simd_size_specific<8, 16>::template unsorted<PDest, PTform>(dest, twiddle_ptr, size);
-        auto diff   = twiddle_ptr - m_twiddles_strategic.data();
-        return twiddle_ptr;
+        return simd_size_specific<8, 16>::template unsorted<PDest, PTform>(dest, twiddle_ptr, size);
     };
 
     template<uZ PDest, uZ PSrc, bool First, bool Scale, uZ AlignSize>
@@ -1945,16 +1943,12 @@ public:
         constexpr auto PTform    = std::max(PDest, simd::reg<T>::size);
         constexpr auto node_size = Strategy::node_size;
 
-        auto diff = twiddle_ptr - m_twiddles_strategic.data();
-
         twiddle_ptr = simd_size_specific<8, 16>::template unsorted_reverse<PTform, PSrc, Scale>(
             dest, twiddle_ptr, size, this->size(), optional...);
 
-        auto tw_diff = &*m_twiddles_strategic.end() - twiddle_ptr;
-
         uZ l_size   = simd_size_specific<8, 16>::unsorted_size;
         uZ n_groups = size / l_size / 2;
-        l_size *= 2;
+        // l_size *= 2;
         auto pd = PDest;
         auto ps = PSrc;
         auto as = AlignSize;
@@ -2225,7 +2219,7 @@ public:
                     return static_cast<float>(1. / static_cast<double>(size));
                 else
                     return [] {};
-            }(fft_size);
+            }(size);
 
             for (iZ i_group = size / unsorted_size - 1; i_group >= 0; --i_group) {
                 auto* ptr0 = simd::ra_addr<PTform>(dest, cx_reg::size * (i_group * 4));
@@ -2380,8 +2374,8 @@ public:
                 }(twiddle_ptr, std::make_index_sequence<AlignSizeRec - 1>{});
                 twiddle_ptr += 2 * (AlignSizeRec - 1);
                 for (uZ i_group = 0; i_group < size / AlignSizeRec / simd::reg<T>::size; ++i_group) {
-                    node_along<AlignSizeRec, PTform, PSrc, false, false, false>(
-                        dest, size, i_group * simd::reg<T>::size, tw, optional...);
+                    // node_along<AlignSizeRec, PTform, PSrc, false, false, false>(
+                    //     dest, size, i_group * simd::reg<T>::size, tw, optional...);
                 }
 
                 twiddle_ptr = usubtform_recursive_strategic<PDest, PTform, First, next_align>(
@@ -2409,8 +2403,8 @@ public:
         }(twiddle_ptr, std::make_index_sequence<node_size - 1>{});
         twiddle_ptr += 2 * (node_size - 1);
         for (uZ i_group = 0; i_group < size / node_size / simd::reg<T>::size; ++i_group) {
-            node_along<node_size, PTform, PSrc, false, false, false>(
-                dest, size, i_group * simd::reg<T>::size, tw, optional...);
+            // node_along<node_size, PTform, PSrc, false, false, false>(
+            //     dest, size, i_group * simd::reg<T>::size, tw, optional...);
         }
 
         twiddle_ptr = usubtform_recursive_strategic<PDest, PTform, First, AlignSize>(
@@ -2485,8 +2479,8 @@ public:
                     }
                 }(twiddle_ptr, std::make_index_sequence<AlignSizeRec - 1>{});
                 for (uZ i_group = 0; i_group < size / AlignSizeRec / simd::reg<T>::size; ++i_group) {
-                    node_along<AlignSizeRec, PDest, PTform, false, false, true>(
-                        dest, size, i_group * simd::reg<T>::size, tw, optional...);
+                    // node_along<AlignSizeRec, PDest, PTform, false, false, true>(
+                    //     dest, size, i_group * simd::reg<T>::size, tw, optional...);
                 }
                 return twiddle_ptr;
             }
@@ -2514,8 +2508,8 @@ public:
             }
         }(twiddle_ptr, std::make_index_sequence<node_size - 1>{});
         for (uZ i_group = 0; i_group < size / node_size / simd::reg<T>::size; ++i_group) {
-            node_along<node_size, PDest, PTform, false, false, true>(
-                dest, size, i_group * simd::reg<T>::size, tw, optional...);
+            // node_along<node_size, PDest, PTform, false, false, true>(
+            //     dest, size, i_group * simd::reg<T>::size, tw, optional...);
         }
 
         return twiddle_ptr;
@@ -2954,9 +2948,6 @@ public:
                 n_groups /= 2;
             }
         }
-
-
-        auto tw_diff = &*m_twiddles.end() - twiddle_ptr;
         return twiddle_ptr;
     };
 
