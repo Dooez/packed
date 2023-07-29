@@ -333,8 +333,6 @@ int test_fftu_float(std::size_t size) {
 
         auto eps_u = 1U << (depth - 1);
         // auto ffu   = fftu(vec);
-        auto ffu = vec_out;
-        unit(ffu);
 
         int ret = 0;
 
@@ -357,6 +355,8 @@ int test_fftu_float(std::size_t size) {
         return ret;
 
 
+        auto ffu = vec_out;
+        unit(ffu);
         vec_out = vec;
         unit.fft_raw_s<PackSize>(vec_out.data());
         for (uint i = 0; i < size; ++i) {

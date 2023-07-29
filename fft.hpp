@@ -1843,8 +1843,8 @@ public:
                 twiddle_ptr += 2 * (AlignSize - 1);
 
                 for (uZ i = 0; i < l_size / (simd::reg<T>::size * AlignSize); ++i) {
-                    // node_along<AlignSize, PTform, PSrc, false>(
-                    //     dest, l_size, i * simd::reg<T>::size, tw, optional...);
+                    node_along<AlignSize, PTform, PSrc, false>(
+                        dest, l_size, i * simd::reg<T>::size, tw, optional...);
                 }
                 l_size /= AlignSize;
                 n_groups *= AlignSize;
@@ -1858,8 +1858,8 @@ public:
                     if constexpr (First) {
                         twiddle_ptr += 2 * (AlignSize - 1);
                         for (uZ i = 0; i < l_size / (simd::reg<T>::size * AlignSize); ++i) {
-                            // node_along<AlignSize, PTform, PTform, false>(
-                            //     dest, l_size, i * simd::reg<T>::size);
+                            node_along<AlignSize, PTform, PTform, false>(
+                                dest, l_size, i * simd::reg<T>::size);
                         }
                         ++i_group;
                     }
@@ -1874,13 +1874,13 @@ public:
                         twiddle_ptr += 2 * (AlignSize - 1);
                         auto* group_ptr = simd::ra_addr<PTform>(dest, i_group * l_size);
                         for (uZ i = 0; i < l_size / (simd::reg<T>::size * AlignSize); ++i) {
-                            // node_along<AlignSize, PTform, PTform, false>(
-                            //     group_ptr, l_size, i * simd::reg<T>::size, tw);
+                            node_along<AlignSize, PTform, PTform, false>(
+                                group_ptr, l_size, i * simd::reg<T>::size, tw);
                         }
                     }
                     l_size /= AlignSize;
                     n_groups *= AlignSize;
-                    ++i_align;
+                    //++i_align; TODO: CHECK
                 }
             }
         } else if constexpr (PSrc < PTform || Src) {
@@ -1898,8 +1898,8 @@ public:
             twiddle_ptr += 2 * (node_size - 1);
 
             for (uZ i = 0; i < l_size / (simd::reg<T>::size * node_size); ++i) {
-                // node_along<node_size, PTform, PSrc, false>(
-                //     dest, l_size, i * simd::reg<T>::size, tw, optional...);
+                node_along<node_size, PTform, PSrc, false>(
+                    dest, l_size, i * simd::reg<T>::size, tw, optional...);
             }
             l_size /= node_size;
             n_groups *= node_size;
@@ -1954,7 +1954,7 @@ public:
 
         uZ l_size   = simd_size_specific<8, 16>::unsorted_size;
         uZ n_groups = size / l_size / 2;
-
+        l_size *= 2;
         auto pd = PDest;
         auto ps = PSrc;
         auto as = AlignSize;
@@ -1984,14 +1984,15 @@ public:
 
                 auto* group_ptr = simd::ra_addr<PTform>(dest, i_group * l_size);
                 for (uZ i = 0; i < l_size / (simd::reg<T>::size * node_size); ++i) {
-                    node_along<node_size, PTform, PTform, false>(
+                    node_along<node_size, PTform, PTform, false, false, true>(
                         group_ptr, l_size, i * simd::reg<T>::size, tw);
                 }
             }
             if constexpr (First) {
                 twiddle_ptr -= 2 * (node_size - 1);
                 for (uZ i = 0; i < l_size / (simd::reg<T>::size * node_size); ++i) {
-                    node_along<node_size, PTform, PTform, false>(dest, l_size, i * simd::reg<T>::size);
+                    node_along<node_size, PTform, PTform, false, false, true>(
+                        dest, l_size, i * simd::reg<T>::size);
                 }
             }
             l_size *= node_size;
@@ -2017,15 +2018,15 @@ public:
 
                         auto* group_ptr = simd::ra_addr<PTform>(dest, i_group * l_size);
                         for (uZ i = 0; i < l_size / (simd::reg<T>::size * AlignSize); ++i) {
-                            // node_along<AlignSize, PTform, PTform, false>(
-                            //     group_ptr, l_size, i * simd::reg<T>::size, tw);
+                            node_along<AlignSize, PTform, PTform, false, false, true>(
+                                group_ptr, l_size, i * simd::reg<T>::size, tw);
                         }
                     }
                     if constexpr (First) {
                         twiddle_ptr -= 2 * (AlignSize - 1);
                         for (uZ i = 0; i < l_size / (simd::reg<T>::size * AlignSize); ++i) {
-                            // node_along<AlignSize, PTform, PTform, false>(
-                            //     dest, l_size, i * simd::reg<T>::size);
+                            node_along<AlignSize, PTform, PTform, false, false, true>(
+                                dest, l_size, i * simd::reg<T>::size);
                         }
                     }
                     l_size *= AlignSize;
@@ -2046,14 +2047,15 @@ public:
 
                     auto* group_ptr = simd::ra_addr<PTform>(dest, i_group * l_size);
                     for (uZ i = 0; i < l_size / (simd::reg<T>::size * AlignSize); ++i) {
-                        // node_along<AlignSize, PDest, PTform, false>(
-                        //     group_ptr, l_size, i * simd::reg<T>::size, tw);
+                        node_along<AlignSize, PDest, PTform, false, false, true>(
+                            group_ptr, l_size, i * simd::reg<T>::size, tw);
                     }
                 }
                 if constexpr (First) {
                     twiddle_ptr -= 2 * (AlignSize - 1);
                     for (uZ i = 0; i < l_size / (simd::reg<T>::size * AlignSize); ++i) {
-                        // node_along<AlignSize, PDest, PTform, false>(dest, l_size, i * simd::reg<T>::size);
+                        node_along<AlignSize, PDest, PTform, false, false, true>(
+                            dest, l_size, i * simd::reg<T>::size);
                     }
                 }
                 l_size *= AlignSize;
@@ -2073,14 +2075,15 @@ public:
 
                 auto* group_ptr = simd::ra_addr<PTform>(dest, i_group * l_size);
                 for (uZ i = 0; i < l_size / (simd::reg<T>::size * node_size); ++i) {
-                    // node_along<node_size, PDest, PTform, false>(
-                    //     group_ptr, l_size, i * simd::reg<T>::size, tw);
+                    node_along<node_size, PDest, PTform, false, false, true>(
+                        group_ptr, l_size, i * simd::reg<T>::size, tw);
                 }
             }
             if constexpr (First) {
                 twiddle_ptr -= 2 * (node_size - 1);
                 for (uZ i = 0; i < l_size / (simd::reg<T>::size * node_size); ++i) {
-                    // node_along<node_size, PDest, PTform, false>(dest, l_size, i * simd::reg<T>::size);
+                    node_along<node_size, PDest, PTform, false, false, true>(
+                        dest, l_size, i * simd::reg<T>::size);
                 }
             }
             l_size *= node_size;
@@ -2222,7 +2225,7 @@ public:
                     return static_cast<float>(1. / static_cast<double>(size));
                 else
                     return [] {};
-            }(32);
+            }(size);
 
             for (iZ i_group = size / unsorted_size - 1; i_group >= 0; --i_group) {
                 auto* ptr0 = simd::ra_addr<PTform>(dest, cx_reg::size * (i_group * 4));
@@ -2495,9 +2498,6 @@ public:
                 twiddle_ptr,
                 align_count,
                 0);
-
-            auto tw_diff = &*m_twiddles_strategic.end() - twiddle_ptr;
-            auto b       = tw_diff;
         };
         twiddle_ptr = usubtform_recursive_strategic_reverse<PTform, PSrc, First, Scale, AlignSize, 0>(
             dest, size / node_size, twiddle_ptr, align_count, 0);
