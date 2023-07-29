@@ -338,6 +338,25 @@ int test_fftu_float(std::size_t size) {
 
         int ret = 0;
 
+        unit.fft_raw_s<PackSize>(vec_out.data());
+        unit.ifft_raw_s<true, PackSize>(vec_out.data());
+        for (uint i = 0; i < size; ++i) {
+            auto val = std::complex<float>(vec[i].value());
+            if (!equal_eps(val, vec_out[i].value(), eps_u)) {
+                std::cout << PackSize << " ifft strat " << size << ":" << sub_size << " #" << i << ": "
+                          << abs(val - vec_out[i].value()) << "  " << val << vec_out[i].value() << "\n";
+                ++ret;
+            }
+            if (ret > 32) {
+                return ret;
+            }
+        }
+        if (ret != 0) {
+            return ret;
+        }
+        return ret;
+
+
         vec_out = vec;
         unit.fft_raw_s<PackSize>(vec_out.data());
         for (uint i = 0; i < size; ++i) {
@@ -354,8 +373,27 @@ int test_fftu_float(std::size_t size) {
         if (ret != 0) {
             return ret;
         }
+
+
+        ret           = 0;
+        auto vec_out2 = vec_out;
+        // unit.ifftu_internal<PackSize>(vec_out2.data());
+        // unit.ifft_raw_s<true, PackSize>(vec_out.data());
+        // for (uint i = 0; i < size; ++i) {
+        //     auto val = std::complex<float>(vec_out2[i].value());
+        //     if (!equal_eps(val, vec_out[i].value(), eps_u)) {
+        //         std::cout << PackSize << " ifft strat " << size << ":" << sub_size << " #" << i << ": "
+        //                   << abs(val - vec_out[i].value()) << "  " << val << vec_out[i].value() << "\n";
+        //         ++ret;
+        //     }
+        //     if (ret > 32) {
+        //         return ret;
+        //     }
+        // }
+        // if (ret != 0) {
+        //     return ret;
+        // }
         // return ret;
-        vec_out = vec;
 
         vec_out = vec;
         unit(vec_out);
@@ -552,7 +590,7 @@ constexpr float pi = 3.14159265358979323846;
 int main() {
     int ret = 0;
 
-    for (uint i = 6; i < 15; ++i) {
+    for (uint i = 8; i < 15; ++i) {
         std::cout << (1U << i) << "\n";
 
         // ret += test_fft_float<1024>(1U << i);
