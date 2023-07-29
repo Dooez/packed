@@ -341,7 +341,7 @@ int test_fftu_float(std::size_t size) {
         for (uint i = 0; i < size; ++i) {
             auto val = std::complex<float>(vec[i].value());
             if (!equal_eps(val, vec_out[i].value(), eps_u)) {
-                std::cout << PackSize << " ifft strat " << size << ":" << sub_size << " #" << i << ": "
+                std::cout << PackSize << " fft ifft strat " << size << ":" << sub_size << " #" << i << ": "
                           << abs(val - vec_out[i].value()) << "  " << val << vec_out[i].value() << "\n";
                 ++ret;
             }
@@ -352,9 +352,9 @@ int test_fftu_float(std::size_t size) {
         if (ret != 0) {
             return ret;
         }
-        return ret;
+        // return ret;
 
-
+        vec_out = vec;
         auto ffu = vec_out;
         unit(ffu);
         vec_out = vec;
