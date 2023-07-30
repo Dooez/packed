@@ -323,7 +323,7 @@ int test_fftu_float(std::size_t size) {
         svec_out[i] = vec[i];
     }
 
-    for (std::size_t sub_size = 128; sub_size <= size; sub_size *= 2) {
+    for (std::size_t sub_size = 64; sub_size <= size; sub_size *= 2) {
         // for (std::size_t sub_size = size; sub_size <= size; sub_size *= 2) {
 
         auto vec      = pcx::vector<float, PackSize, std::allocator<float>>(size);
@@ -360,8 +360,6 @@ int test_fftu_float(std::size_t size) {
         if (ret != 0) {
             return ret;
         }
-        // return ret;
-        continue;
 
         vec_out  = vec;
         auto ffu = vec_out;
@@ -598,7 +596,7 @@ constexpr float pi = 3.14159265358979323846;
 int main() {
     int ret = 0;
 
-    for (uint i = 8; i < 15; ++i) {
+    for (uint i = 6; i < 15; ++i) {
         std::cout << (1U << i) << "\n";
 
         // ret += test_fft_float<1024>(1U << i);
