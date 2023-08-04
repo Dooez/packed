@@ -799,7 +799,9 @@ public:
         } else {
             constexpr auto PTform = std::max(PDest, simd::reg<T>::size);
             if (dst_ptr == src_ptr) {
-                depth3_and_sort<PTform, PDest, false>(dst_traits::data(dest));
+                size_specific::template tform_sort<PTform, PDest, false>(
+                    dst_traits::data(dest), size(), m_sort);
+                // depth3_and_sort<PTform, PDest, false>(dst_traits::data(dest));
                 apply_subtform<PDest, PTform, false, false>(dst_traits::data(dest), size());
             } else {
                 depth3_and_sort<PTform, PSrc, false>(dst_traits::data(dest));
@@ -824,7 +826,9 @@ public:
             ifftu_internal<PData>(v_traits::data(vector));
         } else {
             constexpr auto PTform = std::max(PData, simd::reg<T>::size);
-            depth3_and_sort<PTform, PData, true>(v_traits::data(vector));
+
+            size_specific::template tform_sort<PTform, PData, true>(v_traits::data(vector), size(), m_sort);
+            // depth3_and_sort<PTform, PData, true>(v_traits::data(vector));
             apply_subtform<PData, PTform, true, true>(v_traits::data(vector), size());
         }
     }
@@ -842,6 +846,7 @@ private:
 
     static constexpr std::size_t s_sort_tform_size = 8;
 
+
     [[nodiscard]] constexpr auto sub_size() const -> std::size_t {
         if constexpr (SubSize == pcx::dynamic_size) {
             return m_sub_size;
@@ -851,6 +856,773 @@ private:
     }
 
 public:
+    /**
+     * @brief Contains functions specific to data type and simd sizes
+     *
+     * @tparam SimdSize number of type T values in simd registers in, e.g. 4 for SSE (128 bits) and float (32 bits)
+     * @tparam SimdCount number of simd registers
+     */
+    template<uZ SimdSize, uZ SimdCount>
+    struct simd_size_specific;
+
+    template<uZ SimdCount>
+        requires(SimdCount >= 16)
+    struct simd_size_specific<8, SimdCount> {
+        static constexpr uZ unsorted_size = 32;
+        template<uZ PDest, uZ PTform>
+        static inline auto unsorted(T* dest, const T* twiddle_ptr, uZ size) {
+            using cx_reg = simd::cx_reg<T>;
+
+            for (uZ i_group = 0; i_group < size / unsorted_size; ++i_group) {
+                cx_reg tw0 = {simd::broadcast(twiddle_ptr++), simd::broadcast(twiddle_ptr++)};
+
+                cx_reg tw1 = {simd::broadcast(twiddle_ptr++), simd::broadcast(twiddle_ptr++)};
+                cx_reg tw2 = {simd::broadcast(twiddle_ptr++), simd::broadcast(twiddle_ptr++)};
+
+                auto* ptr0 = simd::ra_addr<PTform>(dest, cx_reg::size * (i_group * 4));
+                auto* ptr1 = simd::ra_addr<PTform>(dest, cx_reg::size * (i_group * 4 + 1));
+                auto* ptr2 = simd::ra_addr<PTform>(dest, cx_reg::size * (i_group * 4 + 2));
+                auto* ptr3 = simd::ra_addr<PTform>(dest, cx_reg::size * (i_group * 4 + 3));
+
+                auto p2 = simd::cxload<PTform>(ptr2);
+                auto p3 = simd::cxload<PTform>(ptr3);
+                auto p0 = simd::cxload<PTform>(ptr0);
+                auto p1 = simd::cxload<PTform>(ptr1);
+
+                auto [p2tw, p3tw] = simd::mul({p2, tw0}, {p3, tw0});
+
+                auto [a1, a3] = simd::btfly(p1, p3tw);
+                auto [a0, a2] = simd::btfly(p0, p2tw);
+
+                auto [a1tw, a3tw] = simd::mul({a1, tw1}, {a3, tw2});
+
+                auto tw3 = simd::cxload<cx_reg::size>(twiddle_ptr);
+                auto tw4 = simd::cxload<cx_reg::size>(twiddle_ptr + cx_reg::size * 2);
+                twiddle_ptr += cx_reg::size * 4;
+
+                auto [b0, b1] = simd::btfly(a0, a1tw);
+                auto [b2, b3] = simd::btfly(a2, a3tw);
+
+                auto [shb0, shb1] = simd::unpack_128(b0, b1);
+                auto [shb2, shb3] = simd::unpack_128(b2, b3);
+
+                auto [shb1tw, shb3tw] = simd::mul({shb1, tw3}, {shb3, tw4});
+
+                auto tw5 = simd::cxload<cx_reg::size>(twiddle_ptr);
+                auto tw6 = simd::cxload<cx_reg::size>(twiddle_ptr + cx_reg::size * 2);
+                twiddle_ptr += cx_reg::size * 4;
+
+                auto [c0, c1] = simd::btfly(shb0, shb1tw);
+                auto [c2, c3] = simd::btfly(shb2, shb3tw);
+
+                auto [shc0, shc1] = simd::unpack_pd(c0, c1);
+                auto [shc2, shc3] = simd::unpack_pd(c2, c3);
+
+                auto [shc1tw, shc3tw] = simd::mul({shc1, tw5}, {shc3, tw6});
+
+                auto tw7 = simd::cxload<cx_reg::size>(twiddle_ptr);
+                auto tw8 = simd::cxload<cx_reg::size>(twiddle_ptr + cx_reg::size * 2);
+                twiddle_ptr += cx_reg::size * 4;
+
+                auto [d0, d1] = simd::btfly(shc0, shc1tw);
+                auto [d2, d3] = simd::btfly(shc2, shc3tw);
+
+                auto shuf = [](cx_reg lhs, cx_reg rhs) {
+                    auto lhs_re = _mm256_shuffle_ps(lhs.real, rhs.real, 0b10001000);
+                    auto rhs_re = _mm256_shuffle_ps(lhs.real, rhs.real, 0b11011101);
+                    auto lhs_im = _mm256_shuffle_ps(lhs.imag, rhs.imag, 0b10001000);
+                    auto rhs_im = _mm256_shuffle_ps(lhs.imag, rhs.imag, 0b11011101);
+                    return std::make_tuple(cx_reg{lhs_re, lhs_im}, cx_reg{rhs_re, rhs_im});
+                };
+                auto [shd0, shd1] = shuf(d0, d1);
+                auto [shd2, shd3] = shuf(d2, d3);
+
+                auto [shd1tw, shd3tw] = simd::mul({shd1, tw7}, {shd3, tw8});
+
+                auto [e0, e1] = simd::btfly(shd0, shd1tw);
+                auto [e2, e3] = simd::btfly(shd2, shd3tw);
+
+                cx_reg she0, she1, she2, she3;
+                if constexpr (Order == fft_order::bit_reversed) {
+                    if constexpr (PDest < 4) {
+                        std::tie(she0, she1) = simd::unpack_ps(e0, e1);
+                        std::tie(she2, she3) = simd::unpack_ps(e2, e3);
+                        std::tie(she0, she1) = simd::unpack_128(she0, she1);
+                        std::tie(she2, she3) = simd::unpack_128(she2, she3);
+                    } else {
+                        std::tie(she0, she1) = simd::unpack_ps(e0, e1);
+                        std::tie(she2, she3) = simd::unpack_ps(e2, e3);
+                        std::tie(she0, she1) = simd::unpack_pd(she0, she1);
+                        std::tie(she2, she3) = simd::unpack_pd(she2, she3);
+                        std::tie(she0, she1) = simd::unpack_128(she0, she1);
+                        std::tie(she2, she3) = simd::unpack_128(she2, she3);
+                    }
+                    std::tie(she0, she1, she2, she3) =
+                        simd::convert<T>::template combine<PDest>(she0, she1, she2, she3);
+                } else {
+                    std::tie(she0, she1, she2, she3) = std::tie(e0, e1, e2, e3);
+                }
+                simd::cxstore<PTform>(ptr0, she0);
+                simd::cxstore<PTform>(ptr1, she1);
+                simd::cxstore<PTform>(ptr2, she2);
+                simd::cxstore<PTform>(ptr3, she3);
+            }
+
+            return twiddle_ptr;
+        }
+
+        template<uZ PTform, uZ PSrc, bool Scale>
+        static inline auto unsorted_reverse(T*       dest,    //
+                                            const T* twiddle_ptr,
+                                            uZ       size,
+                                            uZ       fft_size,
+                                            auto... optional) {
+            using cx_reg         = simd::cx_reg<T>;
+            constexpr auto PLoad = std::max(PSrc, cx_reg::size);
+
+            using source_type  = const T*;
+            constexpr bool Src = detail_::has_type<source_type, decltype(optional)...>;
+
+            auto scale = [](uZ size) {
+                if constexpr (Scale)
+                    return static_cast<float>(1. / static_cast<double>(size));
+                else
+                    return [] {};
+            }(fft_size);
+
+            for (iZ i_group = size / unsorted_size - 1; i_group >= 0; --i_group) {
+                auto* ptr0 = simd::ra_addr<PTform>(dest, cx_reg::size * (i_group * 4));
+                auto* ptr1 = simd::ra_addr<PTform>(dest, cx_reg::size * (i_group * 4 + 1));
+                auto* ptr2 = simd::ra_addr<PTform>(dest, cx_reg::size * (i_group * 4 + 2));
+                auto* ptr3 = simd::ra_addr<PTform>(dest, cx_reg::size * (i_group * 4 + 3));
+
+                cx_reg she0, she1, she2, she3;
+                if constexpr (Src) {
+                    auto src = std::get<source_type&>(std::tie(optional...));
+
+                    she0 = simd::cxload<PLoad>(simd::ra_addr<PLoad>(src, cx_reg::size * (i_group * 4)));
+                    she1 = simd::cxload<PLoad>(simd::ra_addr<PLoad>(src, cx_reg::size * (i_group * 4 + 1)));
+                    she2 = simd::cxload<PLoad>(simd::ra_addr<PLoad>(src, cx_reg::size * (i_group * 4 + 2)));
+                    she3 = simd::cxload<PLoad>(simd::ra_addr<PLoad>(src, cx_reg::size * (i_group * 4 + 3)));
+                } else {
+                    she0 = simd::cxload<PLoad>(ptr0);
+                    she1 = simd::cxload<PLoad>(ptr1);
+                    she2 = simd::cxload<PLoad>(ptr2);
+                    she3 = simd::cxload<PLoad>(ptr3);
+                }
+
+                cx_reg e0, e1, e2, e3;
+                if constexpr (Order == fft_order::bit_reversed) {
+                    std::tie(she0, she1, she2, she3) =
+                        simd::convert<T>::template repack<PSrc, PTform>(she0, she1, she2, she3);
+                }
+                std::tie(she0, she1, she2, she3) =
+                    simd::convert<T>::template inverse<true>(she0, she1, she2, she3);
+                if constexpr (Order == fft_order::bit_reversed) {
+                    std::tie(e0, e1) = simd::unpack_128(she0, she1);
+                    std::tie(e2, e3) = simd::unpack_128(she2, she3);
+                } else {
+                    std::tie(e0, e1, e2, e3) = std::tie(she0, she1, she2, she3);
+                }
+
+                twiddle_ptr -= cx_reg::size * 4;
+                auto tw7 = simd::cxload<cx_reg::size>(twiddle_ptr);
+                auto tw8 = simd::cxload<cx_reg::size>(twiddle_ptr + cx_reg::size * 2);
+
+                if constexpr (Order == fft_order::bit_reversed) {
+                    std::tie(e0, e1) = simd::unpack_ps(e0, e1);
+                    std::tie(e2, e3) = simd::unpack_ps(e2, e3);
+                    std::tie(e0, e1) = simd::unpack_pd(e0, e1);
+                    std::tie(e2, e3) = simd::unpack_pd(e2, e3);
+                }
+                auto [shd0, shd1tw] = simd::ibtfly(e0, e1);
+                auto [shd2, shd3tw] = simd::ibtfly(e2, e3);
+
+                auto [shd1, shd3] = simd::mul({shd1tw, tw7}, {shd3tw, tw8});
+
+                twiddle_ptr -= cx_reg::size * 4;
+                auto tw5 = simd::cxload<cx_reg::size>(twiddle_ptr);
+                auto tw6 = simd::cxload<cx_reg::size>(twiddle_ptr + cx_reg::size * 2);
+
+                auto [d0, d1] = simd::unpack_ps(shd0, shd1);
+                auto [d2, d3] = simd::unpack_ps(shd2, shd3);
+
+                auto [shc0, shc1tw] = simd::btfly(d0, d1);
+                auto [shc2, shc3tw] = simd::btfly(d2, d3);
+
+                auto [shc1, shc3] = simd::mul({shc1tw, tw5}, {shc3tw, tw6});
+
+                twiddle_ptr -= cx_reg::size * 4;
+                auto tw3 = simd::cxload<cx_reg::size>(twiddle_ptr);
+                auto tw4 = simd::cxload<cx_reg::size>(twiddle_ptr + cx_reg::size * 2);
+
+                auto [c0, c1] = simd::unpack_pd(shc0, shc1);
+                auto [c2, c3] = simd::unpack_pd(shc2, shc3);
+
+                auto [shb0, shb1tw] = simd::btfly(c0, c1);
+                auto [shb2, shb3tw] = simd::btfly(c2, c3);
+
+                auto [shb1, shb3] = simd::mul({shb1tw, tw3}, {shb3tw, tw4});
+
+                twiddle_ptr -= 6;
+                cx_reg tw1 = {simd::broadcast(twiddle_ptr + 2), simd::broadcast(twiddle_ptr + 3)};
+                cx_reg tw2 = {simd::broadcast(twiddle_ptr + 4), simd::broadcast(twiddle_ptr + 5)};
+                cx_reg tw0 = {simd::broadcast(twiddle_ptr + 0), simd::broadcast(twiddle_ptr + 1)};
+
+                auto [b0, b1] = simd::unpack_128(shb0, shb1);
+                auto [b2, b3] = simd::unpack_128(shb2, shb3);
+
+                auto [a0, a1tw] = simd::btfly(b0, b1);
+                auto [a2, a3tw] = simd::btfly(b2, b3);
+
+                auto [a1, a3] = simd::mul({a1tw, tw1}, {a3tw, tw2});
+
+                auto [p0, p2tw] = simd::btfly(a0, a2);
+                auto [p1, p3tw] = simd::btfly(a1, a3);
+
+                auto [p2, p3] = simd::mul({p2tw, tw0}, {p3tw, tw0});
+
+                if constexpr (Scale) {
+                    auto scaling = simd::broadcast(scale);
+
+                    p0 = simd::mul(p0, scaling);
+                    p1 = simd::mul(p1, scaling);
+                    p2 = simd::mul(p2, scaling);
+                    p3 = simd::mul(p3, scaling);
+                }
+
+                std::tie(p0, p2, p1, p3) = simd::convert<T>::template inverse<true>(p0, p2, p1, p3);
+
+                simd::cxstore<PTform>(ptr0, p0);
+                simd::cxstore<PTform>(ptr2, p2);
+                simd::cxstore<PTform>(ptr1, p1);
+                simd::cxstore<PTform>(ptr3, p3);
+            }
+
+            return twiddle_ptr;
+        }
+
+
+        static constexpr uZ sorted_size = 8;
+
+        template<uZ PTform, uZ PSrc, bool Inverse>
+        static inline void tform_sort(T* data, uZ size, const auto& sort) {
+            const auto sq2 = detail_::fft::wnk<T>(8, 1);
+            // auto       twsq2 = simd::broadcast(sq2.real());
+
+            auto* src0 = simd::ra_addr<PTform>(data, 0);
+            auto* src1 = simd::ra_addr<PTform>(data, 1 * size / 8);
+            auto* src2 = simd::ra_addr<PTform>(data, 2 * size / 8);
+            auto* src3 = simd::ra_addr<PTform>(data, 3 * size / 8);
+            auto* src4 = simd::ra_addr<PTform>(data, 4 * size / 8);
+            auto* src5 = simd::ra_addr<PTform>(data, 5 * size / 8);
+            auto* src6 = simd::ra_addr<PTform>(data, 6 * size / 8);
+            auto* src7 = simd::ra_addr<PTform>(data, 7 * size / 8);
+
+            uint i = 0;
+            for (; i < n_reversals(size / 64); i += 2) {
+                using reg_t = simd::cx_reg<T>;
+
+                auto offset1 = sort[i] * simd::reg<T>::size;
+                auto offset2 = sort[i + 1] * simd::reg<T>::size;
+
+                auto p1 = simd::cxload<PTform>(simd::ra_addr<PTform>(src1, offset1));
+                auto p5 = simd::cxload<PTform>(simd::ra_addr<PTform>(src5, offset1));
+                auto p3 = simd::cxload<PTform>(simd::ra_addr<PTform>(src3, offset1));
+                auto p7 = simd::cxload<PTform>(simd::ra_addr<PTform>(src7, offset1));
+
+                _mm_prefetch(simd::ra_addr<PTform>(src0, offset1), _MM_HINT_T0);
+                _mm_prefetch(simd::ra_addr<PTform>(src4, offset1), _MM_HINT_T0);
+                _mm_prefetch(simd::ra_addr<PTform>(src2, offset1), _MM_HINT_T0);
+                _mm_prefetch(simd::ra_addr<PTform>(src6, offset1), _MM_HINT_T0);
+
+
+                std::tie(p1, p5, p3, p7) = simd::convert<T>::template split<PSrc>(p1, p5, p3, p7);
+                std::tie(p1, p5, p3, p7) = simd::convert<T>::template inverse<Inverse>(p1, p5, p3, p7);
+
+                auto [a1, a5] = simd::btfly(p1, p5);
+                auto [a3, a7] = simd::btfly(p3, p7);
+
+                auto [b5, b7] = simd::btfly<3>(a5, a7);
+
+                auto twsq2 = simd::broadcast(sq2.real());
+
+                reg_t b5_tw = {simd::add(b5.real, b5.imag), simd::sub(b5.imag, b5.real)};
+                reg_t b7_tw = {simd::sub(b7.real, b7.imag), simd::add(b7.real, b7.imag)};
+
+                auto [b1, b3] = simd::btfly(a1, a3);
+
+                b5_tw = simd::mul(b5_tw, twsq2);
+                b7_tw = simd::mul(b7_tw, twsq2);
+
+                auto p0 = simd::cxload<PTform>(simd::ra_addr<PTform>(src0, offset1));
+                auto p4 = simd::cxload<PTform>(simd::ra_addr<PTform>(src4, offset1));
+                auto p2 = simd::cxload<PTform>(simd::ra_addr<PTform>(src2, offset1));
+                auto p6 = simd::cxload<PTform>(simd::ra_addr<PTform>(src6, offset1));
+
+
+                _mm_prefetch(simd::ra_addr<PTform>(src0, offset2), _MM_HINT_T0);
+                _mm_prefetch(simd::ra_addr<PTform>(src4, offset2), _MM_HINT_T0);
+                if constexpr (PSrc < 4) {
+                    _mm_prefetch(simd::ra_addr<PTform>(src2, offset2), _MM_HINT_T0);
+                    _mm_prefetch(simd::ra_addr<PTform>(src6, offset2), _MM_HINT_T0);
+                } else {
+                    _mm_prefetch(simd::ra_addr<PTform>(src1, offset2), _MM_HINT_T0);
+                    _mm_prefetch(simd::ra_addr<PTform>(src5, offset2), _MM_HINT_T0);
+                }
+
+                std::tie(p0, p4, p2, p6) = simd::convert<T>::template split<PSrc>(p0, p4, p2, p6);
+                std::tie(p0, p4, p2, p6) = simd::convert<T>::template inverse<Inverse>(p0, p4, p2, p6);
+
+                auto [a0, a4] = simd::btfly(p0, p4);
+                auto [a2, a6] = simd::btfly(p2, p6);
+
+                auto [b0, b2] = simd::btfly(a0, a2);
+                auto [b4, b6] = simd::btfly<3>(a4, a6);
+
+                auto [c0, c1] = simd::btfly(b0, b1);
+                auto [c2, c3] = simd::btfly<3>(b2, b3);
+                auto [c4, c5] = simd::btfly(b4, b5_tw);
+                auto [c6, c7] = simd::btfly<2>(b6, b7_tw);
+
+                auto [sha0, sha4] = simd::unpack_ps(c0, c4);
+                auto [sha2, sha6] = simd::unpack_ps(c2, c6);
+                auto [sha1, sha5] = simd::unpack_ps(c1, c5);
+                auto [sha3, sha7] = simd::unpack_ps(c3, c7);
+
+                auto [shb0, shb2] = simd::unpack_pd(sha0, sha2);
+                auto [shb1, shb3] = simd::unpack_pd(sha1, sha3);
+
+                auto [shc0, shc1] = simd::unpack_128(shb0, shb1);
+                auto [shc2, shc3] = simd::unpack_128(shb2, shb3);
+
+                reg_t q0, q1, q2, q3, q4, q5, q6, q7;
+
+                std::tie(shc0, shc1, shc2, shc3) =
+                    simd::convert<T>::template inverse<Inverse>(shc0, shc1, shc2, shc3);
+
+                q0 = cxloadstore<PTform>(simd::ra_addr<PTform>(src0, offset2), shc0);
+                q4 = cxloadstore<PTform>(simd::ra_addr<PTform>(src4, offset2), shc2);
+
+                if constexpr (PSrc < 4) {
+                    q2 = cxloadstore<PTform>(simd::ra_addr<PTform>(src2, offset2), shc1);
+                    q6 = cxloadstore<PTform>(simd::ra_addr<PTform>(src6, offset2), shc3);
+
+                    std::tie(q0, q4, q2, q6) = simd::convert<T>::template split<PSrc>(q0, q4, q2, q6);
+                    std::tie(q0, q4, q2, q6) = simd::convert<T>::template inverse<Inverse>(q0, q4, q2, q6);
+                } else {
+                    q1 = cxloadstore<PTform>(simd::ra_addr<PTform>(src1, offset2), shc1);
+                    q5 = cxloadstore<PTform>(simd::ra_addr<PTform>(src5, offset2), shc3);
+
+                    std::tie(q0, q4, q1, q5) = simd::convert<T>::template split<PSrc>(q0, q4, q1, q5);
+                    std::tie(q0, q4, q1, q5) = simd::convert<T>::template inverse<Inverse>(q0, q4, q1, q5);
+                }
+
+                if constexpr (PSrc < 4) {
+                    _mm_prefetch(simd::ra_addr<PTform>(src1, offset2), _MM_HINT_T0);
+                    _mm_prefetch(simd::ra_addr<PTform>(src5, offset2), _MM_HINT_T0);
+                } else {
+                    _mm_prefetch(simd::ra_addr<PTform>(src2, offset2), _MM_HINT_T0);
+                    _mm_prefetch(simd::ra_addr<PTform>(src6, offset2), _MM_HINT_T0);
+                }
+                _mm_prefetch(simd::ra_addr<PTform>(src3, offset2), _MM_HINT_T0);
+                _mm_prefetch(simd::ra_addr<PTform>(src7, offset2), _MM_HINT_T0);
+
+                auto [shb4, shb6] = simd::unpack_pd(sha4, sha6);
+                auto [shb5, shb7] = simd::unpack_pd(sha5, sha7);
+
+                auto [shc4, shc5] = simd::unpack_128(shb4, shb5);
+                auto [shc6, shc7] = simd::unpack_128(shb6, shb7);
+
+                std::tie(shc4, shc5, shc6, shc7) =
+                    simd::convert<T>::template inverse<Inverse>(shc4, shc5, shc6, shc7);
+
+                if constexpr (PSrc < 4) {
+                    q1 = cxloadstore<PTform>(simd::ra_addr<PTform>(src1, offset2), shc4);
+                    q5 = cxloadstore<PTform>(simd::ra_addr<PTform>(src5, offset2), shc6);
+                } else {
+                    q2 = cxloadstore<PTform>(simd::ra_addr<PTform>(src2, offset2), shc4);
+                    q6 = cxloadstore<PTform>(simd::ra_addr<PTform>(src6, offset2), shc6);
+                }
+                q3 = cxloadstore<PTform>(simd::ra_addr<PTform>(src3, offset2), shc5);
+                q7 = cxloadstore<PTform>(simd::ra_addr<PTform>(src7, offset2), shc7);
+
+                if constexpr (PSrc < 4) {
+                    std::tie(q1, q5, q3, q7) = simd::convert<T>::template split<PSrc>(q1, q5, q3, q7);
+                    std::tie(q1, q5, q3, q7) = simd::convert<T>::template inverse<Inverse>(q1, q5, q3, q7);
+                } else {
+                    std::tie(q2, q6, q3, q7) = simd::convert<T>::template split<PSrc>(q2, q6, q3, q7);
+                    std::tie(q2, q6, q3, q7) = simd::convert<T>::template inverse<Inverse>(q2, q6, q3, q7);
+                }
+
+                auto [x1, x5] = simd::btfly(q1, q5);
+                auto [x3, x7] = simd::btfly(q3, q7);
+
+                auto [y5, y7] = simd::btfly<3>(x5, x7);
+
+                auto [y1, y3] = simd::btfly(x1, x3);
+
+                reg_t y5_tw = {simd::add(y5.real, y5.imag), simd::sub(y5.imag, y5.real)};
+                reg_t y7_tw = {simd::sub(y7.real, y7.imag), simd::add(y7.real, y7.imag)};
+
+                auto [x0, x4] = simd::btfly(q0, q4);
+
+                y5_tw = simd::mul(y5_tw, twsq2);
+                y7_tw = simd::mul(y7_tw, twsq2);
+
+                auto [x2, x6] = simd::btfly(q2, q6);
+
+                auto [y0, y2] = simd::btfly(x0, x2);
+                auto [y4, y6] = simd::btfly<3>(x4, x6);
+
+                auto [z0, z1] = simd::btfly(y0, y1);
+                auto [z2, z3] = simd::btfly<3>(y2, y3);
+                auto [z4, z5] = simd::btfly(y4, y5_tw);
+                auto [z6, z7] = simd::btfly<2>(y6, y7_tw);
+
+                auto [shx0, shx4] = simd::unpack_ps(z0, z4);
+                auto [shx1, shx5] = simd::unpack_ps(z1, z5);
+                auto [shx2, shx6] = simd::unpack_ps(z2, z6);
+                auto [shx3, shx7] = simd::unpack_ps(z3, z7);
+
+                auto [shy0, shy2] = simd::unpack_pd(shx0, shx2);
+                auto [shy1, shy3] = simd::unpack_pd(shx1, shx3);
+
+                auto [shz0, shz1] = simd::unpack_128(shy0, shy1);
+                auto [shz2, shz3] = simd::unpack_128(shy2, shy3);
+
+                std::tie(shz0, shz1, shz2, shz3) =
+                    simd::convert<T>::template inverse<Inverse>(shz0, shz1, shz2, shz3);
+
+                simd::cxstore<PTform>(simd::ra_addr<PTform>(src4, offset1), shz2);
+                simd::cxstore<PTform>(simd::ra_addr<PTform>(src0, offset1), shz0);
+                if constexpr (PSrc < 4) {
+                    simd::cxstore<PTform>(simd::ra_addr<PTform>(src2, offset1), shz1);
+                    simd::cxstore<PTform>(simd::ra_addr<PTform>(src6, offset1), shz3);
+                } else {
+                    simd::cxstore<PTform>(simd::ra_addr<PTform>(src1, offset1), shz1);
+                    simd::cxstore<PTform>(simd::ra_addr<PTform>(src5, offset1), shz3);
+                }
+
+                auto [shy4, shy6] = simd::unpack_pd(shx4, shx6);
+                auto [shy5, shy7] = simd::unpack_pd(shx5, shx7);
+
+                auto [shz4, shz5] = simd::unpack_128(shy4, shy5);
+                auto [shz6, shz7] = simd::unpack_128(shy6, shy7);
+
+                std::tie(shz4, shz5, shz6, shz7) =
+                    simd::convert<T>::template inverse<Inverse>(shz4, shz5, shz6, shz7);
+
+                if constexpr (PSrc < 4) {
+                    simd::cxstore<PTform>(simd::ra_addr<PTform>(src1, offset1), shz4);
+                    simd::cxstore<PTform>(simd::ra_addr<PTform>(src5, offset1), shz6);
+                } else {
+                    simd::cxstore<PTform>(simd::ra_addr<PTform>(src2, offset1), shz4);
+                    simd::cxstore<PTform>(simd::ra_addr<PTform>(src6, offset1), shz6);
+                }
+                simd::cxstore<PTform>(simd::ra_addr<PTform>(src3, offset1), shz5);
+                simd::cxstore<PTform>(simd::ra_addr<PTform>(src7, offset1), shz7);
+            };
+
+            for (; i < size / 64; ++i) {
+                using reg_t = simd::cx_reg<T>;
+                auto offset = sort[i] * simd::reg<T>::size;
+
+                auto p1 = simd::cxload<PTform>(simd::ra_addr<PTform>(src1, offset));
+                auto p5 = simd::cxload<PTform>(simd::ra_addr<PTform>(src5, offset));
+                auto p3 = simd::cxload<PTform>(simd::ra_addr<PTform>(src3, offset));
+                auto p7 = simd::cxload<PTform>(simd::ra_addr<PTform>(src7, offset));
+
+                std::tie(p1, p5, p3, p7) = simd::convert<T>::template split<PSrc>(p1, p5, p3, p7);
+                std::tie(p1, p5, p3, p7) = simd::convert<T>::template inverse<Inverse>(p1, p5, p3, p7);
+
+                auto [a1, a5] = simd::btfly(p1, p5);
+                auto [a3, a7] = simd::btfly(p3, p7);
+
+                auto [b5, b7] = simd::btfly<3>(a5, a7);
+                auto [b1, b3] = simd::btfly(a1, a3);
+
+                auto twsq2 = simd::broadcast(sq2.real());
+
+                reg_t b5_tw = {simd::add(b5.real, b5.imag), simd::sub(b5.imag, b5.real)};
+                reg_t b7_tw = {simd::sub(b7.real, b7.imag), simd::add(b7.real, b7.imag)};
+
+                b5_tw = simd::mul(b5_tw, twsq2);
+                b7_tw = simd::mul(b7_tw, twsq2);
+
+                auto p0 = simd::cxload<PTform>(simd::ra_addr<PTform>(src0, offset));
+                auto p4 = simd::cxload<PTform>(simd::ra_addr<PTform>(src4, offset));
+                auto p2 = simd::cxload<PTform>(simd::ra_addr<PTform>(src2, offset));
+                auto p6 = simd::cxload<PTform>(simd::ra_addr<PTform>(src6, offset));
+
+                std::tie(p0, p4, p2, p6) = simd::convert<T>::template split<PSrc>(p0, p4, p2, p6);
+                std::tie(p0, p4, p2, p6) = simd::convert<T>::template inverse<Inverse>(p0, p4, p2, p6);
+
+                auto [a0, a4] = simd::btfly(p0, p4);
+                auto [a2, a6] = simd::btfly(p2, p6);
+
+                auto [b0, b2] = simd::btfly(a0, a2);
+                auto [b4, b6] = simd::btfly<3>(a4, a6);
+
+                auto [c0, c1] = simd::btfly(b0, b1);
+                auto [c2, c3] = simd::btfly<3>(b2, b3);
+                auto [c4, c5] = simd::btfly(b4, b5_tw);
+                auto [c6, c7] = simd::btfly<2>(b6, b7_tw);
+
+                auto [sha0, sha4] = simd::unpack_ps(c0, c4);
+                auto [sha2, sha6] = simd::unpack_ps(c2, c6);
+                auto [sha1, sha5] = simd::unpack_ps(c1, c5);
+                auto [sha3, sha7] = simd::unpack_ps(c3, c7);
+
+                auto [shb0, shb2] = simd::unpack_pd(sha0, sha2);
+                auto [shb1, shb3] = simd::unpack_pd(sha1, sha3);
+
+                auto [shc0, shc1] = simd::unpack_128(shb0, shb1);
+                auto [shc2, shc3] = simd::unpack_128(shb2, shb3);
+
+                std::tie(shc0, shc1, shc2, shc3) =
+                    simd::convert<T>::template inverse<Inverse>(shc0, shc1, shc2, shc3);
+
+                simd::cxstore<PTform>(simd::ra_addr<PTform>(src0, offset), shc0);
+                simd::cxstore<PTform>(simd::ra_addr<PTform>(src4, offset), shc2);
+                if constexpr (PSrc < 4) {
+                    simd::cxstore<PTform>(simd::ra_addr<PTform>(src2, offset), shc1);
+                    simd::cxstore<PTform>(simd::ra_addr<PTform>(src6, offset), shc3);
+                } else {
+                    simd::cxstore<PTform>(simd::ra_addr<PTform>(src1, offset), shc1);
+                    simd::cxstore<PTform>(simd::ra_addr<PTform>(src5, offset), shc3);
+                }
+
+                auto [shb4, shb6] = simd::unpack_pd(sha4, sha6);
+                auto [shb5, shb7] = simd::unpack_pd(sha5, sha7);
+
+                auto [shc4, shc5] = simd::unpack_128(shb4, shb5);
+                auto [shc6, shc7] = simd::unpack_128(shb6, shb7);
+
+                std::tie(shc4, shc5, shc6, shc7) =
+                    simd::convert<T>::template inverse<Inverse>(shc4, shc5, shc6, shc7);
+
+                if constexpr (PSrc < 4) {
+                    simd::cxstore<PTform>(simd::ra_addr<PTform>(src1, offset), shc4);
+                    simd::cxstore<PTform>(simd::ra_addr<PTform>(src5, offset), shc6);
+                } else {
+                    simd::cxstore<PTform>(simd::ra_addr<PTform>(src2, offset), shc4);
+                    simd::cxstore<PTform>(simd::ra_addr<PTform>(src6, offset), shc6);
+                }
+                simd::cxstore<PTform>(simd::ra_addr<PTform>(src3, offset), shc5);
+                simd::cxstore<PTform>(simd::ra_addr<PTform>(src7, offset), shc7);
+            }
+        }
+
+        template<uZ PTform, uZ PSrc, bool Inverse>
+        static inline void tform_sort(float* dest, const float* source, uZ size, const auto& sort) {
+            constexpr auto PLoad = std::max(PSrc, simd::reg<T>::size);
+
+            const auto sq2   = detail_::fft::wnk<T>(8, 1);
+            auto       twsq2 = simd::broadcast(sq2.real());
+
+            const auto* const src0 = source;
+            const auto* const src1 = simd::ra_addr<PTform>(source, 1 * size / 8);
+            const auto* const src2 = simd::ra_addr<PTform>(source, 2 * size / 8);
+            const auto* const src3 = simd::ra_addr<PTform>(source, 3 * size / 8);
+            const auto* const src4 = simd::ra_addr<PTform>(source, 4 * size / 8);
+            const auto* const src5 = simd::ra_addr<PTform>(source, 5 * size / 8);
+            const auto* const src6 = simd::ra_addr<PTform>(source, 6 * size / 8);
+            const auto* const src7 = simd::ra_addr<PTform>(source, 7 * size / 8);
+
+            auto* const dst0 = dest;
+            auto* const dst1 = simd::ra_addr<PTform>(dest, 1 * size / 8);
+            auto* const dst2 = simd::ra_addr<PTform>(dest, 2 * size / 8);
+            auto* const dst3 = simd::ra_addr<PTform>(dest, 3 * size / 8);
+            auto* const dst4 = simd::ra_addr<PTform>(dest, 4 * size / 8);
+            auto* const dst5 = simd::ra_addr<PTform>(dest, 5 * size / 8);
+            auto* const dst6 = simd::ra_addr<PTform>(dest, 6 * size / 8);
+            auto* const dst7 = simd::ra_addr<PTform>(dest, 7 * size / 8);
+
+            uint i = 0;
+            for (; i < n_reversals(size / 64); i += 2) {
+                using reg_t = simd::cx_reg<float>;
+
+                auto offset_src  = sort[i] * simd::reg<T>::size;
+                auto offset_dest = sort[i + 1] * simd::reg<T>::size;
+
+                for (uint k = 0; k < 2; ++k) {
+                    auto p1 = simd::cxload<PLoad>(simd::ra_addr<PLoad>(src1, offset_src));
+                    auto p5 = simd::cxload<PLoad>(simd::ra_addr<PLoad>(src5, offset_src));
+                    auto p3 = simd::cxload<PLoad>(simd::ra_addr<PLoad>(src3, offset_src));
+                    auto p7 = simd::cxload<PLoad>(simd::ra_addr<PLoad>(src7, offset_src));
+
+                    if constexpr (PSrc < PLoad) {
+                        std::tie(p1, p5, p3, p7) = simd::convert<float>::split<PSrc>(p1, p5, p3, p7);
+                    }
+
+                    auto [a1, a5] = simd::btfly(p1, p5);
+                    auto [a3, a7] = simd::btfly(p3, p7);
+
+                    reg_t b5 = {simd::add(a5.real, a7.imag), simd::sub(a5.imag, a7.real)};
+                    reg_t b7 = {simd::sub(a5.real, a7.imag), simd::add(a5.imag, a7.real)};
+
+                    reg_t b5_tw = {simd::add(b5.real, b5.imag), simd::sub(b5.imag, b5.real)};
+                    reg_t b7_tw = {simd::sub(b7.real, b7.imag), simd::add(b7.real, b7.imag)};
+
+                    auto [b1, b3] = simd::btfly(a1, a3);
+
+                    b5_tw = simd::mul(b5_tw, twsq2);
+                    b7_tw = simd::mul(b7_tw, twsq2);
+
+                    auto p0 = simd::cxload<PLoad>(simd::ra_addr<PLoad>(src0, offset_src));
+                    auto p4 = simd::cxload<PLoad>(simd::ra_addr<PLoad>(src4, offset_src));
+                    auto p2 = simd::cxload<PLoad>(simd::ra_addr<PLoad>(src2, offset_src));
+                    auto p6 = simd::cxload<PLoad>(simd::ra_addr<PLoad>(src6, offset_src));
+
+                    if constexpr (PSrc < PLoad) {
+                        std::tie(p0, p4, p2, p6) = simd::convert<float>::split<PSrc>(p0, p4, p2, p6);
+                    }
+
+                    auto [a0, a4] = simd::btfly(p0, p4);
+                    auto [a2, a6] = simd::btfly(p2, p6);
+
+                    auto [b0, b2] = simd::btfly(a0, a2);
+                    reg_t b4      = {simd::add(a4.real, a6.imag), simd::sub(a4.imag, a6.real)};
+                    reg_t b6      = {simd::sub(a4.real, a6.imag), simd::add(a4.imag, a6.real)};
+
+                    auto [c0, c1] = simd::btfly(b0, b1);
+                    reg_t c2      = {simd::add(b2.real, b3.imag), simd::sub(b2.imag, b3.real)};
+                    reg_t c3      = {simd::sub(b2.real, b3.imag), simd::add(b2.imag, b3.real)};
+
+                    auto [c4, c5] = simd::btfly(b4, b5_tw);
+                    auto [c7, c6] = simd::btfly(b6, b7_tw);
+
+                    auto [sha0, sha4] = simd::unpack_ps(c0, c4);
+                    auto [sha2, sha6] = simd::unpack_ps(c2, c6);
+                    auto [sha1, sha5] = simd::unpack_ps(c1, c5);
+                    auto [sha3, sha7] = simd::unpack_ps(c3, c7);
+
+                    auto [shb0, shb2] = simd::unpack_pd(sha0, sha2);
+                    auto [shb1, shb3] = simd::unpack_pd(sha1, sha3);
+                    auto [shc0, shc1] = simd::unpack_128(shb0, shb1);
+                    auto [shc2, shc3] = simd::unpack_128(shb2, shb3);
+
+                    simd::cxstore<PTform>(simd::ra_addr<PTform>(dst0, offset_dest), shc0);
+                    simd::cxstore<PTform>(simd::ra_addr<PTform>(dst4, offset_dest), shc2);
+                    if constexpr (PSrc < 4) {
+                        simd::cxstore<PTform>(simd::ra_addr<PTform>(dst2, offset_dest), shc1);
+                        simd::cxstore<PTform>(simd::ra_addr<PTform>(dst6, offset_dest), shc3);
+                    } else {
+                        simd::cxstore<PTform>(simd::ra_addr<PTform>(dst1, offset_dest), shc1);
+                        simd::cxstore<PTform>(simd::ra_addr<PTform>(dst5, offset_dest), shc3);
+                    }
+
+                    auto [shb4, shb6] = simd::unpack_pd(sha4, sha6);
+                    auto [shb5, shb7] = simd::unpack_pd(sha5, sha7);
+                    auto [shc4, shc5] = simd::unpack_128(shb4, shb5);
+                    auto [shc6, shc7] = simd::unpack_128(shb6, shb7);
+
+                    if constexpr (PSrc < 4) {
+                        simd::cxstore<PTform>(simd::ra_addr<PTform>(dst1, offset_dest), shc4);
+                        simd::cxstore<PTform>(simd::ra_addr<PTform>(dst5, offset_dest), shc6);
+                    } else {
+                        simd::cxstore<PTform>(simd::ra_addr<PTform>(dst2, offset_dest), shc4);
+                        simd::cxstore<PTform>(simd::ra_addr<PTform>(dst6, offset_dest), shc6);
+                    }
+                    simd::cxstore<PTform>(simd::ra_addr<PTform>(dst3, offset_dest), shc5);
+                    simd::cxstore<PTform>(simd::ra_addr<PTform>(dst7, offset_dest), shc7);
+
+                    offset_src  = sort[i + 1] * simd::reg<T>::size;
+                    offset_dest = sort[i] * simd::reg<T>::size;
+                }
+            };
+            for (; i < size / 64; ++i) {
+                using reg_t = simd::cx_reg<float>;
+
+                auto offset_src  = sort[i] * simd::reg<T>::size;
+                auto offset_dest = sort[i] * simd::reg<T>::size;
+
+                auto p1 = simd::cxload<PLoad>(simd::ra_addr<PLoad>(src1, offset_src));
+                auto p5 = simd::cxload<PLoad>(simd::ra_addr<PLoad>(src5, offset_src));
+                auto p3 = simd::cxload<PLoad>(simd::ra_addr<PLoad>(src3, offset_src));
+                auto p7 = simd::cxload<PLoad>(simd::ra_addr<PLoad>(src7, offset_src));
+
+                if constexpr (PSrc < PLoad) {
+                    std::tie(p1, p5, p3, p7) = simd::convert<float>::split<PSrc>(p1, p5, p3, p7);
+                }
+
+                auto [a1, a5] = simd::btfly(p1, p5);
+                auto [a3, a7] = simd::btfly(p3, p7);
+
+                reg_t b5 = {simd::add(a5.real, a7.imag), simd::sub(a5.imag, a7.real)};
+                reg_t b7 = {simd::sub(a5.real, a7.imag), simd::add(a5.imag, a7.real)};
+
+                reg_t b5_tw = {simd::add(b5.real, b5.imag), simd::sub(b5.imag, b5.real)};
+                reg_t b7_tw = {simd::sub(b7.real, b7.imag), simd::add(b7.real, b7.imag)};
+
+                auto [b1, b3] = simd::btfly(a1, a3);
+
+                b5_tw = simd::mul(b5_tw, twsq2);
+                b7_tw = simd::mul(b7_tw, twsq2);
+
+                auto p0 = simd::cxload<PLoad>(simd::ra_addr<PLoad>(src0, offset_src));
+                auto p4 = simd::cxload<PLoad>(simd::ra_addr<PLoad>(src4, offset_src));
+                auto p2 = simd::cxload<PLoad>(simd::ra_addr<PLoad>(src2, offset_src));
+                auto p6 = simd::cxload<PLoad>(simd::ra_addr<PLoad>(src6, offset_src));
+
+                if constexpr (PSrc < PLoad) {
+                    std::tie(p0, p4, p2, p6) = simd::convert<float>::split<PSrc>(p0, p4, p2, p6);
+                }
+
+                auto [a0, a4] = simd::btfly(p0, p4);
+                auto [a2, a6] = simd::btfly(p2, p6);
+
+                auto [b0, b2] = simd::btfly(a0, a2);
+                reg_t b4      = {simd::add(a4.real, a6.imag), simd::sub(a4.imag, a6.real)};
+                reg_t b6      = {simd::sub(a4.real, a6.imag), simd::add(a4.imag, a6.real)};
+
+                auto [c0, c1] = simd::btfly(b0, b1);
+                reg_t c2      = {simd::add(b2.real, b3.imag), simd::sub(b2.imag, b3.real)};
+                reg_t c3      = {simd::sub(b2.real, b3.imag), simd::add(b2.imag, b3.real)};
+
+                auto [c4, c5] = simd::btfly(b4, b5_tw);
+                auto [c7, c6] = simd::btfly(b6, b7_tw);
+
+                auto [sha0, sha4] = simd::unpack_ps(c0, c4);
+                auto [sha2, sha6] = simd::unpack_ps(c2, c6);
+                auto [sha1, sha5] = simd::unpack_ps(c1, c5);
+                auto [sha3, sha7] = simd::unpack_ps(c3, c7);
+
+                auto [shb0, shb2] = simd::unpack_pd(sha0, sha2);
+                auto [shb1, shb3] = simd::unpack_pd(sha1, sha3);
+                auto [shc0, shc1] = simd::unpack_128(shb0, shb1);
+                auto [shc2, shc3] = simd::unpack_128(shb2, shb3);
+
+                simd::cxstore<PTform>(simd::ra_addr<PTform>(dst0, offset_dest), shc0);
+                simd::cxstore<PTform>(simd::ra_addr<PTform>(dst4, offset_dest), shc2);
+                if constexpr (PSrc < 4) {
+                    simd::cxstore<PTform>(simd::ra_addr<PTform>(dst2, offset_dest), shc1);
+                    simd::cxstore<PTform>(simd::ra_addr<PTform>(dst6, offset_dest), shc3);
+                } else {
+                    simd::cxstore<PTform>(simd::ra_addr<PTform>(dst1, offset_dest), shc1);
+                    simd::cxstore<PTform>(simd::ra_addr<PTform>(dst5, offset_dest), shc3);
+                }
+
+                auto [shb4, shb6] = simd::unpack_pd(sha4, sha6);
+                auto [shb5, shb7] = simd::unpack_pd(sha5, sha7);
+                auto [shc4, shc5] = simd::unpack_128(shb4, shb5);
+                auto [shc6, shc7] = simd::unpack_128(shb6, shb7);
+
+                if constexpr (PSrc < 4) {
+                    simd::cxstore<PTform>(simd::ra_addr<PTform>(dst1, offset_dest), shc4);
+                    simd::cxstore<PTform>(simd::ra_addr<PTform>(dst5, offset_dest), shc6);
+                } else {
+                    simd::cxstore<PTform>(simd::ra_addr<PTform>(dst2, offset_dest), shc4);
+                    simd::cxstore<PTform>(simd::ra_addr<PTform>(dst6, offset_dest), shc6);
+                }
+                simd::cxstore<PTform>(simd::ra_addr<PTform>(dst3, offset_dest), shc5);
+                simd::cxstore<PTform>(simd::ra_addr<PTform>(dst7, offset_dest), shc7);
+            }
+        }
+    };
+    using size_specific = simd_size_specific<8, 16>;
+
     template<std::size_t PData>
     void fftu_internal(float* data) {
         auto* twiddle_ptr = m_twiddles.data();
@@ -1066,304 +1838,305 @@ public:
 
     template<std::size_t PTform, std::size_t PSrc, bool Inverse = false>
     inline void depth3_and_sort(float* data) {
-        const auto sq2 = detail_::fft::wnk<T>(8, 1);
-        // auto       twsq2 = simd::broadcast(sq2.real());
-
-        auto* src0 = simd::ra_addr<PTform>(data, 0);
-        auto* src1 = simd::ra_addr<PTform>(data, 1 * size() / 8);
-        auto* src2 = simd::ra_addr<PTform>(data, 2 * size() / 8);
-        auto* src3 = simd::ra_addr<PTform>(data, 3 * size() / 8);
-        auto* src4 = simd::ra_addr<PTform>(data, 4 * size() / 8);
-        auto* src5 = simd::ra_addr<PTform>(data, 5 * size() / 8);
-        auto* src6 = simd::ra_addr<PTform>(data, 6 * size() / 8);
-        auto* src7 = simd::ra_addr<PTform>(data, 7 * size() / 8);
-
-        uint i = 0;
-        for (; i < n_reversals(size() / 64); i += 2) {
-            using reg_t = simd::cx_reg<float>;
-
-            auto offset1 = m_sort[i] * simd::reg<T>::size;
-            auto offset2 = m_sort[i + 1] * simd::reg<T>::size;
-
-            auto p1 = simd::cxload<PTform>(simd::ra_addr<PTform>(src1, offset1));
-            auto p5 = simd::cxload<PTform>(simd::ra_addr<PTform>(src5, offset1));
-            auto p3 = simd::cxload<PTform>(simd::ra_addr<PTform>(src3, offset1));
-            auto p7 = simd::cxload<PTform>(simd::ra_addr<PTform>(src7, offset1));
-
-            _mm_prefetch(simd::ra_addr<PTform>(src0, offset1), _MM_HINT_T0);
-            _mm_prefetch(simd::ra_addr<PTform>(src4, offset1), _MM_HINT_T0);
-            _mm_prefetch(simd::ra_addr<PTform>(src2, offset1), _MM_HINT_T0);
-            _mm_prefetch(simd::ra_addr<PTform>(src6, offset1), _MM_HINT_T0);
-
-
-            std::tie(p1, p5, p3, p7) = simd::convert<float>::split<PSrc>(p1, p5, p3, p7);
-            std::tie(p1, p5, p3, p7) = simd::convert<float>::inverse<Inverse>(p1, p5, p3, p7);
-
-            auto [a1, a5] = simd::btfly(p1, p5);
-            auto [a3, a7] = simd::btfly(p3, p7);
-
-            auto [b5, b7] = simd::btfly<3>(a5, a7);
-
-            auto twsq2 = simd::broadcast(sq2.real());
-
-            reg_t b5_tw = {simd::add(b5.real, b5.imag), simd::sub(b5.imag, b5.real)};
-            reg_t b7_tw = {simd::sub(b7.real, b7.imag), simd::add(b7.real, b7.imag)};
-
-            auto [b1, b3] = simd::btfly(a1, a3);
-
-            b5_tw = simd::mul(b5_tw, twsq2);
-            b7_tw = simd::mul(b7_tw, twsq2);
-
-            auto p0 = simd::cxload<PTform>(simd::ra_addr<PTform>(src0, offset1));
-            auto p4 = simd::cxload<PTform>(simd::ra_addr<PTform>(src4, offset1));
-            auto p2 = simd::cxload<PTform>(simd::ra_addr<PTform>(src2, offset1));
-            auto p6 = simd::cxload<PTform>(simd::ra_addr<PTform>(src6, offset1));
-
-
-            _mm_prefetch(simd::ra_addr<PTform>(src0, offset2), _MM_HINT_T0);
-            _mm_prefetch(simd::ra_addr<PTform>(src4, offset2), _MM_HINT_T0);
-            if constexpr (PSrc < 4) {
-                _mm_prefetch(simd::ra_addr<PTform>(src2, offset2), _MM_HINT_T0);
-                _mm_prefetch(simd::ra_addr<PTform>(src6, offset2), _MM_HINT_T0);
-            } else {
-                _mm_prefetch(simd::ra_addr<PTform>(src1, offset2), _MM_HINT_T0);
-                _mm_prefetch(simd::ra_addr<PTform>(src5, offset2), _MM_HINT_T0);
-            }
-
-            std::tie(p0, p4, p2, p6) = simd::convert<float>::split<PSrc>(p0, p4, p2, p6);
-            std::tie(p0, p4, p2, p6) = simd::convert<float>::inverse<Inverse>(p0, p4, p2, p6);
-
-            auto [a0, a4] = simd::btfly(p0, p4);
-            auto [a2, a6] = simd::btfly(p2, p6);
-
-            auto [b0, b2] = simd::btfly(a0, a2);
-            auto [b4, b6] = simd::btfly<3>(a4, a6);
-
-            auto [c0, c1] = simd::btfly(b0, b1);
-            auto [c2, c3] = simd::btfly<3>(b2, b3);
-            auto [c4, c5] = simd::btfly(b4, b5_tw);
-            auto [c6, c7] = simd::btfly<2>(b6, b7_tw);
-
-            auto [sha0, sha4] = simd::unpack_ps(c0, c4);
-            auto [sha2, sha6] = simd::unpack_ps(c2, c6);
-            auto [sha1, sha5] = simd::unpack_ps(c1, c5);
-            auto [sha3, sha7] = simd::unpack_ps(c3, c7);
-
-            auto [shb0, shb2] = simd::unpack_pd(sha0, sha2);
-            auto [shb1, shb3] = simd::unpack_pd(sha1, sha3);
-
-            auto [shc0, shc1] = simd::unpack_128(shb0, shb1);
-            auto [shc2, shc3] = simd::unpack_128(shb2, shb3);
-
-            reg_t q0, q1, q2, q3, q4, q5, q6, q7;
-
-            std::tie(shc0, shc1, shc2, shc3) = simd::convert<float>::inverse<Inverse>(shc0, shc1, shc2, shc3);
-
-            q0 = cxloadstore<PTform>(simd::ra_addr<PTform>(src0, offset2), shc0);
-            q4 = cxloadstore<PTform>(simd::ra_addr<PTform>(src4, offset2), shc2);
-
-            if constexpr (PSrc < 4) {
-                q2 = cxloadstore<PTform>(simd::ra_addr<PTform>(src2, offset2), shc1);
-                q6 = cxloadstore<PTform>(simd::ra_addr<PTform>(src6, offset2), shc3);
-
-                std::tie(q0, q4, q2, q6) = simd::convert<float>::split<PSrc>(q0, q4, q2, q6);
-                std::tie(q0, q4, q2, q6) = simd::convert<float>::inverse<Inverse>(q0, q4, q2, q6);
-            } else {
-                q1 = cxloadstore<PTform>(simd::ra_addr<PTform>(src1, offset2), shc1);
-                q5 = cxloadstore<PTform>(simd::ra_addr<PTform>(src5, offset2), shc3);
-
-                std::tie(q0, q4, q1, q5) = simd::convert<float>::split<PSrc>(q0, q4, q1, q5);
-                std::tie(q0, q4, q1, q5) = simd::convert<float>::inverse<Inverse>(q0, q4, q1, q5);
-            }
-
-            if constexpr (PSrc < 4) {
-                _mm_prefetch(simd::ra_addr<PTform>(src1, offset2), _MM_HINT_T0);
-                _mm_prefetch(simd::ra_addr<PTform>(src5, offset2), _MM_HINT_T0);
-            } else {
-                _mm_prefetch(simd::ra_addr<PTform>(src2, offset2), _MM_HINT_T0);
-                _mm_prefetch(simd::ra_addr<PTform>(src6, offset2), _MM_HINT_T0);
-            }
-            _mm_prefetch(simd::ra_addr<PTform>(src3, offset2), _MM_HINT_T0);
-            _mm_prefetch(simd::ra_addr<PTform>(src7, offset2), _MM_HINT_T0);
-
-            auto [shb4, shb6] = simd::unpack_pd(sha4, sha6);
-            auto [shb5, shb7] = simd::unpack_pd(sha5, sha7);
-
-            auto [shc4, shc5] = simd::unpack_128(shb4, shb5);
-            auto [shc6, shc7] = simd::unpack_128(shb6, shb7);
-
-            std::tie(shc4, shc5, shc6, shc7) = simd::convert<float>::inverse<Inverse>(shc4, shc5, shc6, shc7);
-
-            if constexpr (PSrc < 4) {
-                q1 = cxloadstore<PTform>(simd::ra_addr<PTform>(src1, offset2), shc4);
-                q5 = cxloadstore<PTform>(simd::ra_addr<PTform>(src5, offset2), shc6);
-            } else {
-                q2 = cxloadstore<PTform>(simd::ra_addr<PTform>(src2, offset2), shc4);
-                q6 = cxloadstore<PTform>(simd::ra_addr<PTform>(src6, offset2), shc6);
-            }
-            q3 = cxloadstore<PTform>(simd::ra_addr<PTform>(src3, offset2), shc5);
-            q7 = cxloadstore<PTform>(simd::ra_addr<PTform>(src7, offset2), shc7);
-
-            if constexpr (PSrc < 4) {
-                std::tie(q1, q5, q3, q7) = simd::convert<float>::split<PSrc>(q1, q5, q3, q7);
-                std::tie(q1, q5, q3, q7) = simd::convert<float>::inverse<Inverse>(q1, q5, q3, q7);
-            } else {
-                std::tie(q2, q6, q3, q7) = simd::convert<float>::split<PSrc>(q2, q6, q3, q7);
-                std::tie(q2, q6, q3, q7) = simd::convert<float>::inverse<Inverse>(q2, q6, q3, q7);
-            }
-
-            auto [x1, x5] = simd::btfly(q1, q5);
-            auto [x3, x7] = simd::btfly(q3, q7);
-
-            auto [y5, y7] = simd::btfly<3>(x5, x7);
-
-            auto [y1, y3] = simd::btfly(x1, x3);
-
-            reg_t y5_tw = {simd::add(y5.real, y5.imag), simd::sub(y5.imag, y5.real)};
-            reg_t y7_tw = {simd::sub(y7.real, y7.imag), simd::add(y7.real, y7.imag)};
-
-            auto [x0, x4] = simd::btfly(q0, q4);
-
-            y5_tw = simd::mul(y5_tw, twsq2);
-            y7_tw = simd::mul(y7_tw, twsq2);
-
-            auto [x2, x6] = simd::btfly(q2, q6);
-
-            auto [y0, y2] = simd::btfly(x0, x2);
-            auto [y4, y6] = simd::btfly<3>(x4, x6);
-
-            auto [z0, z1] = simd::btfly(y0, y1);
-            auto [z2, z3] = simd::btfly<3>(y2, y3);
-            auto [z4, z5] = simd::btfly(y4, y5_tw);
-            auto [z6, z7] = simd::btfly<2>(y6, y7_tw);
-
-            auto [shx0, shx4] = simd::unpack_ps(z0, z4);
-            auto [shx1, shx5] = simd::unpack_ps(z1, z5);
-            auto [shx2, shx6] = simd::unpack_ps(z2, z6);
-            auto [shx3, shx7] = simd::unpack_ps(z3, z7);
-
-            auto [shy0, shy2] = simd::unpack_pd(shx0, shx2);
-            auto [shy1, shy3] = simd::unpack_pd(shx1, shx3);
-
-            auto [shz0, shz1] = simd::unpack_128(shy0, shy1);
-            auto [shz2, shz3] = simd::unpack_128(shy2, shy3);
-
-            std::tie(shz0, shz1, shz2, shz3) = simd::convert<float>::inverse<Inverse>(shz0, shz1, shz2, shz3);
-
-            simd::cxstore<PTform>(simd::ra_addr<PTform>(src4, offset1), shz2);
-            simd::cxstore<PTform>(simd::ra_addr<PTform>(src0, offset1), shz0);
-            if constexpr (PSrc < 4) {
-                simd::cxstore<PTform>(simd::ra_addr<PTform>(src2, offset1), shz1);
-                simd::cxstore<PTform>(simd::ra_addr<PTform>(src6, offset1), shz3);
-            } else {
-                simd::cxstore<PTform>(simd::ra_addr<PTform>(src1, offset1), shz1);
-                simd::cxstore<PTform>(simd::ra_addr<PTform>(src5, offset1), shz3);
-            }
-
-            auto [shy4, shy6] = simd::unpack_pd(shx4, shx6);
-            auto [shy5, shy7] = simd::unpack_pd(shx5, shx7);
-
-            auto [shz4, shz5] = simd::unpack_128(shy4, shy5);
-            auto [shz6, shz7] = simd::unpack_128(shy6, shy7);
-
-            std::tie(shz4, shz5, shz6, shz7) = simd::convert<float>::inverse<Inverse>(shz4, shz5, shz6, shz7);
-
-            if constexpr (PSrc < 4) {
-                simd::cxstore<PTform>(simd::ra_addr<PTform>(src1, offset1), shz4);
-                simd::cxstore<PTform>(simd::ra_addr<PTform>(src5, offset1), shz6);
-            } else {
-                simd::cxstore<PTform>(simd::ra_addr<PTform>(src2, offset1), shz4);
-                simd::cxstore<PTform>(simd::ra_addr<PTform>(src6, offset1), shz6);
-            }
-            simd::cxstore<PTform>(simd::ra_addr<PTform>(src3, offset1), shz5);
-            simd::cxstore<PTform>(simd::ra_addr<PTform>(src7, offset1), shz7);
-        };
-        for (; i < size() / 64; ++i) {
-            using reg_t = simd::cx_reg<float>;
-            auto offset = m_sort[i] * simd::reg<T>::size;
-
-            auto p1 = simd::cxload<PTform>(simd::ra_addr<PTform>(src1, offset));
-            auto p5 = simd::cxload<PTform>(simd::ra_addr<PTform>(src5, offset));
-            auto p3 = simd::cxload<PTform>(simd::ra_addr<PTform>(src3, offset));
-            auto p7 = simd::cxload<PTform>(simd::ra_addr<PTform>(src7, offset));
-
-            std::tie(p1, p5, p3, p7) = simd::convert<float>::split<PSrc>(p1, p5, p3, p7);
-            std::tie(p1, p5, p3, p7) = simd::convert<float>::inverse<Inverse>(p1, p5, p3, p7);
-
-            auto [a1, a5] = simd::btfly(p1, p5);
-            auto [a3, a7] = simd::btfly(p3, p7);
-
-            auto [b5, b7] = simd::btfly<3>(a5, a7);
-            auto [b1, b3] = simd::btfly(a1, a3);
-
-            auto twsq2 = simd::broadcast(sq2.real());
-
-            reg_t b5_tw = {simd::add(b5.real, b5.imag), simd::sub(b5.imag, b5.real)};
-            reg_t b7_tw = {simd::sub(b7.real, b7.imag), simd::add(b7.real, b7.imag)};
-
-            b5_tw = simd::mul(b5_tw, twsq2);
-            b7_tw = simd::mul(b7_tw, twsq2);
-
-            auto p0 = simd::cxload<PTform>(simd::ra_addr<PTform>(src0, offset));
-            auto p4 = simd::cxload<PTform>(simd::ra_addr<PTform>(src4, offset));
-            auto p2 = simd::cxload<PTform>(simd::ra_addr<PTform>(src2, offset));
-            auto p6 = simd::cxload<PTform>(simd::ra_addr<PTform>(src6, offset));
-
-            std::tie(p0, p4, p2, p6) = simd::convert<float>::split<PSrc>(p0, p4, p2, p6);
-            std::tie(p0, p4, p2, p6) = simd::convert<float>::inverse<Inverse>(p0, p4, p2, p6);
-
-            auto [a0, a4] = simd::btfly(p0, p4);
-            auto [a2, a6] = simd::btfly(p2, p6);
-
-            auto [b0, b2] = simd::btfly(a0, a2);
-            auto [b4, b6] = simd::btfly<3>(a4, a6);
-
-            auto [c0, c1] = simd::btfly(b0, b1);
-            auto [c2, c3] = simd::btfly<3>(b2, b3);
-            auto [c4, c5] = simd::btfly(b4, b5_tw);
-            auto [c6, c7] = simd::btfly<2>(b6, b7_tw);
-
-            auto [sha0, sha4] = simd::unpack_ps(c0, c4);
-            auto [sha2, sha6] = simd::unpack_ps(c2, c6);
-            auto [sha1, sha5] = simd::unpack_ps(c1, c5);
-            auto [sha3, sha7] = simd::unpack_ps(c3, c7);
-
-            auto [shb0, shb2] = simd::unpack_pd(sha0, sha2);
-            auto [shb1, shb3] = simd::unpack_pd(sha1, sha3);
-
-            auto [shc0, shc1] = simd::unpack_128(shb0, shb1);
-            auto [shc2, shc3] = simd::unpack_128(shb2, shb3);
-
-            std::tie(shc0, shc1, shc2, shc3) = simd::convert<float>::inverse<Inverse>(shc0, shc1, shc2, shc3);
-
-            simd::cxstore<PTform>(simd::ra_addr<PTform>(src0, offset), shc0);
-            simd::cxstore<PTform>(simd::ra_addr<PTform>(src4, offset), shc2);
-            if constexpr (PSrc < 4) {
-                simd::cxstore<PTform>(simd::ra_addr<PTform>(src2, offset), shc1);
-                simd::cxstore<PTform>(simd::ra_addr<PTform>(src6, offset), shc3);
-            } else {
-                simd::cxstore<PTform>(simd::ra_addr<PTform>(src1, offset), shc1);
-                simd::cxstore<PTform>(simd::ra_addr<PTform>(src5, offset), shc3);
-            }
-
-            auto [shb4, shb6] = simd::unpack_pd(sha4, sha6);
-            auto [shb5, shb7] = simd::unpack_pd(sha5, sha7);
-
-            auto [shc4, shc5] = simd::unpack_128(shb4, shb5);
-            auto [shc6, shc7] = simd::unpack_128(shb6, shb7);
-
-            std::tie(shc4, shc5, shc6, shc7) = simd::convert<float>::inverse<Inverse>(shc4, shc5, shc6, shc7);
-
-            if constexpr (PSrc < 4) {
-                simd::cxstore<PTform>(simd::ra_addr<PTform>(src1, offset), shc4);
-                simd::cxstore<PTform>(simd::ra_addr<PTform>(src5, offset), shc6);
-            } else {
-                simd::cxstore<PTform>(simd::ra_addr<PTform>(src2, offset), shc4);
-                simd::cxstore<PTform>(simd::ra_addr<PTform>(src6, offset), shc6);
-            }
-            simd::cxstore<PTform>(simd::ra_addr<PTform>(src3, offset), shc5);
-            simd::cxstore<PTform>(simd::ra_addr<PTform>(src7, offset), shc7);
-        }
+        size_specific::template tform_sort<PTform, PSrc, Inverse>(data, size(), m_sort);
+        //         const auto sq2 = detail_::fft::wnk<T>(8, 1);
+        //         // auto       twsq2 = simd::broadcast(sq2.real());
+        //
+        //         auto* src0 = simd::ra_addr<PTform>(data, 0);
+        //         auto* src1 = simd::ra_addr<PTform>(data, 1 * size() / 8);
+        //         auto* src2 = simd::ra_addr<PTform>(data, 2 * size() / 8);
+        //         auto* src3 = simd::ra_addr<PTform>(data, 3 * size() / 8);
+        //         auto* src4 = simd::ra_addr<PTform>(data, 4 * size() / 8);
+        //         auto* src5 = simd::ra_addr<PTform>(data, 5 * size() / 8);
+        //         auto* src6 = simd::ra_addr<PTform>(data, 6 * size() / 8);
+        //         auto* src7 = simd::ra_addr<PTform>(data, 7 * size() / 8);
+        //
+        //         uint i = 0;
+        //         for (; i < n_reversals(size() / 64); i += 2) {
+        //             using reg_t = simd::cx_reg<float>;
+        //
+        //             auto offset1 = m_sort[i] * simd::reg<T>::size;
+        //             auto offset2 = m_sort[i + 1] * simd::reg<T>::size;
+        //
+        //             auto p1 = simd::cxload<PTform>(simd::ra_addr<PTform>(src1, offset1));
+        //             auto p5 = simd::cxload<PTform>(simd::ra_addr<PTform>(src5, offset1));
+        //             auto p3 = simd::cxload<PTform>(simd::ra_addr<PTform>(src3, offset1));
+        //             auto p7 = simd::cxload<PTform>(simd::ra_addr<PTform>(src7, offset1));
+        //
+        //             _mm_prefetch(simd::ra_addr<PTform>(src0, offset1), _MM_HINT_T0);
+        //             _mm_prefetch(simd::ra_addr<PTform>(src4, offset1), _MM_HINT_T0);
+        //             _mm_prefetch(simd::ra_addr<PTform>(src2, offset1), _MM_HINT_T0);
+        //             _mm_prefetch(simd::ra_addr<PTform>(src6, offset1), _MM_HINT_T0);
+        //
+        //
+        //             std::tie(p1, p5, p3, p7) = simd::convert<float>::split<PSrc>(p1, p5, p3, p7);
+        //             std::tie(p1, p5, p3, p7) = simd::convert<float>::inverse<Inverse>(p1, p5, p3, p7);
+        //
+        //             auto [a1, a5] = simd::btfly(p1, p5);
+        //             auto [a3, a7] = simd::btfly(p3, p7);
+        //
+        //             auto [b5, b7] = simd::btfly<3>(a5, a7);
+        //
+        //             auto twsq2 = simd::broadcast(sq2.real());
+        //
+        //             reg_t b5_tw = {simd::add(b5.real, b5.imag), simd::sub(b5.imag, b5.real)};
+        //             reg_t b7_tw = {simd::sub(b7.real, b7.imag), simd::add(b7.real, b7.imag)};
+        //
+        //             auto [b1, b3] = simd::btfly(a1, a3);
+        //
+        //             b5_tw = simd::mul(b5_tw, twsq2);
+        //             b7_tw = simd::mul(b7_tw, twsq2);
+        //
+        //             auto p0 = simd::cxload<PTform>(simd::ra_addr<PTform>(src0, offset1));
+        //             auto p4 = simd::cxload<PTform>(simd::ra_addr<PTform>(src4, offset1));
+        //             auto p2 = simd::cxload<PTform>(simd::ra_addr<PTform>(src2, offset1));
+        //             auto p6 = simd::cxload<PTform>(simd::ra_addr<PTform>(src6, offset1));
+        //
+        //
+        //             _mm_prefetch(simd::ra_addr<PTform>(src0, offset2), _MM_HINT_T0);
+        //             _mm_prefetch(simd::ra_addr<PTform>(src4, offset2), _MM_HINT_T0);
+        //             if constexpr (PSrc < 4) {
+        //                 _mm_prefetch(simd::ra_addr<PTform>(src2, offset2), _MM_HINT_T0);
+        //                 _mm_prefetch(simd::ra_addr<PTform>(src6, offset2), _MM_HINT_T0);
+        //             } else {
+        //                 _mm_prefetch(simd::ra_addr<PTform>(src1, offset2), _MM_HINT_T0);
+        //                 _mm_prefetch(simd::ra_addr<PTform>(src5, offset2), _MM_HINT_T0);
+        //             }
+        //
+        //             std::tie(p0, p4, p2, p6) = simd::convert<float>::split<PSrc>(p0, p4, p2, p6);
+        //             std::tie(p0, p4, p2, p6) = simd::convert<float>::inverse<Inverse>(p0, p4, p2, p6);
+        //
+        //             auto [a0, a4] = simd::btfly(p0, p4);
+        //             auto [a2, a6] = simd::btfly(p2, p6);
+        //
+        //             auto [b0, b2] = simd::btfly(a0, a2);
+        //             auto [b4, b6] = simd::btfly<3>(a4, a6);
+        //
+        //             auto [c0, c1] = simd::btfly(b0, b1);
+        //             auto [c2, c3] = simd::btfly<3>(b2, b3);
+        //             auto [c4, c5] = simd::btfly(b4, b5_tw);
+        //             auto [c6, c7] = simd::btfly<2>(b6, b7_tw);
+        //
+        //             auto [sha0, sha4] = simd::unpack_ps(c0, c4);
+        //             auto [sha2, sha6] = simd::unpack_ps(c2, c6);
+        //             auto [sha1, sha5] = simd::unpack_ps(c1, c5);
+        //             auto [sha3, sha7] = simd::unpack_ps(c3, c7);
+        //
+        //             auto [shb0, shb2] = simd::unpack_pd(sha0, sha2);
+        //             auto [shb1, shb3] = simd::unpack_pd(sha1, sha3);
+        //
+        //             auto [shc0, shc1] = simd::unpack_128(shb0, shb1);
+        //             auto [shc2, shc3] = simd::unpack_128(shb2, shb3);
+        //
+        //             reg_t q0, q1, q2, q3, q4, q5, q6, q7;
+        //
+        //             std::tie(shc0, shc1, shc2, shc3) = simd::convert<float>::inverse<Inverse>(shc0, shc1, shc2, shc3);
+        //
+        //             q0 = cxloadstore<PTform>(simd::ra_addr<PTform>(src0, offset2), shc0);
+        //             q4 = cxloadstore<PTform>(simd::ra_addr<PTform>(src4, offset2), shc2);
+        //
+        //             if constexpr (PSrc < 4) {
+        //                 q2 = cxloadstore<PTform>(simd::ra_addr<PTform>(src2, offset2), shc1);
+        //                 q6 = cxloadstore<PTform>(simd::ra_addr<PTform>(src6, offset2), shc3);
+        //
+        //                 std::tie(q0, q4, q2, q6) = simd::convert<float>::split<PSrc>(q0, q4, q2, q6);
+        //                 std::tie(q0, q4, q2, q6) = simd::convert<float>::inverse<Inverse>(q0, q4, q2, q6);
+        //             } else {
+        //                 q1 = cxloadstore<PTform>(simd::ra_addr<PTform>(src1, offset2), shc1);
+        //                 q5 = cxloadstore<PTform>(simd::ra_addr<PTform>(src5, offset2), shc3);
+        //
+        //                 std::tie(q0, q4, q1, q5) = simd::convert<float>::split<PSrc>(q0, q4, q1, q5);
+        //                 std::tie(q0, q4, q1, q5) = simd::convert<float>::inverse<Inverse>(q0, q4, q1, q5);
+        //             }
+        //
+        //             if constexpr (PSrc < 4) {
+        //                 _mm_prefetch(simd::ra_addr<PTform>(src1, offset2), _MM_HINT_T0);
+        //                 _mm_prefetch(simd::ra_addr<PTform>(src5, offset2), _MM_HINT_T0);
+        //             } else {
+        //                 _mm_prefetch(simd::ra_addr<PTform>(src2, offset2), _MM_HINT_T0);
+        //                 _mm_prefetch(simd::ra_addr<PTform>(src6, offset2), _MM_HINT_T0);
+        //             }
+        //             _mm_prefetch(simd::ra_addr<PTform>(src3, offset2), _MM_HINT_T0);
+        //             _mm_prefetch(simd::ra_addr<PTform>(src7, offset2), _MM_HINT_T0);
+        //
+        //             auto [shb4, shb6] = simd::unpack_pd(sha4, sha6);
+        //             auto [shb5, shb7] = simd::unpack_pd(sha5, sha7);
+        //
+        //             auto [shc4, shc5] = simd::unpack_128(shb4, shb5);
+        //             auto [shc6, shc7] = simd::unpack_128(shb6, shb7);
+        //
+        //             std::tie(shc4, shc5, shc6, shc7) = simd::convert<float>::inverse<Inverse>(shc4, shc5, shc6, shc7);
+        //
+        //             if constexpr (PSrc < 4) {
+        //                 q1 = cxloadstore<PTform>(simd::ra_addr<PTform>(src1, offset2), shc4);
+        //                 q5 = cxloadstore<PTform>(simd::ra_addr<PTform>(src5, offset2), shc6);
+        //             } else {
+        //                 q2 = cxloadstore<PTform>(simd::ra_addr<PTform>(src2, offset2), shc4);
+        //                 q6 = cxloadstore<PTform>(simd::ra_addr<PTform>(src6, offset2), shc6);
+        //             }
+        //             q3 = cxloadstore<PTform>(simd::ra_addr<PTform>(src3, offset2), shc5);
+        //             q7 = cxloadstore<PTform>(simd::ra_addr<PTform>(src7, offset2), shc7);
+        //
+        //             if constexpr (PSrc < 4) {
+        //                 std::tie(q1, q5, q3, q7) = simd::convert<float>::split<PSrc>(q1, q5, q3, q7);
+        //                 std::tie(q1, q5, q3, q7) = simd::convert<float>::inverse<Inverse>(q1, q5, q3, q7);
+        //             } else {
+        //                 std::tie(q2, q6, q3, q7) = simd::convert<float>::split<PSrc>(q2, q6, q3, q7);
+        //                 std::tie(q2, q6, q3, q7) = simd::convert<float>::inverse<Inverse>(q2, q6, q3, q7);
+        //             }
+        //
+        //             auto [x1, x5] = simd::btfly(q1, q5);
+        //             auto [x3, x7] = simd::btfly(q3, q7);
+        //
+        //             auto [y5, y7] = simd::btfly<3>(x5, x7);
+        //
+        //             auto [y1, y3] = simd::btfly(x1, x3);
+        //
+        //             reg_t y5_tw = {simd::add(y5.real, y5.imag), simd::sub(y5.imag, y5.real)};
+        //             reg_t y7_tw = {simd::sub(y7.real, y7.imag), simd::add(y7.real, y7.imag)};
+        //
+        //             auto [x0, x4] = simd::btfly(q0, q4);
+        //
+        //             y5_tw = simd::mul(y5_tw, twsq2);
+        //             y7_tw = simd::mul(y7_tw, twsq2);
+        //
+        //             auto [x2, x6] = simd::btfly(q2, q6);
+        //
+        //             auto [y0, y2] = simd::btfly(x0, x2);
+        //             auto [y4, y6] = simd::btfly<3>(x4, x6);
+        //
+        //             auto [z0, z1] = simd::btfly(y0, y1);
+        //             auto [z2, z3] = simd::btfly<3>(y2, y3);
+        //             auto [z4, z5] = simd::btfly(y4, y5_tw);
+        //             auto [z6, z7] = simd::btfly<2>(y6, y7_tw);
+        //
+        //             auto [shx0, shx4] = simd::unpack_ps(z0, z4);
+        //             auto [shx1, shx5] = simd::unpack_ps(z1, z5);
+        //             auto [shx2, shx6] = simd::unpack_ps(z2, z6);
+        //             auto [shx3, shx7] = simd::unpack_ps(z3, z7);
+        //
+        //             auto [shy0, shy2] = simd::unpack_pd(shx0, shx2);
+        //             auto [shy1, shy3] = simd::unpack_pd(shx1, shx3);
+        //
+        //             auto [shz0, shz1] = simd::unpack_128(shy0, shy1);
+        //             auto [shz2, shz3] = simd::unpack_128(shy2, shy3);
+        //
+        //             std::tie(shz0, shz1, shz2, shz3) = simd::convert<float>::inverse<Inverse>(shz0, shz1, shz2, shz3);
+        //
+        //             simd::cxstore<PTform>(simd::ra_addr<PTform>(src4, offset1), shz2);
+        //             simd::cxstore<PTform>(simd::ra_addr<PTform>(src0, offset1), shz0);
+        //             if constexpr (PSrc < 4) {
+        //                 simd::cxstore<PTform>(simd::ra_addr<PTform>(src2, offset1), shz1);
+        //                 simd::cxstore<PTform>(simd::ra_addr<PTform>(src6, offset1), shz3);
+        //             } else {
+        //                 simd::cxstore<PTform>(simd::ra_addr<PTform>(src1, offset1), shz1);
+        //                 simd::cxstore<PTform>(simd::ra_addr<PTform>(src5, offset1), shz3);
+        //             }
+        //
+        //             auto [shy4, shy6] = simd::unpack_pd(shx4, shx6);
+        //             auto [shy5, shy7] = simd::unpack_pd(shx5, shx7);
+        //
+        //             auto [shz4, shz5] = simd::unpack_128(shy4, shy5);
+        //             auto [shz6, shz7] = simd::unpack_128(shy6, shy7);
+        //
+        //             std::tie(shz4, shz5, shz6, shz7) = simd::convert<float>::inverse<Inverse>(shz4, shz5, shz6, shz7);
+        //
+        //             if constexpr (PSrc < 4) {
+        //                 simd::cxstore<PTform>(simd::ra_addr<PTform>(src1, offset1), shz4);
+        //                 simd::cxstore<PTform>(simd::ra_addr<PTform>(src5, offset1), shz6);
+        //             } else {
+        //                 simd::cxstore<PTform>(simd::ra_addr<PTform>(src2, offset1), shz4);
+        //                 simd::cxstore<PTform>(simd::ra_addr<PTform>(src6, offset1), shz6);
+        //             }
+        //             simd::cxstore<PTform>(simd::ra_addr<PTform>(src3, offset1), shz5);
+        //             simd::cxstore<PTform>(simd::ra_addr<PTform>(src7, offset1), shz7);
+        //         };
+        //         for (; i < size() / 64; ++i) {
+        //             using reg_t = simd::cx_reg<float>;
+        //             auto offset = m_sort[i] * simd::reg<T>::size;
+        //
+        //             auto p1 = simd::cxload<PTform>(simd::ra_addr<PTform>(src1, offset));
+        //             auto p5 = simd::cxload<PTform>(simd::ra_addr<PTform>(src5, offset));
+        //             auto p3 = simd::cxload<PTform>(simd::ra_addr<PTform>(src3, offset));
+        //             auto p7 = simd::cxload<PTform>(simd::ra_addr<PTform>(src7, offset));
+        //
+        //             std::tie(p1, p5, p3, p7) = simd::convert<float>::split<PSrc>(p1, p5, p3, p7);
+        //             std::tie(p1, p5, p3, p7) = simd::convert<float>::inverse<Inverse>(p1, p5, p3, p7);
+        //
+        //             auto [a1, a5] = simd::btfly(p1, p5);
+        //             auto [a3, a7] = simd::btfly(p3, p7);
+        //
+        //             auto [b5, b7] = simd::btfly<3>(a5, a7);
+        //             auto [b1, b3] = simd::btfly(a1, a3);
+        //
+        //             auto twsq2 = simd::broadcast(sq2.real());
+        //
+        //             reg_t b5_tw = {simd::add(b5.real, b5.imag), simd::sub(b5.imag, b5.real)};
+        //             reg_t b7_tw = {simd::sub(b7.real, b7.imag), simd::add(b7.real, b7.imag)};
+        //
+        //             b5_tw = simd::mul(b5_tw, twsq2);
+        //             b7_tw = simd::mul(b7_tw, twsq2);
+        //
+        //             auto p0 = simd::cxload<PTform>(simd::ra_addr<PTform>(src0, offset));
+        //             auto p4 = simd::cxload<PTform>(simd::ra_addr<PTform>(src4, offset));
+        //             auto p2 = simd::cxload<PTform>(simd::ra_addr<PTform>(src2, offset));
+        //             auto p6 = simd::cxload<PTform>(simd::ra_addr<PTform>(src6, offset));
+        //
+        //             std::tie(p0, p4, p2, p6) = simd::convert<float>::split<PSrc>(p0, p4, p2, p6);
+        //             std::tie(p0, p4, p2, p6) = simd::convert<float>::inverse<Inverse>(p0, p4, p2, p6);
+        //
+        //             auto [a0, a4] = simd::btfly(p0, p4);
+        //             auto [a2, a6] = simd::btfly(p2, p6);
+        //
+        //             auto [b0, b2] = simd::btfly(a0, a2);
+        //             auto [b4, b6] = simd::btfly<3>(a4, a6);
+        //
+        //             auto [c0, c1] = simd::btfly(b0, b1);
+        //             auto [c2, c3] = simd::btfly<3>(b2, b3);
+        //             auto [c4, c5] = simd::btfly(b4, b5_tw);
+        //             auto [c6, c7] = simd::btfly<2>(b6, b7_tw);
+        //
+        //             auto [sha0, sha4] = simd::unpack_ps(c0, c4);
+        //             auto [sha2, sha6] = simd::unpack_ps(c2, c6);
+        //             auto [sha1, sha5] = simd::unpack_ps(c1, c5);
+        //             auto [sha3, sha7] = simd::unpack_ps(c3, c7);
+        //
+        //             auto [shb0, shb2] = simd::unpack_pd(sha0, sha2);
+        //             auto [shb1, shb3] = simd::unpack_pd(sha1, sha3);
+        //
+        //             auto [shc0, shc1] = simd::unpack_128(shb0, shb1);
+        //             auto [shc2, shc3] = simd::unpack_128(shb2, shb3);
+        //
+        //             std::tie(shc0, shc1, shc2, shc3) = simd::convert<float>::inverse<Inverse>(shc0, shc1, shc2, shc3);
+        //
+        //             simd::cxstore<PTform>(simd::ra_addr<PTform>(src0, offset), shc0);
+        //             simd::cxstore<PTform>(simd::ra_addr<PTform>(src4, offset), shc2);
+        //             if constexpr (PSrc < 4) {
+        //                 simd::cxstore<PTform>(simd::ra_addr<PTform>(src2, offset), shc1);
+        //                 simd::cxstore<PTform>(simd::ra_addr<PTform>(src6, offset), shc3);
+        //             } else {
+        //                 simd::cxstore<PTform>(simd::ra_addr<PTform>(src1, offset), shc1);
+        //                 simd::cxstore<PTform>(simd::ra_addr<PTform>(src5, offset), shc3);
+        //             }
+        //
+        //             auto [shb4, shb6] = simd::unpack_pd(sha4, sha6);
+        //             auto [shb5, shb7] = simd::unpack_pd(sha5, sha7);
+        //
+        //             auto [shc4, shc5] = simd::unpack_128(shb4, shb5);
+        //             auto [shc6, shc7] = simd::unpack_128(shb6, shb7);
+        //
+        //             std::tie(shc4, shc5, shc6, shc7) = simd::convert<float>::inverse<Inverse>(shc4, shc5, shc6, shc7);
+        //
+        //             if constexpr (PSrc < 4) {
+        //                 simd::cxstore<PTform>(simd::ra_addr<PTform>(src1, offset), shc4);
+        //                 simd::cxstore<PTform>(simd::ra_addr<PTform>(src5, offset), shc6);
+        //             } else {
+        //                 simd::cxstore<PTform>(simd::ra_addr<PTform>(src2, offset), shc4);
+        //                 simd::cxstore<PTform>(simd::ra_addr<PTform>(src6, offset), shc6);
+        //             }
+        //             simd::cxstore<PTform>(simd::ra_addr<PTform>(src3, offset), shc5);
+        //             simd::cxstore<PTform>(simd::ra_addr<PTform>(src7, offset), shc7);
+        //         }
     }
 
     template<std::size_t PTform, std::size_t PSrc>
@@ -1580,9 +2353,9 @@ public:
 
         const auto* twiddle_ptr = m_twiddles.data();
 
-        std::size_t l_size     = simd::reg<T>::size * 2;
-        std::size_t group_size = max_size / simd::reg<T>::size;
-        std::size_t n_groups   = 1;
+        uZ l_size     = size_specific::sorted_size * 2;
+        uZ group_size = max_size / size_specific::sorted_size;
+        uZ n_groups   = 1;
 
         if constexpr (AlignSize > 1) {
             constexpr auto align_ce = d_::Integer<AlignSize>{};
@@ -2070,252 +2843,6 @@ public:
         return twiddle_ptr;
     };
 
-    /**
-     * @brief Contains functions specific to data type and simd sizes
-     *
-     * @tparam SimdSize number of type T values in simd registers in, e.g. 4 for SSE (128 bits) and float (32 bits)
-     * @tparam SimdCount number of simd registers
-     */
-    template<uZ SimdSize, uZ SimdCount>
-    struct simd_size_specific;
-
-    template<uZ SimdCount>
-        requires(SimdCount >= 16)
-    struct simd_size_specific<8, SimdCount> {
-        static constexpr uZ unsorted_size = 32;
-        template<uZ PDest, uZ PTform>
-        static inline auto unsorted(T* dest, const T* twiddle_ptr, uZ size) {
-            using cx_reg = simd::cx_reg<T>;
-
-            for (uZ i_group = 0; i_group < size / unsorted_size; ++i_group) {
-                cx_reg tw0 = {simd::broadcast(twiddle_ptr++), simd::broadcast(twiddle_ptr++)};
-
-                cx_reg tw1 = {simd::broadcast(twiddle_ptr++), simd::broadcast(twiddle_ptr++)};
-                cx_reg tw2 = {simd::broadcast(twiddle_ptr++), simd::broadcast(twiddle_ptr++)};
-
-                auto* ptr0 = simd::ra_addr<PTform>(dest, cx_reg::size * (i_group * 4));
-                auto* ptr1 = simd::ra_addr<PTform>(dest, cx_reg::size * (i_group * 4 + 1));
-                auto* ptr2 = simd::ra_addr<PTform>(dest, cx_reg::size * (i_group * 4 + 2));
-                auto* ptr3 = simd::ra_addr<PTform>(dest, cx_reg::size * (i_group * 4 + 3));
-
-                auto p2 = simd::cxload<PTform>(ptr2);
-                auto p3 = simd::cxload<PTform>(ptr3);
-                auto p0 = simd::cxload<PTform>(ptr0);
-                auto p1 = simd::cxload<PTform>(ptr1);
-
-                auto [p2tw, p3tw] = simd::mul({p2, tw0}, {p3, tw0});
-
-                auto [a1, a3] = simd::btfly(p1, p3tw);
-                auto [a0, a2] = simd::btfly(p0, p2tw);
-
-                auto [a1tw, a3tw] = simd::mul({a1, tw1}, {a3, tw2});
-
-                auto tw3 = simd::cxload<cx_reg::size>(twiddle_ptr);
-                auto tw4 = simd::cxload<cx_reg::size>(twiddle_ptr + cx_reg::size * 2);
-                twiddle_ptr += cx_reg::size * 4;
-
-                auto [b0, b1] = simd::btfly(a0, a1tw);
-                auto [b2, b3] = simd::btfly(a2, a3tw);
-
-                auto [shb0, shb1] = simd::unpack_128(b0, b1);
-                auto [shb2, shb3] = simd::unpack_128(b2, b3);
-
-                auto [shb1tw, shb3tw] = simd::mul({shb1, tw3}, {shb3, tw4});
-
-                auto tw5 = simd::cxload<cx_reg::size>(twiddle_ptr);
-                auto tw6 = simd::cxload<cx_reg::size>(twiddle_ptr + cx_reg::size * 2);
-                twiddle_ptr += cx_reg::size * 4;
-
-                auto [c0, c1] = simd::btfly(shb0, shb1tw);
-                auto [c2, c3] = simd::btfly(shb2, shb3tw);
-
-                auto [shc0, shc1] = simd::unpack_pd(c0, c1);
-                auto [shc2, shc3] = simd::unpack_pd(c2, c3);
-
-                auto [shc1tw, shc3tw] = simd::mul({shc1, tw5}, {shc3, tw6});
-
-                auto tw7 = simd::cxload<cx_reg::size>(twiddle_ptr);
-                auto tw8 = simd::cxload<cx_reg::size>(twiddle_ptr + cx_reg::size * 2);
-                twiddle_ptr += cx_reg::size * 4;
-
-                auto [d0, d1] = simd::btfly(shc0, shc1tw);
-                auto [d2, d3] = simd::btfly(shc2, shc3tw);
-
-                auto shuf = [](cx_reg lhs, cx_reg rhs) {
-                    auto lhs_re = _mm256_shuffle_ps(lhs.real, rhs.real, 0b10001000);
-                    auto rhs_re = _mm256_shuffle_ps(lhs.real, rhs.real, 0b11011101);
-                    auto lhs_im = _mm256_shuffle_ps(lhs.imag, rhs.imag, 0b10001000);
-                    auto rhs_im = _mm256_shuffle_ps(lhs.imag, rhs.imag, 0b11011101);
-                    return std::make_tuple(cx_reg{lhs_re, lhs_im}, cx_reg{rhs_re, rhs_im});
-                };
-                auto [shd0, shd1] = shuf(d0, d1);
-                auto [shd2, shd3] = shuf(d2, d3);
-
-                auto [shd1tw, shd3tw] = simd::mul({shd1, tw7}, {shd3, tw8});
-
-                auto [e0, e1] = simd::btfly(shd0, shd1tw);
-                auto [e2, e3] = simd::btfly(shd2, shd3tw);
-
-                cx_reg she0, she1, she2, she3;
-                if constexpr (Order == fft_order::bit_reversed) {
-                    if constexpr (PDest < 4) {
-                        std::tie(she0, she1) = simd::unpack_ps(e0, e1);
-                        std::tie(she2, she3) = simd::unpack_ps(e2, e3);
-                        std::tie(she0, she1) = simd::unpack_128(she0, she1);
-                        std::tie(she2, she3) = simd::unpack_128(she2, she3);
-                    } else {
-                        std::tie(she0, she1) = simd::unpack_ps(e0, e1);
-                        std::tie(she2, she3) = simd::unpack_ps(e2, e3);
-                        std::tie(she0, she1) = simd::unpack_pd(she0, she1);
-                        std::tie(she2, she3) = simd::unpack_pd(she2, she3);
-                        std::tie(she0, she1) = simd::unpack_128(she0, she1);
-                        std::tie(she2, she3) = simd::unpack_128(she2, she3);
-                    }
-                    std::tie(she0, she1, she2, she3) =
-                        simd::convert<T>::template combine<PDest>(she0, she1, she2, she3);
-                } else {
-                    std::tie(she0, she1, she2, she3) = std::tie(e0, e1, e2, e3);
-                }
-                simd::cxstore<PTform>(ptr0, she0);
-                simd::cxstore<PTform>(ptr1, she1);
-                simd::cxstore<PTform>(ptr2, she2);
-                simd::cxstore<PTform>(ptr3, she3);
-            }
-
-            return twiddle_ptr;
-        }
-
-        template<uZ PTform, uZ PSrc, bool Scale>
-        static inline auto unsorted_reverse(T*       dest,    //
-                                            const T* twiddle_ptr,
-                                            uZ       size,
-                                            uZ       fft_size,
-                                            auto... optional) {
-            using cx_reg         = simd::cx_reg<T>;
-            constexpr auto PLoad = std::max(PSrc, cx_reg::size);
-
-            using source_type  = const T*;
-            constexpr bool Src = detail_::has_type<source_type, decltype(optional)...>;
-
-            auto scale = [](uZ size) {
-                if constexpr (Scale)
-                    return static_cast<float>(1. / static_cast<double>(size));
-                else
-                    return [] {};
-            }(fft_size);
-
-            for (iZ i_group = size / unsorted_size - 1; i_group >= 0; --i_group) {
-                auto* ptr0 = simd::ra_addr<PTform>(dest, cx_reg::size * (i_group * 4));
-                auto* ptr1 = simd::ra_addr<PTform>(dest, cx_reg::size * (i_group * 4 + 1));
-                auto* ptr2 = simd::ra_addr<PTform>(dest, cx_reg::size * (i_group * 4 + 2));
-                auto* ptr3 = simd::ra_addr<PTform>(dest, cx_reg::size * (i_group * 4 + 3));
-
-                cx_reg she0, she1, she2, she3;
-                if constexpr (Src) {
-                    auto src = std::get<source_type&>(std::tie(optional...));
-
-                    she0 = simd::cxload<PLoad>(simd::ra_addr<PLoad>(src, cx_reg::size * (i_group * 4)));
-                    she1 = simd::cxload<PLoad>(simd::ra_addr<PLoad>(src, cx_reg::size * (i_group * 4 + 1)));
-                    she2 = simd::cxload<PLoad>(simd::ra_addr<PLoad>(src, cx_reg::size * (i_group * 4 + 2)));
-                    she3 = simd::cxload<PLoad>(simd::ra_addr<PLoad>(src, cx_reg::size * (i_group * 4 + 3)));
-                } else {
-                    she0 = simd::cxload<PLoad>(ptr0);
-                    she1 = simd::cxload<PLoad>(ptr1);
-                    she2 = simd::cxload<PLoad>(ptr2);
-                    she3 = simd::cxload<PLoad>(ptr3);
-                }
-
-                cx_reg e0, e1, e2, e3;
-                if constexpr (Order == fft_order::bit_reversed) {
-                    std::tie(she0, she1, she2, she3) =
-                        simd::convert<T>::template repack<PSrc, PTform>(she0, she1, she2, she3);
-                }
-                std::tie(she0, she1, she2, she3) =
-                    simd::convert<T>::template inverse<true>(she0, she1, she2, she3);
-                if constexpr (Order == fft_order::bit_reversed) {
-                    std::tie(e0, e1) = simd::unpack_128(she0, she1);
-                    std::tie(e2, e3) = simd::unpack_128(she2, she3);
-                } else {
-                    std::tie(e0, e1, e2, e3) = std::tie(she0, she1, she2, she3);
-                }
-
-                twiddle_ptr -= cx_reg::size * 4;
-                auto tw7 = simd::cxload<cx_reg::size>(twiddle_ptr);
-                auto tw8 = simd::cxload<cx_reg::size>(twiddle_ptr + cx_reg::size * 2);
-
-                if constexpr (Order == fft_order::bit_reversed) {
-                    std::tie(e0, e1) = simd::unpack_ps(e0, e1);
-                    std::tie(e2, e3) = simd::unpack_ps(e2, e3);
-                    std::tie(e0, e1) = simd::unpack_pd(e0, e1);
-                    std::tie(e2, e3) = simd::unpack_pd(e2, e3);
-                }
-                auto [shd0, shd1tw] = simd::ibtfly(e0, e1);
-                auto [shd2, shd3tw] = simd::ibtfly(e2, e3);
-
-                auto [shd1, shd3] = simd::mul({shd1tw, tw7}, {shd3tw, tw8});
-
-                twiddle_ptr -= cx_reg::size * 4;
-                auto tw5 = simd::cxload<cx_reg::size>(twiddle_ptr);
-                auto tw6 = simd::cxload<cx_reg::size>(twiddle_ptr + cx_reg::size * 2);
-
-                auto [d0, d1] = simd::unpack_ps(shd0, shd1);
-                auto [d2, d3] = simd::unpack_ps(shd2, shd3);
-
-                auto [shc0, shc1tw] = simd::btfly(d0, d1);
-                auto [shc2, shc3tw] = simd::btfly(d2, d3);
-
-                auto [shc1, shc3] = simd::mul({shc1tw, tw5}, {shc3tw, tw6});
-
-                twiddle_ptr -= cx_reg::size * 4;
-                auto tw3 = simd::cxload<cx_reg::size>(twiddle_ptr);
-                auto tw4 = simd::cxload<cx_reg::size>(twiddle_ptr + cx_reg::size * 2);
-
-                auto [c0, c1] = simd::unpack_pd(shc0, shc1);
-                auto [c2, c3] = simd::unpack_pd(shc2, shc3);
-
-                auto [shb0, shb1tw] = simd::btfly(c0, c1);
-                auto [shb2, shb3tw] = simd::btfly(c2, c3);
-
-                auto [shb1, shb3] = simd::mul({shb1tw, tw3}, {shb3tw, tw4});
-
-                twiddle_ptr -= 6;
-                cx_reg tw1 = {simd::broadcast(twiddle_ptr + 2), simd::broadcast(twiddle_ptr + 3)};
-                cx_reg tw2 = {simd::broadcast(twiddle_ptr + 4), simd::broadcast(twiddle_ptr + 5)};
-                cx_reg tw0 = {simd::broadcast(twiddle_ptr + 0), simd::broadcast(twiddle_ptr + 1)};
-
-                auto [b0, b1] = simd::unpack_128(shb0, shb1);
-                auto [b2, b3] = simd::unpack_128(shb2, shb3);
-
-                auto [a0, a1tw] = simd::btfly(b0, b1);
-                auto [a2, a3tw] = simd::btfly(b2, b3);
-
-                auto [a1, a3] = simd::mul({a1tw, tw1}, {a3tw, tw2});
-
-                auto [p0, p2tw] = simd::btfly(a0, a2);
-                auto [p1, p3tw] = simd::btfly(a1, a3);
-
-                auto [p2, p3] = simd::mul({p2tw, tw0}, {p3tw, tw0});
-
-                if constexpr (Scale) {
-                    auto scaling = simd::broadcast(scale);
-
-                    p0 = simd::mul(p0, scaling);
-                    p1 = simd::mul(p1, scaling);
-                    p2 = simd::mul(p2, scaling);
-                    p3 = simd::mul(p3, scaling);
-                }
-
-                std::tie(p0, p2, p1, p3) = simd::convert<T>::template inverse<true>(p0, p2, p1, p3);
-
-                simd::cxstore<PTform>(ptr0, p0);
-                simd::cxstore<PTform>(ptr2, p2);
-                simd::cxstore<PTform>(ptr1, p1);
-                simd::cxstore<PTform>(ptr3, p3);
-            }
-
-            return twiddle_ptr;
-        }
-    };
 
     template<uZ   PDest,
              uZ   PSrc,
@@ -3087,13 +3614,12 @@ private:
         return max - (1U << ((log2i(max) + 1) / 2));
     }
 
-    static auto get_sort(std::size_t fft_size, sort_allocator_type allocator)
-        -> std::vector<std::size_t, sort_allocator_type>
+    static auto get_sort(uZ fft_size, sort_allocator_type allocator) -> std::vector<uZ, sort_allocator_type>
         requires(sorted)
     {
-        const auto packed_sort_size = fft_size / simd::reg<T>::size / simd::reg<T>::size;
+        const auto packed_sort_size = fft_size / size_specific::sorted_size / size_specific::sorted_size;
         const auto order            = log2i(packed_sort_size);
-        auto       sort             = std::vector<std::size_t, sort_allocator_type>(allocator);
+        auto       sort             = std::vector<uZ, sort_allocator_type>(allocator);
         sort.reserve(packed_sort_size);
 
         for (uint i = 0; i < packed_sort_size; ++i) {
@@ -3233,7 +3759,7 @@ private:
         requires(sorted)
     {
         auto [idx, align_c, align_i, align_c_rec, align_i_rec, sub_size_] =
-            get_subtform_idx_strategic_(fft_size, sub_size);
+            get_subtform_idx_strategic_(fft_size, sub_size, size_specific::sorted_size);
 
         auto       wnk   = detail_::fft::wnk<T>;
         const auto depth = log2i(fft_size);

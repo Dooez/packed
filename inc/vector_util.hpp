@@ -187,6 +187,23 @@ constexpr void apply_for_each(F&& f, Tups&&... args) {
 }
 }    // namespace detail_
 
+
+
+/**
+ * @brief forward declarations
+ *
+ */
+namespace simd{
+
+template<typename T>
+struct reg;
+void load();
+void store();
+void cxload();
+void cxstore();
+void cxloadstore();
+
+}
 /**
  * @brief alias for templated avx2 types and functions
  *
@@ -401,7 +418,7 @@ struct convert<float> {
 
     /**
      * @brief Shuffles data to convert from PackFrom to PackTo pack size;
-     * 
+     *
      * @param args arbitrary number of cx_reg<T>
      */
     template<std::size_t PackFrom, std::size_t PackTo>
@@ -479,12 +496,11 @@ struct convert<float> {
     /**
      * @brief Shuffles data to put I/Q into separate simd registers.
      * Resulting data order is dependent on input pack size.
+     * if PackFrom < 4 the order of values across 2 cx registers changes
+     * [0 1 2 3][4 5 6 7] -> [0 1 4 5][2 3 6 7]
      * Faster than true repack.
-     * @tparam PackFrom 
-     * @param args 
-     * @return auto 
      */
-    template<std::size_t PackFrom>
+    template<uZ PackFrom>
     static inline auto split(auto... args) {
         auto tup = std::make_tuple(args...);
         if constexpr (PackFrom == 1) {
