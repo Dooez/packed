@@ -13,6 +13,50 @@ namespace pcx {
 
 namespace simd {
 
+template<typename T>
+inline auto add(reg_t<T> lhs, reg_t<T> rhs) -> reg_t<T>;
+template<typename T>
+inline auto sub(reg_t<T> lhs, reg_t<T> rhs) -> reg_t<T>;
+template<typename T>
+inline auto mul(reg_t<T> lhs, reg_t<T> rhs) -> reg_t<T>;
+template<typename T>
+inline auto div(reg_t<T> lhs, reg_t<T> rhs) -> reg_t<T>;
+
+template<typename T, bool ConjLhs, bool ConjRhs>
+inline auto add(cx_reg<T, ConjLhs> lhs, cx_reg<T, ConjRhs> rhs);
+
+template<typename T, bool ConjLhs, bool ConjRhs>
+inline auto sub(cx_reg<T, ConjLhs> lhs, cx_reg<T, ConjRhs> rhs);
+
+template<typename T, bool ConjLhs, bool ConjRhs>
+inline auto mul(cx_reg<T, ConjLhs> lhs, cx_reg<T, ConjRhs> rhs);
+
+template<typename T, bool ConjLhs, bool ConjRhs>
+inline auto div(cx_reg<T, ConjLhs> lhs, cx_reg<T, ConjRhs> rhs);
+
+/**
+ * @brief Preforms multiple complex multiplications.
+ * Arguments are multiplied in pairs in the order of passing.
+ * Complex multiplication can be viewed as two stages:
+ * 1. two multiplications;
+ * 2. addition;
+ * This function explicitly reorders stages of multiple multiplications
+ * to reduce possible latency effect on performance.
+ */
+template<typename T, bool... Conj>
+    requires(sizeof...(Conj) % 2 == 0)
+inline auto mul_pairs(cx_reg<T, Conj>... args);
+
+
+template<typename T, bool... Conj>
+    requires(sizeof...(Conj) % 2 == 0)
+inline auto div_pairs(cx_reg<T, Conj>... args);
+
+}    // namespace simd
+
+
+namespace simd {
+
 inline auto add(reg_t<float> lhs, reg_t<float> rhs) -> reg_t<float> {
     return _mm256_add_ps(lhs, rhs);
 }
@@ -1258,8 +1302,8 @@ public:
     }
 
 private:
-    const E m_vector;
-    S       m_scalar;
+    E m_vector;
+    S m_scalar;
 };
 
 template<typename E, typename S>
@@ -1408,8 +1452,8 @@ public:
     }
 
 private:
-    const E m_vector;
-    S       m_scalar;
+    E m_vector;
+    S m_scalar;
 };
 
 template<typename E, typename S>
@@ -1562,8 +1606,8 @@ public:
     }
 
 private:
-    const E m_vector;
-    S       m_scalar;
+    E m_vector;
+    S m_scalar;
 };
 
 template<typename E, typename S>
@@ -1712,8 +1756,8 @@ public:
     }
 
 private:
-    const E m_vector;
-    S       m_scalar;
+    E m_vector;
+    S m_scalar;
 };
 
 
@@ -1857,7 +1901,7 @@ public:
     }
 
 private:
-    const E m_vector;
+    E m_vector;
 };
 
 }    // namespace detail_

@@ -188,30 +188,65 @@ constexpr void apply_for_each(F&& f, Tups&&... args) {
 }    // namespace detail_
 
 
-
 /**
  * @brief forward declarations
- *
- */
-namespace simd{
-
-template<typename T>
-struct reg;
-void load();
-void store();
-void cxload();
-void cxstore();
-void cxloadstore();
-
-}
-/**
- * @brief alias for templated avx2 types and functions
  *
  */
 namespace simd {
 
 template<typename T>
 struct reg;
+
+template<typename T>
+using reg_t = typename reg<T>::type;
+
+template<typename T, bool Conj = false>
+struct cx_reg {
+    reg_t<T>            real;
+    reg_t<T>            imag;
+    static constexpr uZ size = reg<T>::size;
+};
+
+template<typename T>
+inline auto broadcast(T source) -> reg_t<T>;
+template<typename T>
+inline auto load(const T* source) -> reg_t<T>;
+template<typename T>
+inline void store(T* dest, reg_t<T> reg);
+
+template<typename T>
+inline auto broadcast(std::complex<T> source) -> cx_reg<T, false>;
+template<uZ PackSize, typename T>
+inline auto cxload(const T* ptr) -> cx_reg<T, false>;
+template<uZ PackSize, typename T, bool Conj>
+inline void cxstore(T* ptr, cx_reg<T, Conj> reg);
+
+/**
+ * @param args Variable number of complex simd vectors.
+ * @return Tuple of repacked complex simd vectors in the order of passing.
+ */
+template<uZ PackFrom, uZ PackTo>
+inline auto repack(auto... args);
+
+/**
+ * @brief Conditionaly swaps real and imaginary parts of complex simd vectors.
+ *
+ * @tparam Inverse If true performs swap.
+ * @param args Variable number of complex simd vectors.
+ * @return Tuple of invrsed simd complex vectors.
+ */
+template<bool Inverse>
+inline auto inverse(auto... args);
+
+
+}    // namespace simd
+
+/**
+ * @brief alias for templated avx2 types and functions
+ *
+ */
+namespace simd {
+
 template<>
 struct reg<float> {
     using type = __m256;
@@ -225,17 +260,6 @@ struct reg<double> {
     static constexpr std::size_t size = 32 / sizeof(double);
 };
 
-template<typename T>
-using reg_t = typename reg<T>::type;
-
-// TODO(dooez): add optional conj and complex unity rotation as parameters;
-// update arithmetic to accomodate. Hard evaluation should only be performed on store.
-template<typename T, bool Conj = false>
-struct cx_reg {
-    typename reg<T>::type real;
-    typename reg<T>::type imag;
-    static constexpr uZ size = reg<T>::size;
-};
 
 template<typename T, bool Conj>
 auto conj(cx_reg<T, Conj> reg) -> cx_reg<T, !Conj> {
@@ -496,7 +520,7 @@ struct convert<float> {
     /**
      * @brief Shuffles data to put I/Q into separate simd registers.
      * Resulting data order is dependent on input pack size.
-     * if PackFrom < 4 the order of values across 2 cx registers changes
+     * if PackFrom < 4 the order of values across 2 registers changes
      * [0 1 2 3][4 5 6 7] -> [0 1 4 5][2 3 6 7]
      * Faster than true repack.
      */

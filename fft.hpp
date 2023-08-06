@@ -1102,7 +1102,6 @@ public:
             return twiddle_ptr;
         }
 
-
         static constexpr uZ sorted_size = 8;
 
         template<uZ PTform, uZ PSrc, bool Inverse>
@@ -2666,7 +2665,7 @@ public:
             n_groups *= node_size;
         }
 
-        while (l_size > simd_size_specific<8, 16>::unsorted_size) {
+        while (l_size > size_specific::unsorted_size) {
             uint i_group = 0;
             if constexpr (First) {
                 twiddle_ptr += 2 * (node_size - 1);
@@ -2695,7 +2694,7 @@ public:
             n_groups *= node_size;
         }
 
-        return simd_size_specific<8, 16>::template unsorted<PDest, PTform>(dest, twiddle_ptr, size);
+        return size_specific::template unsorted<PDest, PTform>(dest, twiddle_ptr, size);
     };
 
     template<uZ PDest, uZ PSrc, bool First, bool Scale, uZ AlignSize>
@@ -2704,10 +2703,10 @@ public:
         constexpr auto PTform    = std::max(PDest, simd::reg<T>::size);
         constexpr auto node_size = Strategy::node_size;
 
-        twiddle_ptr = simd_size_specific<8, 16>::template unsorted_reverse<PTform, PSrc, Scale>(
+        twiddle_ptr = size_specific::template unsorted_reverse<PTform, PSrc, Scale>(
             dest, twiddle_ptr, size, this->size(), optional...);
 
-        uZ l_size   = simd_size_specific<8, 16>::unsorted_size;
+        uZ l_size   = size_specific::unsorted_size;
         uZ n_groups = size / l_size;
 
         if constexpr (AlignSize > 1) {
@@ -3487,12 +3486,12 @@ public:
         return twiddle_ptr;
     };
 
-    template<std::size_t NodeSize,
-             std::size_t PDest,
-             std::size_t PSrc,
-             bool        DecInTime,
-             bool        ConjTw  = false,
-             bool        Reverse = false,
+    template<uZ   NodeSize,
+             uZ   PDest,
+             uZ   PSrc,
+             bool DecInTime,
+             bool ConjTw  = false,
+             bool Reverse = false,
              typename... Optional>
     inline static void node_along(T* dest, std::size_t l_size, std::size_t offset, Optional... optional) {
         constexpr auto PLoad  = std::max(PSrc, simd::reg<T>::size);
