@@ -81,11 +81,6 @@ struct vector_traits<pcx::subrange<T_, Const_, PackSize_>> {
     }
 };
 
-template<std::size_t I>
-struct Integer {
-    static constexpr std::size_t value = I;
-};
-
 namespace fft {
 constexpr auto log2i(std::size_t num) -> std::size_t {
     std::size_t order = 0;
@@ -2310,7 +2305,7 @@ public:
         uZ n_groups   = 1;
 
         if constexpr (AlignSize > 1) {
-            constexpr auto align_ce = d_::Integer<AlignSize>{};
+            constexpr auto align_ce = std::integral_constant<uZ, AlignSize>{};
             if constexpr (Scale) {
                 group_size /= AlignSize;
                 auto scaling = simd::broadcast(static_cast<T>(1 / static_cast<double>(size())));
@@ -2502,7 +2497,7 @@ public:
 
             constexpr auto fill_rec = [=]<std::size_t AlignSize, std::size_t... I>(    //
                                           subtform_t* begin,
-                                          detail_::Integer<AlignSize>,
+                                          std::integral_constant<uZ, AlignSize>,
                                           std::index_sequence<I...>) {
                 ((*(begin + I) =
                       &fft_unit::
@@ -2510,9 +2505,10 @@ public:
                  ...);
             };
             [=]<std::size_t... I>(subtform_t* begin, std::index_sequence<I...>) {
-                fill_rec(begin, detail_::Integer<0>{}, std::make_index_sequence<align_rec.size()>{});
+                fill_rec(
+                    begin, std::integral_constant<uZ, 0>{}, std::make_index_sequence<align_rec.size()>{});
                 (fill_rec(begin + (I + 1) * align_rec.size(),
-                          detail_::Integer<Strategy::align_node_size[I]>{},
+                          std::integral_constant<uZ, Strategy::align_node_size[I]>{},
                           std::make_index_sequence<align_rec.size()>{}),
                  ...);
             }(subtform_table.data(), std::make_index_sequence<Strategy::align_node_size.size()>{});
@@ -2984,7 +2980,7 @@ public:
 
             constexpr auto fill_rec = [=]<uZ AlignSize, uZ... I>(    //
                                           subtform_t* begin,
-                                          detail_::Integer<AlignSize>,
+                                          std::integral_constant<uZ, AlignSize>,
                                           std::index_sequence<I...>) {
                 if (Reverse)
                     ((*(begin + I) = &fft_unit::usubtform_recursive_strategic_reverse<PDest,
@@ -3001,9 +2997,10 @@ public:
                      ...);
             };
             [=]<uZ... I>(subtform_t* begin, std::index_sequence<I...>) {
-                fill_rec(begin, detail_::Integer<0>{}, std::make_index_sequence<align_rec.size()>{});
+                fill_rec(
+                    begin, std::integral_constant<uZ, 0>{}, std::make_index_sequence<align_rec.size()>{});
                 (fill_rec(begin + (I + 1) * align_rec.size(),
-                          detail_::Integer<Strategy::align_node_size[I]>{},
+                          std::integral_constant<uZ, Strategy::align_node_size[I]>{},
                           std::make_index_sequence<align_rec.size()>{}),
                  ...);
             }(subtform_table.data(), std::make_index_sequence<Strategy::align_node_size.size()>{});
@@ -4555,7 +4552,7 @@ private:
                 }
             }(source, i);
 
-            detail_::fft::node8<T, PDest, PSrc, false, false>(dst, src, tw, scaling);
+            detail_::fft::node<8>::template perform<T, PDest, PSrc, false, false>(dst, src, tw, scaling);
         }
     }
 
@@ -4617,7 +4614,7 @@ private:
                 }
             }(source, i);
 
-            detail_::fft::node4<T, PDest, PSrc, false, false>(dst, src, tw, scaling);
+            detail_::fft::node<4>::template perform<T, PDest, PSrc, false, false>(dst, src, tw, scaling);
         }
     }
 
@@ -4671,7 +4668,7 @@ private:
                 }
             }(source, i);
 
-            detail_::fft::node2<T, PDest, PSrc, false, false>(dst, src, tw, scaling);
+            detail_::fft::node<2>::template perform<T, PDest, PSrc, false, false>(dst, src, tw, scaling);
         }
     }
 
