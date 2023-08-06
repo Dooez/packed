@@ -137,420 +137,7 @@ struct order {
     }(std::make_index_sequence<Size - 1>{});
 };
 
-template<typename T,
-         std::size_t PDest,
-         std::size_t PSrc,
-         bool        ConjTw,
-         bool        Reverse,
-         bool        DIT = false,
-         typename... Args>
-inline void node8(std::array<T*, 8> dest, Args... args) {
-    constexpr auto PLoad   = std::max(PSrc, simd::reg<T>::size);
-    constexpr auto PStore  = std::max(PDest, simd::reg<T>::size);
-    constexpr bool Inverse = ConjTw || Reverse;
-
-    using src_type       = std::array<const T*, 8>;
-    using tw_type        = std::array<simd::cx_reg<T>, 7>;
-    constexpr bool Src   = has_type<src_type, Args...>;
-    constexpr bool Tw    = has_type<tw_type, Args...>;
-    constexpr bool Scale = has_type<simd::reg_t<T>, Args...>;
-
-    constexpr auto& data_idx = order<8, DIT>::data;
-    constexpr auto& tw_idx   = order<8, DIT>::tw;
-
-    if constexpr (Reverse) {
-        simd::cx_reg<T> c4, c5, c6, c7;
-        if constexpr (Src) {
-            auto& src = std::get<src_type&>(std::tie(args...));
-            c4        = simd::cxload<PLoad>(src[data_idx[4]]);
-            c5        = simd::cxload<PLoad>(src[data_idx[5]]);
-            c6        = simd::cxload<PLoad>(src[data_idx[6]]);
-            c7        = simd::cxload<PLoad>(src[data_idx[7]]);
-        } else {
-            c4 = simd::cxload<PLoad>(dest[data_idx[4]]);
-            c5 = simd::cxload<PLoad>(dest[data_idx[5]]);
-            c6 = simd::cxload<PLoad>(dest[data_idx[6]]);
-            c7 = simd::cxload<PLoad>(dest[data_idx[7]]);
-        }
-        std::tie(c4, c5, c6, c7) = simd::convert<T>::template repack<PSrc, PLoad>(c4, c5, c6, c7);
-        std::tie(c4, c5, c6, c7) = simd::convert<T>::template inverse<Inverse>(c4, c5, c6, c7);
-        simd::cx_reg<T> a4, a5, a6, a7;
-        if constexpr (Tw) {
-            auto& tw        = std::get<tw_type&>(std::tie(args...));
-            auto [b4, b5tw] = simd::ibtfly(c4, c5);
-            auto [b6, b7tw] = simd::ibtfly(c6, c7);
-            auto [b5, b7]   = simd::mul({b5tw, tw[tw_idx[5]]}, {b7tw, tw[tw_idx[6]]});
-
-            std::tie(a4, a6) = simd::ibtfly(b4, b6);
-            std::tie(a5, a7) = simd::ibtfly(b5, b7);
-            std::tie(a6, a7) = simd::mul({a6, tw[tw_idx[2]]}, {a7, tw[tw_idx[2]]});
-        } else {
-            const T sq2      = std::sqrt(double{2}) / 2;
-            auto [b4, b5_tw] = simd::ibtfly(c4, c5);
-            auto [b6, b7_tw] = simd::ibtfly<2>(c6, c7);
-            auto twsq2       = simd::broadcast(sq2);
-            b5_tw            = simd::mul(b5_tw, twsq2);
-            b7_tw            = simd::mul(b7_tw, twsq2);
-
-            std::tie(a4, a6) = simd::ibtfly<3>(b4, b6);
-            auto b5 = simd::cx_reg<T>{simd::add(b5_tw.real, b5_tw.imag), simd::sub(b5_tw.imag, b5_tw.real)};
-            auto b7 = simd::cx_reg<T>{simd::sub(b7_tw.real, b7_tw.imag), simd::add(b7_tw.real, b7_tw.imag)};
-            std::tie(a5, a7) = simd::ibtfly<3>(b5, b7);
-        }
-        simd::cx_reg<T> c0, c1, c2, c3;
-        if constexpr (Src) {
-            auto& src = std::get<src_type&>(std::tie(args...));
-            c0        = simd::cxload<PLoad>(src[data_idx[0]]);
-            c1        = simd::cxload<PLoad>(src[data_idx[1]]);
-            c2        = simd::cxload<PLoad>(src[data_idx[2]]);
-            c3        = simd::cxload<PLoad>(src[data_idx[3]]);
-        } else {
-            c0 = simd::cxload<PLoad>(dest[data_idx[0]]);
-            c1 = simd::cxload<PLoad>(dest[data_idx[1]]);
-            c2 = simd::cxload<PLoad>(dest[data_idx[2]]);
-            c3 = simd::cxload<PLoad>(dest[data_idx[3]]);
-        }
-        std::tie(c0, c1, c2, c3) = simd::convert<T>::template repack<PSrc, PLoad>(c0, c1, c2, c3);
-        std::tie(c0, c1, c2, c3) = simd::convert<T>::template inverse<Inverse>(c0, c1, c2, c3);
-
-        simd::cx_reg<T> p0, p2, p4, p6, a1, a3;
-        if constexpr (Tw) {
-            auto& tw        = std::get<tw_type&>(std::tie(args...));
-            auto [b0, b1tw] = simd::ibtfly(c0, c1);
-            auto [b2, b3tw] = simd::ibtfly(c2, c3);
-            auto [b1, b3]   = simd::mul({b1tw, tw[tw_idx[3]]}, {b3tw, tw[tw_idx[4]]});
-
-            auto [a0, a2]    = simd::ibtfly(b0, b2);
-            std::tie(a1, a3) = simd::ibtfly(b1, b3);
-            std::tie(a2, a3) = simd::mul({a2, tw[tw_idx[1]]}, {a3, tw[tw_idx[1]]});
-
-            std::tie(p0, p4) = simd::ibtfly(a0, a4);
-            std::tie(p2, p6) = simd::ibtfly(a2, a6);
-            std::tie(p4, p6) = simd::mul({p4, tw[tw_idx[0]]}, {p6, tw[tw_idx[0]]});
-        } else {
-            auto [b0, b1] = simd::ibtfly(c0, c1);
-            auto [b2, b3] = simd::ibtfly<3>(c2, c3);
-
-            auto [a0, a2]    = simd::ibtfly(b0, b2);
-            std::tie(a1, a3) = simd::ibtfly(b1, b3);
-
-            std::tie(p0, p4) = simd::ibtfly(a0, a4);
-            std::tie(p2, p6) = simd::ibtfly(a2, a6);
-        }
-        if constexpr (Scale) {
-            auto& scaling = std::get<simd::reg_t<T>&>(std::tie(args...));
-            p0            = simd::mul(p0, scaling);
-            p4            = simd::mul(p4, scaling);
-            p2            = simd::mul(p2, scaling);
-            p6            = simd::mul(p6, scaling);
-        }
-        std::tie(p0, p4, p2, p6) = simd::convert<T>::template inverse<Inverse>(p0, p4, p2, p6);
-        std::tie(p0, p4, p2, p6) = simd::convert<T>::template repack<PStore, PDest>(p0, p4, p2, p6);
-
-        simd::cxstore<PStore>(dest[data_idx[0]], p0);
-        simd::cxstore<PStore>(dest[data_idx[4]], p4);
-        simd::cxstore<PStore>(dest[data_idx[2]], p2);
-        simd::cxstore<PStore>(dest[data_idx[6]], p6);
-
-        auto [p1, p5] = simd::ibtfly(a1, a5);
-        auto [p3, p7] = simd::ibtfly(a3, a7);
-        if constexpr (Tw) {
-            auto& tw         = std::get<tw_type&>(std::tie(args...));
-            std::tie(p5, p7) = simd::mul({p5, tw[tw_idx[0]]}, {p7, tw[tw_idx[0]]});
-        }
-        if constexpr (Scale) {
-            auto& scaling = std::get<simd::reg_t<T>&>(std::tie(args...));
-            p1            = simd::mul(p1, scaling);
-            p5            = simd::mul(p5, scaling);
-            p3            = simd::mul(p3, scaling);
-            p7            = simd::mul(p7, scaling);
-        }
-        std::tie(p1, p5, p3, p7) = simd::convert<T>::template inverse<Inverse>(p1, p5, p3, p7);
-        std::tie(p1, p5, p3, p7) = simd::convert<T>::template repack<PStore, PDest>(p1, p5, p3, p7);
-
-        simd::cxstore<PStore>(dest[data_idx[1]], p1);
-        simd::cxstore<PStore>(dest[data_idx[5]], p5);
-        simd::cxstore<PStore>(dest[data_idx[3]], p3);
-        simd::cxstore<PStore>(dest[data_idx[7]], p7);
-    } else {
-        simd::cx_reg<T> p1, p3, p5, p7;
-        if constexpr (Src) {
-            auto& src = std::get<src_type&>(std::tie(args...));
-            p5        = simd::cxload<PLoad>(src[data_idx[5]]);
-            p1        = simd::cxload<PLoad>(src[data_idx[1]]);
-            p7        = simd::cxload<PLoad>(src[data_idx[7]]);
-            p3        = simd::cxload<PLoad>(src[data_idx[3]]);
-        } else {
-            p5 = simd::cxload<PLoad>(dest[data_idx[5]]);
-            p1 = simd::cxload<PLoad>(dest[data_idx[1]]);
-            p7 = simd::cxload<PLoad>(dest[data_idx[7]]);
-            p3 = simd::cxload<PLoad>(dest[data_idx[3]]);
-        }
-        std::tie(p5, p1, p7, p3) = simd::convert<T>::template repack<PSrc, PLoad>(p5, p1, p7, p3);
-        std::tie(p5, p1, p7, p3) = simd::convert<T>::template inverse<Inverse>(p5, p1, p7, p3);
-
-        simd::cx_reg<T> b1, b3, b5, b7;
-        if constexpr (Tw) {
-            auto& tw          = std::get<tw_type&>(std::tie(args...));
-            auto [p5tw, p7tw] = simd::mul({p5, tw[tw_idx[0]]}, {p7, tw[tw_idx[0]]});
-            auto [a1, a5]     = simd::btfly(p1, p5tw);
-            auto [a3, a7]     = simd::btfly(p3, p7tw);
-
-            auto [a3tw, a7tw] = simd::mul({a3, tw[tw_idx[1]]}, {a7, tw[tw_idx[2]]});
-            std::tie(b1, b3)  = simd::btfly(a1, a3tw);
-            std::tie(b5, b7)  = simd::btfly(a5, a7tw);
-
-            std::tie(b1, b3, b5, b7) =
-                simd::mul({b1, tw[tw_idx[3]]}, {b3, tw[tw_idx[4]]}, {b5, tw[tw_idx[5]]}, {b7, tw[tw_idx[6]]});
-        } else {
-            const T sq2   = std::sqrt(double{2}) / 2;
-            auto [a1, a5] = simd::btfly(p1, p5);
-            auto [a3, a7] = simd::btfly(p3, p7);
-
-            std::tie(b1, b3) = simd::btfly(a1, a3);
-            std::tie(b5, b7) = simd::btfly<3>(a5, a7);
-            auto b5_tw       = simd::cx_reg<T>{simd::add(b5.real, b5.imag), simd::sub(b5.imag, b5.real)};
-            auto b7_tw       = simd::cx_reg<T>{simd::sub(b7.real, b7.imag), simd::add(b7.real, b7.imag)};
-            auto twsq2       = simd::broadcast(sq2);
-            b5               = simd::mul(b5_tw, twsq2);
-            b7               = simd::mul(b7_tw, twsq2);
-        }
-        simd::cx_reg<T> p0, p2, p4, p6;
-        if constexpr (Src) {
-            auto& src = std::get<src_type&>(std::tie(args...));
-            p4        = simd::cxload<PLoad>(src[data_idx[4]]);
-            p0        = simd::cxload<PLoad>(src[data_idx[0]]);
-            p6        = simd::cxload<PLoad>(src[data_idx[6]]);
-            p2        = simd::cxload<PLoad>(src[data_idx[2]]);
-        } else {
-            p4 = simd::cxload<PLoad>(dest[data_idx[4]]);
-            p0 = simd::cxload<PLoad>(dest[data_idx[0]]);
-            p6 = simd::cxload<PLoad>(dest[data_idx[6]]);
-            p2 = simd::cxload<PLoad>(dest[data_idx[2]]);
-        }
-        std::tie(p4, p0, p6, p2) = simd::convert<T>::template repack<PSrc, PLoad>(p4, p0, p6, p2);
-        std::tie(p4, p0, p6, p2) = simd::convert<T>::template inverse<Inverse>(p4, p0, p6, p2);
-
-        simd::cx_reg<T> c0, c1, c2, c3, b4, b6;
-        if constexpr (Tw) {
-            auto& tw          = std::get<tw_type&>(std::tie(args...));
-            auto [p4tw, p6tw] = simd::mul({p4, tw[tw_idx[0]]}, {p6, tw[tw_idx[0]]});
-            auto [a0, a4]     = simd::btfly(p0, p4tw);
-            auto [a2, a6]     = simd::btfly(p2, p6tw);
-
-            auto [a2tw, a6tw] = simd::mul({a2, tw[tw_idx[1]]}, {a6, tw[tw_idx[2]]});
-            auto [b0, b2]     = simd::btfly(a0, a2tw);
-            std::tie(b4, b6)  = simd::btfly(a4, a6tw);
-
-            std::tie(c0, c1) = simd::btfly(b0, b1);
-            std::tie(c2, c3) = simd::btfly(b2, b3);
-        } else {
-            auto [a0, a4] = simd::btfly(p0, p4);
-            auto [a2, a6] = simd::btfly(p2, p6);
-
-            auto [b0, b2]    = simd::btfly(a0, a2);
-            std::tie(b4, b6) = simd::btfly<3>(a4, a6);
-
-            std::tie(c0, c1) = simd::btfly(b0, b1);
-            std::tie(c2, c3) = simd::btfly<3>(b2, b3);
-        }
-        if constexpr (Scale) {
-            auto& scaling = std::get<simd::reg_t<T>&>(std::tie(args...));
-            c0            = simd::mul(c0, scaling);
-            c1            = simd::mul(c1, scaling);
-            c2            = simd::mul(c2, scaling);
-            c3            = simd::mul(c3, scaling);
-        }
-        std::tie(c0, c1, c2, c3) = simd::convert<T>::template inverse<Inverse>(c0, c1, c2, c3);
-        std::tie(c0, c1, c2, c3) = simd::convert<T>::template repack<PStore, PDest>(c0, c1, c2, c3);
-
-        cxstore<PStore>(dest[data_idx[0]], c0);
-        cxstore<PStore>(dest[data_idx[1]], c1);
-        cxstore<PStore>(dest[data_idx[2]], c2);
-        cxstore<PStore>(dest[data_idx[3]], c3);
-
-        simd::cx_reg<T> c4, c5, c6, c7;
-        if constexpr (Tw) {
-            std::tie(c4, c5) = simd::btfly(b4, b5);
-            std::tie(c6, c7) = simd::btfly(b6, b7);
-        } else {
-            std::tie(c4, c5) = simd::btfly(b4, b5);
-            std::tie(c6, c7) = simd::btfly<2>(b6, b7);
-        }
-        if constexpr (Scale) {
-            auto& scaling = std::get<simd::reg_t<T>&>(std::tie(args...));
-            c4            = simd::mul(c4, scaling);
-            c5            = simd::mul(c5, scaling);
-            c6            = simd::mul(c6, scaling);
-            c7            = simd::mul(c7, scaling);
-        }
-        std::tie(c4, c5, c6, c7) = simd::convert<T>::template inverse<Inverse>(c4, c5, c6, c7);
-        std::tie(c4, c5, c6, c7) = simd::convert<T>::template repack<PStore, PDest>(c4, c5, c6, c7);
-
-        cxstore<PStore>(dest[data_idx[4]], c4);
-        cxstore<PStore>(dest[data_idx[5]], c5);
-        cxstore<PStore>(dest[data_idx[6]], c6);
-        cxstore<PStore>(dest[data_idx[7]], c7);
-    }
-};
-
-/**
-  * @brief Performes two levels of FFT butterflies.
-  * If data is in ascending order, equivalent to decimation in frequency.
-  * To perform decimation in time switch data[1] and data[2].
-  *
-  * First step performs data[0,1]±tw[0]×data[2,3].
-  * Second step performs data[0,2]±tw[1,2]×data[1,3].
-  *
-  * If an array of pointers 'src' is provided, uses 'src' as source and dest as destination.
-  * If an array of complex SIMD vectors 'tw' is provided, uses 'tw' as twiddles for butterflies,
-  * otherwise uses fixed twiddles for FFT sizes 2, 4 (tw = {1, 1, -j}).
-  * If a single SIMD vector 'scaling' is provided, multiplies the result by 'scaling'.
-  *
-  * @tparam T
-  * @tparam PDest pack size of destination
-  * @tparam PSrc pack size of source
-  * @tparam ConjTw use complex conjugate of twiddles (by switching data's real and imaginary parts)
-  * @tparam Reverse perform operations in reverse order with complex conjugate of twiddles (unoffected by ConjTw)
-  * @tparam Args
-  * @param dest destination pointers (also source pointers if no explicit source pointers provided)
-  * @param args any combination of std::array<const T*, 4> src, std::array<simd::cx_reg<T>, 3> tw, simd::reg_t<T> scaling
-  */
-template<typename T,
-         std::size_t PDest,
-         std::size_t PSrc,
-         bool        ConjTw,
-         bool        Reverse,
-         bool        DIT = false,
-         typename... Args>
-inline void node4(std::array<T*, 4> dest, Args... args) {
-    constexpr auto PLoad   = std::max(PSrc, simd::reg<T>::size);
-    constexpr auto PStore  = std::max(PDest, simd::reg<T>::size);
-    constexpr bool Inverse = ConjTw || Reverse;
-
-    using src_type       = std::array<const T*, 4>;
-    using tw_type        = std::array<simd::cx_reg<T>, 3>;
-    constexpr bool Src   = has_type<src_type, Args...>;
-    constexpr bool Tw    = has_type<tw_type, Args...>;
-    constexpr bool Scale = has_type<simd::reg_t<T>, Args...>;
-
-    constexpr auto& data_idx = order<4, DIT>::data;
-    // NOLINTNEXTLINE(*-declaration)
-    simd::cx_reg<T> p0, p1, p2, p3;
-    if constexpr (Src) {
-        auto& src = std::get<src_type&>(std::tie(args...));
-        p2        = simd::cxload<PLoad>(src[data_idx[2]]);
-        p3        = simd::cxload<PLoad>(src[data_idx[3]]);
-        p0        = simd::cxload<PLoad>(src[data_idx[0]]);
-        p1        = simd::cxload<PLoad>(src[data_idx[1]]);
-    } else {
-        p2 = simd::cxload<PLoad>(dest[data_idx[2]]);
-        p3 = simd::cxload<PLoad>(dest[data_idx[3]]);
-        p0 = simd::cxload<PLoad>(dest[data_idx[0]]);
-        p1 = simd::cxload<PLoad>(dest[data_idx[1]]);
-    }
-    std::tie(p2, p3, p0, p1) = simd::convert<T>::template repack<PSrc, PLoad>(p2, p3, p0, p1);
-    std::tie(p2, p3, p0, p1) = simd::convert<T>::template inverse<Inverse>(p2, p3, p0, p1);
-    // NOLINTNEXTLINE(*-declaration)
-    simd::cx_reg<T> b0, b1, b2, b3;
-    if constexpr (Tw) {
-        auto& tw = std::get<tw_type&>(std::tie(args...));
-        if constexpr (Reverse) {
-            auto [a2, a3tw]  = simd::ibtfly(p2, p3);
-            auto [a0, a1tw]  = simd::ibtfly(p0, p1);
-            auto [a3, a1]    = simd::mul({a3tw, tw[2]}, {a1tw, tw[1]});
-            std::tie(b0, b2) = simd::ibtfly(a0, a2);
-            std::tie(b1, b3) = simd::ibtfly(a1, a3);
-            std::tie(b2, b3) = simd::mul({b2, tw[0]}, {b3, tw[0]});
-        } else {
-            auto [p2tw, p3tw] = simd::mul({p2, tw[0]}, {p3, tw[0]});
-            auto [a0, a2]     = simd::btfly(p0, p2tw);
-            auto [a1, a3]     = simd::btfly(p1, p3tw);
-            auto [a1tw, a3tw] = simd::mul({a1, tw[1]}, {a3, tw[2]});
-            std::tie(b0, b1)  = simd::btfly(a0, a1tw);
-            std::tie(b2, b3)  = simd::btfly(a2, a3tw);
-        }
-    } else {
-        if constexpr (Reverse) {
-            auto [a2, a3]    = simd::ibtfly<3>(p2, p3);
-            auto [a0, a1]    = simd::ibtfly(p0, p1);
-            std::tie(b0, b2) = simd::ibtfly(a0, a2);
-            std::tie(b1, b3) = simd::ibtfly(a1, a3);
-        } else {
-            auto [a0, a2]    = simd::btfly(p0, p2);
-            auto [a1, a3]    = simd::btfly(p1, p3);
-            std::tie(b0, b1) = simd::btfly(a0, a1);
-            std::tie(b2, b3) = simd::btfly<3>(a2, a3);
-        }
-    }
-    if constexpr (Scale) {
-        auto& scaling = std::get<simd::reg_t<T>&>(std::tie(args...));
-        b0            = simd::mul(b0, scaling);
-        b1            = simd::mul(b1, scaling);
-        b2            = simd::mul(b2, scaling);
-        b3            = simd::mul(b3, scaling);
-    }
-    std::tie(b0, b1, b2, b3) = simd::convert<T>::template inverse<Inverse>(b0, b1, b2, b3);
-    std::tie(b0, b1, b2, b3) = simd::convert<T>::template repack<PStore, PDest>(b0, b1, b2, b3);
-
-    cxstore<PStore>(dest[data_idx[0]], b0);
-    cxstore<PStore>(dest[data_idx[1]], b1);
-    cxstore<PStore>(dest[data_idx[2]], b2);
-    cxstore<PStore>(dest[data_idx[3]], b3);
-};
-
-template<typename T, std::size_t PDest, std::size_t PSrc, bool ConjTw, bool Reverse, typename... Args>
-inline void node2(std::array<T*, 2> dest, Args... args) {
-    constexpr auto PLoad   = std::max(PSrc, simd::reg<T>::size);
-    constexpr auto PStore  = std::max(PDest, simd::reg<T>::size);
-    constexpr bool Inverse = ConjTw || Reverse;
-
-    using src_type       = std::array<const T*, 2>;
-    using tw_type        = std::array<simd::cx_reg<T>, 1>;
-    constexpr bool Src   = has_type<src_type, Args...>;
-    constexpr bool Tw    = has_type<tw_type, Args...>;
-    constexpr bool Scale = has_type<simd::reg_t<T>, Args...>;
-
-    // NOLINTNEXTLINE(*-declaration)
-    simd::cx_reg<T> p0, p1;
-    if constexpr (Src) {
-        auto& src = std::get<src_type&>(std::tie(args...));
-        p0        = simd::cxload<PLoad>(src[0]);
-        p1        = simd::cxload<PLoad>(src[1]);
-    } else {
-        p0 = simd::cxload<PLoad>(dest[0]);
-        p1 = simd::cxload<PLoad>(dest[1]);
-    }
-    std::tie(p0, p1) = simd::convert<T>::template repack<PSrc, PLoad>(p0, p1);
-    std::tie(p0, p1) = simd::convert<T>::template inverse<Inverse>(p0, p1);
-    // NOLINTNEXTLINE(*-declaration)
-    simd::cx_reg<T> a0, a1;
-    if constexpr (Reverse) {
-        std::tie(a0, a1) = simd::ibtfly(p0, p1);
-        if constexpr (Tw) {
-            auto& tw = std::get<tw_type&>(std::tie(args...));
-            a1       = simd::mul(a1, tw[0]);
-        }
-    } else {
-        if constexpr (Tw) {
-            auto& tw = std::get<tw_type&>(std::tie(args...));
-            p1       = simd::mul(p1, tw[0]);
-        }
-        std::tie(a0, a1) = simd::btfly(p0, p1);
-    }
-    if constexpr (Scale) {
-        auto& scaling = std::get<simd::reg_t<T>&>(std::tie(args...));
-        a0            = simd::mul(a0, scaling);
-        a1            = simd::mul(a1, scaling);
-    }
-    std::tie(a0, a1) = simd::convert<T>::template inverse<Inverse>(a0, a1);
-    std::tie(a0, a1) = simd::convert<T>::template repack<PStore, PDest>(a0, a1);
-
-    cxstore<PStore>(dest[0], a0);
-    cxstore<PStore>(dest[1], a1);
-};
-
-template<std::size_t NodeSize>
+template<uZ NodeSize>
 struct node {};
 template<>
 struct node<2> {
@@ -562,7 +149,53 @@ struct node<2> {
              bool        DIT = false,
              typename... Args>
     static inline void perform(std::array<T*, 2> dest, Args... args) {
-        node2<T, PDest, PSrc, ConjTw, Reverse>(dest, args...);
+        constexpr auto PLoad   = std::max(PSrc, simd::reg<T>::size);
+        constexpr auto PStore  = std::max(PDest, simd::reg<T>::size);
+        constexpr bool Inverse = ConjTw || Reverse;
+
+        using src_type       = std::array<const T*, 2>;
+        using tw_type        = std::array<simd::cx_reg<T>, 1>;
+        constexpr bool Src   = has_type<src_type, Args...>;
+        constexpr bool Tw    = has_type<tw_type, Args...>;
+        constexpr bool Scale = has_type<simd::reg_t<T>, Args...>;
+
+        // NOLINTNEXTLINE(*-declaration)
+        simd::cx_reg<T> p0, p1;
+        if constexpr (Src) {
+            auto& src = std::get<src_type&>(std::tie(args...));
+            p0        = simd::cxload<PLoad>(src[0]);
+            p1        = simd::cxload<PLoad>(src[1]);
+        } else {
+            p0 = simd::cxload<PLoad>(dest[0]);
+            p1 = simd::cxload<PLoad>(dest[1]);
+        }
+        std::tie(p0, p1) = simd::convert<T>::template repack<PSrc, PLoad>(p0, p1);
+        std::tie(p0, p1) = simd::convert<T>::template inverse<Inverse>(p0, p1);
+        // NOLINTNEXTLINE(*-declaration)
+        simd::cx_reg<T> a0, a1;
+        if constexpr (Reverse) {
+            std::tie(a0, a1) = simd::ibtfly(p0, p1);
+            if constexpr (Tw) {
+                auto& tw = std::get<tw_type&>(std::tie(args...));
+                a1       = simd::mul(a1, tw[0]);
+            }
+        } else {
+            if constexpr (Tw) {
+                auto& tw = std::get<tw_type&>(std::tie(args...));
+                p1       = simd::mul(p1, tw[0]);
+            }
+            std::tie(a0, a1) = simd::btfly(p0, p1);
+        }
+        if constexpr (Scale) {
+            auto& scaling = std::get<simd::reg_t<T>&>(std::tie(args...));
+            a0            = simd::mul(a0, scaling);
+            a1            = simd::mul(a1, scaling);
+        }
+        std::tie(a0, a1) = simd::convert<T>::template inverse<Inverse>(a0, a1);
+        std::tie(a0, a1) = simd::convert<T>::template repack<PStore, PDest>(a0, a1);
+
+        cxstore<PStore>(dest[0], a0);
+        cxstore<PStore>(dest[1], a1);
     };
 };
 template<>
@@ -575,7 +208,79 @@ struct node<4> {
              bool        DIT = false,
              typename... Args>
     static inline void perform(std::array<T*, 4> dest, Args... args) {
-        node4<T, PDest, PSrc, ConjTw, Reverse, DIT>(dest, args...);
+        constexpr auto PLoad   = std::max(PSrc, simd::reg<T>::size);
+        constexpr auto PStore  = std::max(PDest, simd::reg<T>::size);
+        constexpr bool Inverse = ConjTw || Reverse;
+
+        using src_type       = std::array<const T*, 4>;
+        using tw_type        = std::array<simd::cx_reg<T>, 3>;
+        constexpr bool Src   = has_type<src_type, Args...>;
+        constexpr bool Tw    = has_type<tw_type, Args...>;
+        constexpr bool Scale = has_type<simd::reg_t<T>, Args...>;
+
+        constexpr auto& data_idx = order<4, DIT>::data;
+        // NOLINTNEXTLINE(*-declaration)
+        simd::cx_reg<T> p0, p1, p2, p3;
+        if constexpr (Src) {
+            auto& src = std::get<src_type&>(std::tie(args...));
+            p2        = simd::cxload<PLoad>(src[data_idx[2]]);
+            p3        = simd::cxload<PLoad>(src[data_idx[3]]);
+            p0        = simd::cxload<PLoad>(src[data_idx[0]]);
+            p1        = simd::cxload<PLoad>(src[data_idx[1]]);
+        } else {
+            p2 = simd::cxload<PLoad>(dest[data_idx[2]]);
+            p3 = simd::cxload<PLoad>(dest[data_idx[3]]);
+            p0 = simd::cxload<PLoad>(dest[data_idx[0]]);
+            p1 = simd::cxload<PLoad>(dest[data_idx[1]]);
+        }
+        std::tie(p2, p3, p0, p1) = simd::convert<T>::template repack<PSrc, PLoad>(p2, p3, p0, p1);
+        std::tie(p2, p3, p0, p1) = simd::convert<T>::template inverse<Inverse>(p2, p3, p0, p1);
+        // NOLINTNEXTLINE(*-declaration)
+        simd::cx_reg<T> b0, b1, b2, b3;
+        if constexpr (Tw) {
+            auto& tw = std::get<tw_type&>(std::tie(args...));
+            if constexpr (Reverse) {
+                auto [a2, a3tw]  = simd::ibtfly(p2, p3);
+                auto [a0, a1tw]  = simd::ibtfly(p0, p1);
+                auto [a3, a1]    = simd::mul({a3tw, tw[2]}, {a1tw, tw[1]});
+                std::tie(b0, b2) = simd::ibtfly(a0, a2);
+                std::tie(b1, b3) = simd::ibtfly(a1, a3);
+                std::tie(b2, b3) = simd::mul({b2, tw[0]}, {b3, tw[0]});
+            } else {
+                auto [p2tw, p3tw] = simd::mul({p2, tw[0]}, {p3, tw[0]});
+                auto [a0, a2]     = simd::btfly(p0, p2tw);
+                auto [a1, a3]     = simd::btfly(p1, p3tw);
+                auto [a1tw, a3tw] = simd::mul({a1, tw[1]}, {a3, tw[2]});
+                std::tie(b0, b1)  = simd::btfly(a0, a1tw);
+                std::tie(b2, b3)  = simd::btfly(a2, a3tw);
+            }
+        } else {
+            if constexpr (Reverse) {
+                auto [a2, a3]    = simd::ibtfly<3>(p2, p3);
+                auto [a0, a1]    = simd::ibtfly(p0, p1);
+                std::tie(b0, b2) = simd::ibtfly(a0, a2);
+                std::tie(b1, b3) = simd::ibtfly(a1, a3);
+            } else {
+                auto [a0, a2]    = simd::btfly(p0, p2);
+                auto [a1, a3]    = simd::btfly(p1, p3);
+                std::tie(b0, b1) = simd::btfly(a0, a1);
+                std::tie(b2, b3) = simd::btfly<3>(a2, a3);
+            }
+        }
+        if constexpr (Scale) {
+            auto& scaling = std::get<simd::reg_t<T>&>(std::tie(args...));
+            b0            = simd::mul(b0, scaling);
+            b1            = simd::mul(b1, scaling);
+            b2            = simd::mul(b2, scaling);
+            b3            = simd::mul(b3, scaling);
+        }
+        std::tie(b0, b1, b2, b3) = simd::convert<T>::template inverse<Inverse>(b0, b1, b2, b3);
+        std::tie(b0, b1, b2, b3) = simd::convert<T>::template repack<PStore, PDest>(b0, b1, b2, b3);
+
+        cxstore<PStore>(dest[data_idx[0]], b0);
+        cxstore<PStore>(dest[data_idx[1]], b1);
+        cxstore<PStore>(dest[data_idx[2]], b2);
+        cxstore<PStore>(dest[data_idx[3]], b3);
     };
 };
 template<>
@@ -588,7 +293,255 @@ struct node<8> {
              bool        DIT = false,
              typename... Args>
     static inline void perform(std::array<T*, 8> dest, Args... args) {
-        node8<T, PDest, PSrc, ConjTw, Reverse, DIT>(dest, args...);
+        constexpr auto PLoad   = std::max(PSrc, simd::reg<T>::size);
+        constexpr auto PStore  = std::max(PDest, simd::reg<T>::size);
+        constexpr bool Inverse = ConjTw || Reverse;
+
+        using src_type       = std::array<const T*, 8>;
+        using tw_type        = std::array<simd::cx_reg<T>, 7>;
+        constexpr bool Src   = has_type<src_type, Args...>;
+        constexpr bool Tw    = has_type<tw_type, Args...>;
+        constexpr bool Scale = has_type<simd::reg_t<T>, Args...>;
+
+        constexpr auto& data_idx = order<8, DIT>::data;
+        constexpr auto& tw_idx   = order<8, DIT>::tw;
+
+        if constexpr (Reverse) {
+            simd::cx_reg<T> c4, c5, c6, c7;
+            if constexpr (Src) {
+                auto& src = std::get<src_type&>(std::tie(args...));
+                c4        = simd::cxload<PLoad>(src[data_idx[4]]);
+                c5        = simd::cxload<PLoad>(src[data_idx[5]]);
+                c6        = simd::cxload<PLoad>(src[data_idx[6]]);
+                c7        = simd::cxload<PLoad>(src[data_idx[7]]);
+            } else {
+                c4 = simd::cxload<PLoad>(dest[data_idx[4]]);
+                c5 = simd::cxload<PLoad>(dest[data_idx[5]]);
+                c6 = simd::cxload<PLoad>(dest[data_idx[6]]);
+                c7 = simd::cxload<PLoad>(dest[data_idx[7]]);
+            }
+            std::tie(c4, c5, c6, c7) = simd::convert<T>::template repack<PSrc, PLoad>(c4, c5, c6, c7);
+            std::tie(c4, c5, c6, c7) = simd::convert<T>::template inverse<Inverse>(c4, c5, c6, c7);
+            simd::cx_reg<T> a4, a5, a6, a7;
+            if constexpr (Tw) {
+                auto& tw        = std::get<tw_type&>(std::tie(args...));
+                auto [b4, b5tw] = simd::ibtfly(c4, c5);
+                auto [b6, b7tw] = simd::ibtfly(c6, c7);
+                auto [b5, b7]   = simd::mul({b5tw, tw[tw_idx[5]]}, {b7tw, tw[tw_idx[6]]});
+
+                std::tie(a4, a6) = simd::ibtfly(b4, b6);
+                std::tie(a5, a7) = simd::ibtfly(b5, b7);
+                std::tie(a6, a7) = simd::mul({a6, tw[tw_idx[2]]}, {a7, tw[tw_idx[2]]});
+            } else {
+                const T sq2      = std::sqrt(double{2}) / 2;
+                auto [b4, b5_tw] = simd::ibtfly(c4, c5);
+                auto [b6, b7_tw] = simd::ibtfly<2>(c6, c7);
+                auto twsq2       = simd::broadcast(sq2);
+                b5_tw            = simd::mul(b5_tw, twsq2);
+                b7_tw            = simd::mul(b7_tw, twsq2);
+
+                std::tie(a4, a6) = simd::ibtfly<3>(b4, b6);
+                auto b5 =
+                    simd::cx_reg<T>{simd::add(b5_tw.real, b5_tw.imag), simd::sub(b5_tw.imag, b5_tw.real)};
+                auto b7 =
+                    simd::cx_reg<T>{simd::sub(b7_tw.real, b7_tw.imag), simd::add(b7_tw.real, b7_tw.imag)};
+                std::tie(a5, a7) = simd::ibtfly<3>(b5, b7);
+            }
+            simd::cx_reg<T> c0, c1, c2, c3;
+            if constexpr (Src) {
+                auto& src = std::get<src_type&>(std::tie(args...));
+                c0        = simd::cxload<PLoad>(src[data_idx[0]]);
+                c1        = simd::cxload<PLoad>(src[data_idx[1]]);
+                c2        = simd::cxload<PLoad>(src[data_idx[2]]);
+                c3        = simd::cxload<PLoad>(src[data_idx[3]]);
+            } else {
+                c0 = simd::cxload<PLoad>(dest[data_idx[0]]);
+                c1 = simd::cxload<PLoad>(dest[data_idx[1]]);
+                c2 = simd::cxload<PLoad>(dest[data_idx[2]]);
+                c3 = simd::cxload<PLoad>(dest[data_idx[3]]);
+            }
+            std::tie(c0, c1, c2, c3) = simd::convert<T>::template repack<PSrc, PLoad>(c0, c1, c2, c3);
+            std::tie(c0, c1, c2, c3) = simd::convert<T>::template inverse<Inverse>(c0, c1, c2, c3);
+
+            simd::cx_reg<T> p0, p2, p4, p6, a1, a3;
+            if constexpr (Tw) {
+                auto& tw        = std::get<tw_type&>(std::tie(args...));
+                auto [b0, b1tw] = simd::ibtfly(c0, c1);
+                auto [b2, b3tw] = simd::ibtfly(c2, c3);
+                auto [b1, b3]   = simd::mul({b1tw, tw[tw_idx[3]]}, {b3tw, tw[tw_idx[4]]});
+
+                auto [a0, a2]    = simd::ibtfly(b0, b2);
+                std::tie(a1, a3) = simd::ibtfly(b1, b3);
+                std::tie(a2, a3) = simd::mul({a2, tw[tw_idx[1]]}, {a3, tw[tw_idx[1]]});
+
+                std::tie(p0, p4) = simd::ibtfly(a0, a4);
+                std::tie(p2, p6) = simd::ibtfly(a2, a6);
+                std::tie(p4, p6) = simd::mul({p4, tw[tw_idx[0]]}, {p6, tw[tw_idx[0]]});
+            } else {
+                auto [b0, b1] = simd::ibtfly(c0, c1);
+                auto [b2, b3] = simd::ibtfly<3>(c2, c3);
+
+                auto [a0, a2]    = simd::ibtfly(b0, b2);
+                std::tie(a1, a3) = simd::ibtfly(b1, b3);
+
+                std::tie(p0, p4) = simd::ibtfly(a0, a4);
+                std::tie(p2, p6) = simd::ibtfly(a2, a6);
+            }
+            if constexpr (Scale) {
+                auto& scaling = std::get<simd::reg_t<T>&>(std::tie(args...));
+                p0            = simd::mul(p0, scaling);
+                p4            = simd::mul(p4, scaling);
+                p2            = simd::mul(p2, scaling);
+                p6            = simd::mul(p6, scaling);
+            }
+            std::tie(p0, p4, p2, p6) = simd::convert<T>::template inverse<Inverse>(p0, p4, p2, p6);
+            std::tie(p0, p4, p2, p6) = simd::convert<T>::template repack<PStore, PDest>(p0, p4, p2, p6);
+
+            simd::cxstore<PStore>(dest[data_idx[0]], p0);
+            simd::cxstore<PStore>(dest[data_idx[4]], p4);
+            simd::cxstore<PStore>(dest[data_idx[2]], p2);
+            simd::cxstore<PStore>(dest[data_idx[6]], p6);
+
+            auto [p1, p5] = simd::ibtfly(a1, a5);
+            auto [p3, p7] = simd::ibtfly(a3, a7);
+            if constexpr (Tw) {
+                auto& tw         = std::get<tw_type&>(std::tie(args...));
+                std::tie(p5, p7) = simd::mul({p5, tw[tw_idx[0]]}, {p7, tw[tw_idx[0]]});
+            }
+            if constexpr (Scale) {
+                auto& scaling = std::get<simd::reg_t<T>&>(std::tie(args...));
+                p1            = simd::mul(p1, scaling);
+                p5            = simd::mul(p5, scaling);
+                p3            = simd::mul(p3, scaling);
+                p7            = simd::mul(p7, scaling);
+            }
+            std::tie(p1, p5, p3, p7) = simd::convert<T>::template inverse<Inverse>(p1, p5, p3, p7);
+            std::tie(p1, p5, p3, p7) = simd::convert<T>::template repack<PStore, PDest>(p1, p5, p3, p7);
+
+            simd::cxstore<PStore>(dest[data_idx[1]], p1);
+            simd::cxstore<PStore>(dest[data_idx[5]], p5);
+            simd::cxstore<PStore>(dest[data_idx[3]], p3);
+            simd::cxstore<PStore>(dest[data_idx[7]], p7);
+        } else {
+            simd::cx_reg<T> p1, p3, p5, p7;
+            if constexpr (Src) {
+                auto& src = std::get<src_type&>(std::tie(args...));
+                p5        = simd::cxload<PLoad>(src[data_idx[5]]);
+                p1        = simd::cxload<PLoad>(src[data_idx[1]]);
+                p7        = simd::cxload<PLoad>(src[data_idx[7]]);
+                p3        = simd::cxload<PLoad>(src[data_idx[3]]);
+            } else {
+                p5 = simd::cxload<PLoad>(dest[data_idx[5]]);
+                p1 = simd::cxload<PLoad>(dest[data_idx[1]]);
+                p7 = simd::cxload<PLoad>(dest[data_idx[7]]);
+                p3 = simd::cxload<PLoad>(dest[data_idx[3]]);
+            }
+            std::tie(p5, p1, p7, p3) = simd::convert<T>::template repack<PSrc, PLoad>(p5, p1, p7, p3);
+            std::tie(p5, p1, p7, p3) = simd::convert<T>::template inverse<Inverse>(p5, p1, p7, p3);
+
+            simd::cx_reg<T> b1, b3, b5, b7;
+            if constexpr (Tw) {
+                auto& tw          = std::get<tw_type&>(std::tie(args...));
+                auto [p5tw, p7tw] = simd::mul({p5, tw[tw_idx[0]]}, {p7, tw[tw_idx[0]]});
+                auto [a1, a5]     = simd::btfly(p1, p5tw);
+                auto [a3, a7]     = simd::btfly(p3, p7tw);
+
+                auto [a3tw, a7tw] = simd::mul({a3, tw[tw_idx[1]]}, {a7, tw[tw_idx[2]]});
+                std::tie(b1, b3)  = simd::btfly(a1, a3tw);
+                std::tie(b5, b7)  = simd::btfly(a5, a7tw);
+
+                std::tie(b1, b3, b5, b7) = simd::mul(
+                    {b1, tw[tw_idx[3]]}, {b3, tw[tw_idx[4]]}, {b5, tw[tw_idx[5]]}, {b7, tw[tw_idx[6]]});
+            } else {
+                const T sq2   = std::sqrt(double{2}) / 2;
+                auto [a1, a5] = simd::btfly(p1, p5);
+                auto [a3, a7] = simd::btfly(p3, p7);
+
+                std::tie(b1, b3) = simd::btfly(a1, a3);
+                std::tie(b5, b7) = simd::btfly<3>(a5, a7);
+                auto b5_tw       = simd::cx_reg<T>{simd::add(b5.real, b5.imag), simd::sub(b5.imag, b5.real)};
+                auto b7_tw       = simd::cx_reg<T>{simd::sub(b7.real, b7.imag), simd::add(b7.real, b7.imag)};
+                auto twsq2       = simd::broadcast(sq2);
+                b5               = simd::mul(b5_tw, twsq2);
+                b7               = simd::mul(b7_tw, twsq2);
+            }
+            simd::cx_reg<T> p0, p2, p4, p6;
+            if constexpr (Src) {
+                auto& src = std::get<src_type&>(std::tie(args...));
+                p4        = simd::cxload<PLoad>(src[data_idx[4]]);
+                p0        = simd::cxload<PLoad>(src[data_idx[0]]);
+                p6        = simd::cxload<PLoad>(src[data_idx[6]]);
+                p2        = simd::cxload<PLoad>(src[data_idx[2]]);
+            } else {
+                p4 = simd::cxload<PLoad>(dest[data_idx[4]]);
+                p0 = simd::cxload<PLoad>(dest[data_idx[0]]);
+                p6 = simd::cxload<PLoad>(dest[data_idx[6]]);
+                p2 = simd::cxload<PLoad>(dest[data_idx[2]]);
+            }
+            std::tie(p4, p0, p6, p2) = simd::convert<T>::template repack<PSrc, PLoad>(p4, p0, p6, p2);
+            std::tie(p4, p0, p6, p2) = simd::convert<T>::template inverse<Inverse>(p4, p0, p6, p2);
+
+            simd::cx_reg<T> c0, c1, c2, c3, b4, b6;
+            if constexpr (Tw) {
+                auto& tw          = std::get<tw_type&>(std::tie(args...));
+                auto [p4tw, p6tw] = simd::mul({p4, tw[tw_idx[0]]}, {p6, tw[tw_idx[0]]});
+                auto [a0, a4]     = simd::btfly(p0, p4tw);
+                auto [a2, a6]     = simd::btfly(p2, p6tw);
+
+                auto [a2tw, a6tw] = simd::mul({a2, tw[tw_idx[1]]}, {a6, tw[tw_idx[2]]});
+                auto [b0, b2]     = simd::btfly(a0, a2tw);
+                std::tie(b4, b6)  = simd::btfly(a4, a6tw);
+
+                std::tie(c0, c1) = simd::btfly(b0, b1);
+                std::tie(c2, c3) = simd::btfly(b2, b3);
+            } else {
+                auto [a0, a4] = simd::btfly(p0, p4);
+                auto [a2, a6] = simd::btfly(p2, p6);
+
+                auto [b0, b2]    = simd::btfly(a0, a2);
+                std::tie(b4, b6) = simd::btfly<3>(a4, a6);
+
+                std::tie(c0, c1) = simd::btfly(b0, b1);
+                std::tie(c2, c3) = simd::btfly<3>(b2, b3);
+            }
+            if constexpr (Scale) {
+                auto& scaling = std::get<simd::reg_t<T>&>(std::tie(args...));
+                c0            = simd::mul(c0, scaling);
+                c1            = simd::mul(c1, scaling);
+                c2            = simd::mul(c2, scaling);
+                c3            = simd::mul(c3, scaling);
+            }
+            std::tie(c0, c1, c2, c3) = simd::convert<T>::template inverse<Inverse>(c0, c1, c2, c3);
+            std::tie(c0, c1, c2, c3) = simd::convert<T>::template repack<PStore, PDest>(c0, c1, c2, c3);
+
+            cxstore<PStore>(dest[data_idx[0]], c0);
+            cxstore<PStore>(dest[data_idx[1]], c1);
+            cxstore<PStore>(dest[data_idx[2]], c2);
+            cxstore<PStore>(dest[data_idx[3]], c3);
+
+            simd::cx_reg<T> c4, c5, c6, c7;
+            if constexpr (Tw) {
+                std::tie(c4, c5) = simd::btfly(b4, b5);
+                std::tie(c6, c7) = simd::btfly(b6, b7);
+            } else {
+                std::tie(c4, c5) = simd::btfly(b4, b5);
+                std::tie(c6, c7) = simd::btfly<2>(b6, b7);
+            }
+            if constexpr (Scale) {
+                auto& scaling = std::get<simd::reg_t<T>&>(std::tie(args...));
+                c4            = simd::mul(c4, scaling);
+                c5            = simd::mul(c5, scaling);
+                c6            = simd::mul(c6, scaling);
+                c7            = simd::mul(c7, scaling);
+            }
+            std::tie(c4, c5, c6, c7) = simd::convert<T>::template inverse<Inverse>(c4, c5, c6, c7);
+            std::tie(c4, c5, c6, c7) = simd::convert<T>::template repack<PStore, PDest>(c4, c5, c6, c7);
+
+            cxstore<PStore>(dest[data_idx[4]], c4);
+            cxstore<PStore>(dest[data_idx[5]], c5);
+            cxstore<PStore>(dest[data_idx[6]], c6);
+            cxstore<PStore>(dest[data_idx[7]], c7);
+        }
     };
 };
 
