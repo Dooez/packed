@@ -1,7 +1,7 @@
 #ifndef VECTOR_UTIL_HPP
 #define VECTOR_UTIL_HPP
 
-#include "vector_arithm.hpp"
+#include "types.hpp"
 
 #include <algorithm>
 #include <array>
@@ -194,39 +194,10 @@ constexpr void apply_for_each(F&& f, Tups&&... args) {
  */
 namespace simd {
 
-template<typename T>
-struct reg;
-
-template<typename T>
-using reg_t = typename reg<T>::type;
-
-template<typename T, bool Conj = false>
-struct cx_reg {
-    reg_t<T>            real;
-    reg_t<T>            imag;
-    static constexpr uZ size = reg<T>::size;
-};
-
-template<typename T>
-inline auto broadcast(T source) -> reg_t<T>;
-template<typename T>
-inline auto load(const T* source) -> reg_t<T>;
-template<typename T>
-inline void store(T* dest, reg_t<T> reg);
-
-template<typename T>
-inline auto broadcast(std::complex<T> source) -> cx_reg<T, false>;
-template<uZ PackSize, typename T>
-inline auto cxload(const T* ptr) -> cx_reg<T, false>;
-template<uZ PackSize, typename T, bool Conj>
-inline void cxstore(T* ptr, cx_reg<T, Conj> reg);
-
-/**
- * @param args Variable number of complex simd vectors.
- * @return Tuple of repacked complex simd vectors in the order of passing.
- */
-template<uZ PackFrom, uZ PackTo>
-inline auto repack(auto... args);
+template<typename T, bool Conj>
+auto conj(cx_reg<T, Conj> reg) -> cx_reg<T, !Conj> {
+    return {reg.real, reg.imag};
+}
 
 /**
  * @brief Conditionaly swaps real and imaginary parts of complex simd vectors.
@@ -236,8 +207,47 @@ inline auto repack(auto... args);
  * @return Tuple of invrsed simd complex vectors.
  */
 template<bool Inverse>
-inline auto inverse(auto... args);
+inline auto inverse(auto... args) {
+    auto tup = std::make_tuple(args...);
+    if constexpr (Inverse) {
+        auto inverse = [](auto reg) {
+            using reg_t = decltype(reg);
+            return reg_t{reg.imag, reg.real};
+        };
+        return detail_::apply_for_each(inverse, tup);
+    } else {
+        return tup;
+    }
+};
 
+/**
+* @brief Register aligned adress
+*
+* @tparam PackSize
+* @tparam T
+* @param data Base address. Must be aligned by simd register size.
+* @param offset New address offset. Must be a multiple of simd register size.
+* If data in-pack index I is non-zero, offset must be less then PackSize - I;
+* @return T*
+*/
+template<uZ PackSize, typename T>
+constexpr auto ra_addr(T* data, uZ offset) -> T* {
+    return data + offset + (offset / PackSize) * PackSize;
+}
+template<uZ PackSize, typename T>
+constexpr auto ra_addr(const T* data, uZ offset) -> const T* {
+    return data + offset + (offset / PackSize) * PackSize;
+}
+template<uZ PackSize, typename T>
+    requires(PackSize <= reg<T>::size)
+constexpr auto ra_addr(T* data, uZ offset) -> T* {
+    return data + offset * 2;
+}
+template<uZ PackSize, typename T>
+    requires(PackSize <= reg<T>::size)
+constexpr auto ra_addr(const T* data, uZ offset) -> const T* {
+    return data + offset * 2;
+}
 
 }    // namespace simd
 
@@ -259,42 +269,6 @@ struct reg<double> {
 
     static constexpr std::size_t size = 32 / sizeof(double);
 };
-
-
-template<typename T, bool Conj>
-auto conj(cx_reg<T, Conj> reg) -> cx_reg<T, !Conj> {
-    return {reg.real, reg.imag};
-}
-
-/**
-* @brief Register aligned adress
-*
-* @tparam PackSize
-* @tparam T
-* @param data Base address. Must be aligned by simd register size.
-* @param offset New address offset. Must be a multiple of simd register size.
-* If data in-pack index I is non-zero, offset must be less then PackSize - I;
-* @return T*
-*/
-template<std::size_t PackSize, typename T>
-constexpr auto ra_addr(T* data, std::size_t offset) -> T* {
-    return data + offset + (offset / PackSize) * PackSize;
-}
-template<std::size_t PackSize, typename T>
-constexpr auto ra_addr(const T* data, std::size_t offset) -> const T* {
-    return data + offset + (offset / PackSize) * PackSize;
-}
-template<std::size_t PackSize, typename T>
-    requires(PackSize <= simd::reg<T>::size)
-constexpr auto ra_addr(T* data, std::size_t offset) -> T* {
-    return data + offset * 2;
-}
-template<std::size_t PackSize, typename T>
-    requires(PackSize <= simd::reg<T>::size)
-constexpr auto ra_addr(const T* data, std::size_t offset) -> const T* {
-    return data + offset * 2;
-}
-
 
 inline auto load(const float* source) -> reg<float>::type {
     return _mm256_loadu_ps(source);

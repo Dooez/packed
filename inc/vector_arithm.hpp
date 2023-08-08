@@ -24,13 +24,10 @@ inline auto div(reg_t<T> lhs, reg_t<T> rhs) -> reg_t<T>;
 
 template<typename T, bool ConjLhs, bool ConjRhs>
 inline auto add(cx_reg<T, ConjLhs> lhs, cx_reg<T, ConjRhs> rhs);
-
 template<typename T, bool ConjLhs, bool ConjRhs>
 inline auto sub(cx_reg<T, ConjLhs> lhs, cx_reg<T, ConjRhs> rhs);
-
 template<typename T, bool ConjLhs, bool ConjRhs>
 inline auto mul(cx_reg<T, ConjLhs> lhs, cx_reg<T, ConjRhs> rhs);
-
 template<typename T, bool ConjLhs, bool ConjRhs>
 inline auto div(cx_reg<T, ConjLhs> lhs, cx_reg<T, ConjRhs> rhs);
 
