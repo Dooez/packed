@@ -13,6 +13,8 @@
 #include <new>
 #include <tuple>
 
+#include "simd_impl/avx2.hpp"
+
 namespace pcx {
 using f32 = float;
 using f64 = float;
@@ -105,89 +107,6 @@ bool operator!=(const aligned_allocator<T, Alignment>&, const aligned_allocator<
     return false;
 }
 
-namespace detail_ {
-
-template<std::size_t I, typename... Tups>
-constexpr auto zip_tuple_element(Tups&&... tuples) {
-    return std::tuple<std::tuple_element_t<I, std::remove_reference_t<Tups>>...>{
-        std::get<I>(std::forward<Tups>(tuples))...};
-}
-
-template<std::size_t... I, typename... Tups>
-constexpr auto zip_tuples_impl(std::index_sequence<I...>, Tups&&... tuples) {
-    return std::make_tuple(zip_tuple_element<I>(std::forward<Tups>(tuples)...)...);
-}
-
-template<typename... Tups>
-constexpr auto zip_tuples(Tups&&... tuples) {
-    static_assert(sizeof...(tuples) > 0);
-
-    constexpr auto min_size = std::min({std::tuple_size_v<std::remove_reference_t<Tups>>...});
-    return zip_tuples_impl(std::make_index_sequence<min_size>{}, std::forward<Tups>(tuples)...);
-}
-
-template<typename F, typename Tuple, typename I>
-struct apply_result_;
-
-template<typename F, typename Tuple, std::size_t... I>
-struct apply_result_<F, Tuple, std::index_sequence<I...>> {
-    using type = typename std::invoke_result_t<std::remove_reference_t<F>,
-                                               std::tuple_element_t<I, std::remove_reference_t<Tuple>>...>;
-};
-
-template<typename F, typename Tuple>
-struct apply_result {
-    using type = typename apply_result_<
-        F,
-        Tuple,
-        std::make_index_sequence<std::tuple_size_v<std::remove_reference_t<Tuple>>>>::type;
-};
-
-template<typename F, typename Tuple>
-using apply_result_t = typename apply_result<F, std::remove_reference_t<Tuple>>::type;
-
-template<typename F, typename TupleTuple, typename I>
-struct has_result_;
-
-template<typename F, typename TupleTuple, std::size_t... I>
-struct has_result_<F, TupleTuple, std::index_sequence<I...>> {
-    static constexpr bool value =
-        !(std::same_as<apply_result_t<F, std::tuple_element_t<I, TupleTuple>>, void> || ...);
-};
-
-template<typename F, typename... Tups>
-concept has_result = has_result_<
-    F,
-    decltype(zip_tuples(std::declval<Tups>()...)),
-    std::make_index_sequence<std::tuple_size_v<decltype(zip_tuples(std::declval<Tups>()...))>>>::value;
-
-template<std::size_t... I, typename F, typename... Tups>
-constexpr auto apply_for_each_impl(std::index_sequence<I...>, F&& f, Tups&&... args) {
-    return std::make_tuple(std::apply(std::forward<F>(f), zip_tuple_element<I>(args...))...);
-}
-
-template<std::size_t... I, typename F, typename... Tups>
-constexpr void void_apply_for_each_impl(std::index_sequence<I...>, F&& f, Tups&&... args) {
-    (std::apply(std::forward<F>(f), zip_tuple_element<I>(args...)), ...);
-}
-
-template<typename F, typename... Tups>
-    requires has_result<F, Tups...>
-constexpr auto apply_for_each(F&& f, Tups&&... args) {
-    constexpr auto min_size = std::min({std::tuple_size_v<std::remove_reference_t<Tups>>...});
-    return apply_for_each_impl(
-        std::make_index_sequence<min_size>{}, std::forward<F>(f), std::forward<Tups>(args)...);
-}
-
-template<typename F, typename... Tups>
-constexpr void apply_for_each(F&& f, Tups&&... args) {
-    constexpr auto min_size = std::min({std::tuple_size_v<std::remove_reference_t<Tups>>...});
-    void_apply_for_each_impl(
-        std::make_index_sequence<min_size>{}, std::forward<F>(f), std::forward<Tups>(args)...);
-}
-}    // namespace detail_
-
-
 /**
  * @brief forward declarations
  *
@@ -256,76 +175,6 @@ constexpr auto ra_addr(const T* data, uZ offset) -> const T* {
  *
  */
 namespace simd {
-
-template<>
-struct reg<float> {
-    using type = __m256;
-
-    static constexpr std::size_t size = 32 / sizeof(float);
-};
-template<>
-struct reg<double> {
-    using type = __m256d;
-
-    static constexpr std::size_t size = 32 / sizeof(double);
-};
-
-inline auto load(const float* source) -> reg<float>::type {
-    return _mm256_loadu_ps(source);
-}
-inline auto load(const double* source) -> reg<double>::type {
-    return _mm256_loadu_pd(source);
-}
-template<std::size_t PackSize, typename T>
-inline auto cxload(const T* ptr) -> cx_reg<T, false> {
-    return {load(ptr), load(ptr + PackSize)};
-}
-
-inline auto broadcast(const float* source) -> reg<float>::type {
-    return _mm256_broadcast_ss(source);
-}
-inline auto broadcast(const double* source) -> reg<double>::type {
-    return _mm256_broadcast_sd(source);
-}
-
-template<typename T>
-inline auto broadcast(T source) -> typename reg<T>::type {
-    return simd::broadcast(&source);
-}
-template<typename T>
-inline auto broadcast(std::complex<T> source) -> cx_reg<T, false> {
-    return {simd::broadcast(source.real()), simd::broadcast(source.imag())};
-}
-
-inline void store(float* dest, reg<float>::type reg) {
-    return _mm256_storeu_ps(dest, reg);
-}
-inline void store(double* dest, reg<double>::type reg) {
-    return _mm256_storeu_pd(dest, reg);
-}
-
-template<std::size_t PackSize, typename T, bool Conj>
-inline void cxstore(T* ptr, cx_reg<T, Conj> reg) {
-    store(ptr, reg.real);
-    if constexpr (Conj) {
-        if constexpr (std::same_as<T, float>) {
-            auto zero = _mm256_setzero_ps();
-            store(ptr + PackSize, _mm256_sub_ps(zero, reg.imag));
-        } else {
-            auto zero = _mm256_setzero_pd();
-            store(ptr + PackSize, _mm256_sub_pd(zero, reg.imag));
-        }
-    } else {
-        store(ptr + PackSize, reg.imag);
-    }
-}
-
-template<std::size_t PackSize, typename T, bool Conj>
-inline auto cxloadstore(T* ptr, cx_reg<T, Conj> reg) -> cx_reg<T, false> {
-    auto tmp = cxload<PackSize>(ptr);
-    cxstore<PackSize>(ptr, reg);
-    return tmp;
-}
 
 inline auto unpacklo_ps(reg<float>::type a, reg<float>::type b) -> reg<float>::type {
     return _mm256_unpacklo_ps(a, b);

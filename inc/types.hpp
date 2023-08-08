@@ -1,3 +1,5 @@
+#ifndef TYPES_HPP
+#define TYPES_HPP
 
 #include <cstdint>
 
@@ -20,6 +22,9 @@ using i8  = int8_t;
 
 namespace simd {
 
+/**
+ * @brief reg::type is an alias for an intrinsic simd vector type
+ */
 template<typename T>
 struct reg;
 
@@ -35,3 +40,4 @@ struct cx_reg {
 
 }    // namespace simd
 }    // namespace pcx
+#endif

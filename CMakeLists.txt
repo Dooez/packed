@@ -8,7 +8,9 @@ if( CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR )
     add_library(packed INTERFACE vector.hpp)
     target_include_directories(packed INTERFACE
         ${CMAKE_CURRENT_SOURCE_DIR}
-        ${CMAKE_CURRENT_SOURCE_DIR}/inc)
+        ${CMAKE_CURRENT_SOURCE_DIR}/inc
+        ${CMAKE_CURRENT_SOURCE_DIR}/inc/simd_impl
+        )
     set_target_properties(packed PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED True)
 
     add_executable(test_vector tests/test_vector.cpp)
