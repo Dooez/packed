@@ -678,7 +678,7 @@ public:
 
     template<typename VAllocator>
     explicit subrange(const vector<real_type, pack_size, VAllocator>& vector) noexcept
-        requires Const
+        requires (Const)
     : m_begin(vector.begin())
     , m_size(vector.size()){};
 

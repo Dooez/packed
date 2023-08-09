@@ -1,4 +1,5 @@
 
+#include "simd_common.hpp"
 #include "vector.hpp"
 #include "vector_util.hpp"
 
@@ -16,6 +17,19 @@ void test_repack(float* data) {
     auto a   = cxload<8>(data);
     auto [b] = convert<float>::split<1>(a);
     cxstore<8>(data, b);
+}
+auto test_multi(pcx::simd::cx_reg<float, false> a1,
+                pcx::simd::cx_reg<float, false> a2,
+                pcx::simd::cx_reg<float, false> a3,
+                pcx::simd::cx_reg<float, false> a4) {
+    return pcx::simd::mul_pairs(a1, a2, a3, a4, a2, a3);
+}
+
+auto test_non_multi(pcx::simd::cx_reg<float, false> a1,
+                    pcx::simd::cx_reg<float, true>  a2,
+                    pcx::simd::cx_reg<float, false> a3,
+                    pcx::simd::cx_reg<float, false> a4) {
+    return std::make_tuple(pcx::simd::mul(a1, a2), pcx::simd::mul(a3, a4), pcx::simd::mul(a2, a3));
 }
 
 void asm_test_fun(pcx::vector<double>& v1, pcx::vector<double>& v2, std::complex<double> v3) {

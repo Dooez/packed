@@ -5,6 +5,7 @@
 #include "types.hpp"
 
 #include <complex>
+#include <utility>
 
 namespace pcx::simd {
 
@@ -111,7 +112,8 @@ inline auto div(cx_reg<T, ConjLhs> lhs, cx_reg<T, ConjRhs> rhs);
  * 1. two multiplications;
  * 2. addition;
  * This function explicitly reorders stages of multiple multiplications
- * to reduce possible latency effect on performance.
+ * to potentialy reduce latency effect on performance.
+ * Real results depends on compiler.
  */
 template<typename T, bool... Conj>
     requires(sizeof...(Conj) % 2 == 0)
@@ -181,30 +183,37 @@ inline auto mul_imag_rhs(cx_reg<T, false> prod_real_rhs, cx_reg<T, true> lhs, cx
 }
 }    // namespace detail_
 
-template<typename T>
-inline auto mul(cx_reg<T, false> lhs, cx_reg<T, false> rhs) -> cx_reg<T, false> {
-    auto real = mul(lhs.real, rhs.real);
-    auto imag = mul(lhs.real, rhs.imag);
-    return {fnmadd(lhs.imag, rhs.imag, real), fmadd(lhs.imag, rhs.real, imag)};
+template<typename T, bool ConjLhs, bool ConjRhs>
+inline auto mul(cx_reg<T, ConjLhs> lhs, cx_reg<T, ConjRhs> rhs) {
+    return detail_::mul_imag_rhs(detail_::mul_real_rhs(lhs, rhs), lhs, rhs);
+};
+
+namespace detail_ {
+
+template<uZ... I>
+inline auto make_pair_of_tuples_(auto&& tuple, std::index_sequence<I...>) {
+    return std::make_tuple(std::make_tuple(std::get<I * 2>(tuple)...),
+                           std::make_tuple(std::get<I * 2 + 1>(tuple)...));
 }
-template<typename T>
-inline auto mul(cx_reg<T, true> lhs, cx_reg<T, false> rhs) -> cx_reg<T, false> {
-    auto real = mul(lhs.real, rhs.real);
-    auto imag = mul(lhs.real, rhs.imag);
-    return {fmadd(lhs.imag, rhs.imag, real), fnmadd(lhs.imag, rhs.real, imag)};
+template<typename... Args>
+inline auto make_pair_of_tuples(Args&&... args) {
+    return make_pair_of_tuples_(std::make_tuple(std::forward<Args>(args)...),
+                                std::make_index_sequence<sizeof...(args) / 2>{});
 }
-template<typename T>
-inline auto mul(cx_reg<T, false> lhs, cx_reg<T, true> rhs) -> cx_reg<T, false> {
-    auto real = mul(lhs.real, rhs.real);
-    auto imag = mul(lhs.real, rhs.imag);
-    return {fmadd(lhs.imag, rhs.imag, real), fmsub(lhs.imag, rhs.real, imag)};
-}
-template<typename T>
-inline auto mul(cx_reg<T, true> lhs, cx_reg<T, true> rhs) -> cx_reg<T, false> {
-    auto real = mul(lhs.real, rhs.real);
-    auto imag = mul(lhs.real, rhs.imag);
-    return {fnmadd(lhs.imag, rhs.imag, real), fnmsub(lhs.imag, rhs.real, imag)};
-}
+}    // namespace detail_
+
+template<typename T, bool... Conj>
+    requires(sizeof...(Conj) % 2 == 0)
+inline auto mul_pairs(cx_reg<T, Conj>... args) {
+    auto [lhs_tup, rhs_tup] = detail_::make_pair_of_tuples(std::forward<cx_reg<T, Conj>>(args)...);
+    auto mul_real_rhs       = [](auto&& lhs, auto&& rhs) { return detail_::mul_real_rhs(lhs, rhs); };
+    auto mul_imag_rhs       = [](auto&& prod, auto&& lhs, auto&& rhs) {
+        return detail_::mul_imag_rhs(prod, lhs, rhs);
+    };
+    auto prod_real_rhs = pcx::detail_::apply_for_each(mul_real_rhs, lhs_tup, rhs_tup);
+    return pcx::detail_::apply_for_each(mul_imag_rhs, prod_real_rhs, lhs_tup, rhs_tup);
+};
+
 
 template<typename T>
 inline auto div(cx_reg<T, false> lhs, cx_reg<T, false> rhs) -> cx_reg<T, false> {
@@ -279,7 +288,7 @@ inline auto div(reg_t<T> lhs, cx_reg<T, Conj> rhs) -> cx_reg<T, false> {
     if constexpr (Conj) {
         imag_ = mul(lhs, rhs.imag);
     } else {
-        imag_ = mul(lhs, sub(zero<T>(), rhs.imag));
+        imag_ = fnmadd(lhs, rhs.imag, zero<T>());
     }
     rhs_abs = fmadd(rhs.imag, rhs.imag, rhs_abs);
 

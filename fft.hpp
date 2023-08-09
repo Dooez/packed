@@ -257,9 +257,10 @@ struct node<4> {
         if constexpr (Tw) {
             auto& tw = std::get<tw_type&>(std::tie(args...));
             if constexpr (Reverse) {
-                auto [a2, a3tw]  = simd::ibtfly(p2, p3);
-                auto [a0, a1tw]  = simd::ibtfly(p0, p1);
-                auto [a3, a1]    = simd::mul({a3tw, tw[2]}, {a1tw, tw[1]});
+                auto [a2, a3tw] = simd::ibtfly(p2, p3);
+                auto [a0, a1tw] = simd::ibtfly(p0, p1);
+                // auto [a3, a1]    = simd::mul({a3tw, tw[2]}, {a1tw, tw[1]});
+                auto [a3, a1]    = simd::mul_pairs(a3tw, tw[2], a1tw, tw[1]);
                 std::tie(b0, b2) = simd::ibtfly(a0, a2);
                 std::tie(b1, b3) = simd::ibtfly(a1, a3);
                 std::tie(b2, b3) = simd::mul({b2, tw[0]}, {b3, tw[0]});
