@@ -1501,7 +1501,7 @@ private:
 template<typename E>
     requires vector_expression<E>
 class conjugate : public std::ranges::view_base {
-    friend auto pcx::conj(const E& vector);
+    friend auto pcx::conj<>(const E& vector);
 
 public:
     using real_type = typename E::real_type;

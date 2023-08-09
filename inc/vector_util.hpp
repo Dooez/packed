@@ -106,37 +106,13 @@ bool operator!=(const aligned_allocator<T, Alignment>&, const aligned_allocator<
     return false;
 }
 
-/**
- * @brief forward declarations
- *
- */
+
 namespace simd {
 
 template<typename T, bool Conj>
 auto conj(cx_reg<T, Conj> reg) -> cx_reg<T, !Conj> {
     return {reg.real, reg.imag};
 }
-
-/**
- * @brief Conditionaly swaps real and imaginary parts of complex simd vectors.
- *
- * @tparam Inverse If true performs swap.
- * @param args Variable number of complex simd vectors.
- * @return Tuple of invrsed simd complex vectors.
- */
-// template<bool Inverse>
-// inline auto inverse(auto... args) {
-//     auto tup = std::make_tuple(args...);
-//     if constexpr (Inverse) {
-//         auto inverse = [](auto reg) {
-//             using reg_t = decltype(reg);
-//             return reg_t{reg.imag, reg.real};
-//         };
-//         return detail_::apply_for_each(inverse, tup);
-//     } else {
-//         return tup;
-//     }
-// };
 
 /**
 * @brief Register aligned adress
@@ -169,75 +145,7 @@ constexpr auto ra_addr(const T* data, uZ offset) -> const T* {
 
 }    // namespace simd
 
-/**
- * @brief alias for templated avx2 types and functions
- *
- */
 namespace simd {
-
-inline auto unpacklo_ps(reg<float>::type a, reg<float>::type b) -> reg<float>::type {
-    return _mm256_unpacklo_ps(a, b);
-};
-inline auto unpackhi_ps(reg<float>::type a, reg<float>::type b) -> reg<float>::type {
-    return _mm256_unpackhi_ps(a, b);
-};
-
-inline auto unpacklo_pd(reg<float>::type a, reg<float>::type b) -> reg<float>::type {
-    return _mm256_castpd_ps(_mm256_unpacklo_pd(_mm256_castps_pd(a), _mm256_castps_pd(b)));
-};
-inline auto unpackhi_pd(reg<float>::type a, reg<float>::type b) -> reg<float>::type {
-    return _mm256_castpd_ps(_mm256_unpackhi_pd(_mm256_castps_pd(a), _mm256_castps_pd(b)));
-};
-inline auto unpacklo_pd(reg<double>::type a, reg<double>::type b) -> reg<double>::type {
-    return _mm256_unpacklo_pd(a, b);
-};
-inline auto unpackhi_pd(reg<double>::type a, reg<double>::type b) -> reg<double>::type {
-    return _mm256_unpackhi_pd(a, b);
-};
-
-inline auto unpacklo_128(reg<float>::type a, reg<float>::type b) -> reg<float>::type {
-    return _mm256_insertf128_ps(a, _mm256_extractf128_ps(b, 0), 1);
-};
-inline auto unpackhi_128(reg<float>::type a, reg<float>::type b) -> reg<float>::type {
-    return _mm256_permute2f128_ps(a, b, 0b00110001);
-};
-inline auto unpacklo_128(reg<double>::type a, reg<double>::type b) -> reg<double>::type {
-    return _mm256_insertf128_pd(a, _mm256_extractf128_pd(b, 0), 1);
-};
-inline auto unpackhi_128(reg<double>::type a, reg<double>::type b) -> reg<double>::type {
-    return _mm256_permute2f128_pd(a, b, 0b00110001);
-};
-
-template<bool Conj>
-inline auto unpack_ps(cx_reg<float, Conj> a, cx_reg<float, Conj> b)
-    -> std::tuple<cx_reg<float, Conj>, cx_reg<float, Conj>> {
-    auto real_lo = unpacklo_ps(a.real, b.real);
-    auto real_hi = unpackhi_ps(a.real, b.real);
-    auto imag_lo = unpacklo_ps(a.imag, b.imag);
-    auto imag_hi = unpackhi_ps(a.imag, b.imag);
-
-    return {cx_reg<float, Conj>({real_lo, imag_lo}), cx_reg<float, Conj>({real_hi, imag_hi})};
-};
-
-template<typename T, bool Conj>
-inline auto unpack_pd(cx_reg<T, Conj> a, cx_reg<T, Conj> b) -> std::tuple<cx_reg<T, Conj>, cx_reg<T, Conj>> {
-    auto real_lo = unpacklo_pd(a.real, b.real);
-    auto real_hi = unpackhi_pd(a.real, b.real);
-    auto imag_lo = unpacklo_pd(a.imag, b.imag);
-    auto imag_hi = unpackhi_pd(a.imag, b.imag);
-
-    return {cx_reg<T, Conj>({real_lo, imag_lo}), cx_reg<T, Conj>({real_hi, imag_hi})};
-};
-
-template<typename T, bool Conj>
-inline auto unpack_128(cx_reg<T, Conj> a, cx_reg<T, Conj> b) -> std::tuple<cx_reg<T, Conj>, cx_reg<T, Conj>> {
-    auto real_hi = unpackhi_128(a.real, b.real);
-    auto real_lo = unpacklo_128(a.real, b.real);
-    auto imag_hi = unpackhi_128(a.imag, b.imag);
-    auto imag_lo = unpacklo_128(a.imag, b.imag);
-
-    return {cx_reg<T, Conj>({real_lo, imag_lo}), cx_reg<T, Conj>({real_hi, imag_hi})};
-};
 
 template<typename T>
 struct convert;
@@ -257,8 +165,8 @@ struct convert<float> {
     };
 
     static constexpr auto swap_48 = [](cx_reg<float, false> reg) {
-        auto real = unpacklo_128(reg.real, reg.imag);
-        auto imag = unpackhi_128(reg.real, reg.imag);
+        auto real = avx2::unpacklo_128(reg.real, reg.imag);
+        auto imag = avx2::unpackhi_128(reg.real, reg.imag);
         return cx_reg<float, false>({real, imag});
     };
 
@@ -292,8 +200,8 @@ struct convert<float> {
         } else if constexpr (PackFrom == 2) {
             if constexpr (PackTo >= 8) {
                 auto pack_1 = [](cx_reg<float, false> reg) {
-                    auto real = unpacklo_pd(reg.real, reg.imag);
-                    auto imag = unpackhi_pd(reg.real, reg.imag);
+                    auto real = avx2::unpacklo_pd(reg.real, reg.imag);
+                    auto imag = avx2::unpackhi_pd(reg.real, reg.imag);
                     return cx_reg<float, false>({real, imag});
                 };
                 auto tmp = pcx::detail_::apply_for_each(swap_48, tup);
@@ -329,8 +237,8 @@ struct convert<float> {
                 return pcx::detail_::apply_for_each(swap_24, tmp);
             } else if constexpr (PackTo == 1) {
                 auto pack_0 = [](cx_reg<float, false> reg) {
-                    auto real = unpacklo_ps(reg.real, reg.imag);
-                    auto imag = unpackhi_ps(reg.real, reg.imag);
+                    auto real = simd::avx2::unpacklo_ps(reg.real, reg.imag);
+                    auto imag = simd::avx2::unpackhi_ps(reg.real, reg.imag);
                     return cx_reg<float, false>({real, imag});
                 };
                 auto tmp = pcx::detail_::apply_for_each(pack_0, tup_);
@@ -358,8 +266,8 @@ struct convert<float> {
             return pcx::detail_::apply_for_each(split, tup);
         } else if constexpr (PackFrom == 2) {
             auto split = []<bool Conj>(cx_reg<float, Conj> reg) {
-                auto real = unpacklo_pd(reg.real, reg.imag);
-                auto imag = unpackhi_pd(reg.real, reg.imag);
+                auto real = avx2::unpacklo_pd(reg.real, reg.imag);
+                auto imag = avx2::unpackhi_pd(reg.real, reg.imag);
                 return cx_reg<float, Conj>({real, imag});
             };
             return pcx::detail_::apply_for_each(split, tup);
@@ -375,15 +283,15 @@ struct convert<float> {
         auto tup = std::make_tuple(args...);
         if constexpr (PackTo == 1) {
             auto combine = []<bool Conj>(cx_reg<float, Conj> reg) {
-                auto real = unpacklo_ps(reg.real, reg.imag);
-                auto imag = unpackhi_ps(reg.real, reg.imag);
+                auto real = simd::avx2::unpacklo_ps(reg.real, reg.imag);
+                auto imag = simd::avx2::unpackhi_ps(reg.real, reg.imag);
                 return cx_reg<float, Conj>({real, imag});
             };
             return pcx::detail_::apply_for_each(combine, tup);
         } else if constexpr (PackTo == 2) {
             auto combine = []<bool Conj>(cx_reg<float, Conj> reg) {
-                auto real = unpacklo_pd(reg.real, reg.imag);
-                auto imag = unpackhi_pd(reg.real, reg.imag);
+                auto real = avx2::unpacklo_pd(reg.real, reg.imag);
+                auto imag = avx2::unpackhi_pd(reg.real, reg.imag);
                 return cx_reg<float, Conj>({real, imag});
             };
             return pcx::detail_::apply_for_each(combine, tup);
@@ -418,8 +326,8 @@ struct convert<double> {
     };
 
     static constexpr auto swap_24 = []<bool Conj>(cx_reg<double, Conj> reg) {
-        auto real = unpacklo_128(reg.real, reg.imag);
-        auto imag = unpackhi_128(reg.real, reg.imag);
+        auto real = avx2::unpacklo_128(reg.real, reg.imag);
+        auto imag = avx2::unpackhi_128(reg.real, reg.imag);
         return cx_reg<double, Conj>({real, imag});
     };
 
@@ -432,8 +340,8 @@ struct convert<double> {
         } else if constexpr (PackFrom == 1) {
             if constexpr (PackTo >= 4) {
                 auto pack_1 = []<bool Conj>(cx_reg<double, Conj> reg) {
-                    auto real = unpacklo_pd(reg.real, reg.imag);
-                    auto imag = unpackhi_pd(reg.real, reg.imag);
+                    auto real = avx2::unpacklo_pd(reg.real, reg.imag);
+                    auto imag = avx2::unpackhi_pd(reg.real, reg.imag);
                     return cx_reg<double, Conj>({real, imag});
                 };
                 auto tmp = pcx::detail_::apply_for_each(pack_1, tup);
@@ -450,8 +358,8 @@ struct convert<double> {
         } else if constexpr (PackFrom >= 4) {
             auto conj = []<bool Conj>(cx_reg<double, Conj> reg) {
                 if constexpr (Conj) {
-                    auto zero = _mm256_setzero_ps();
-                    return cx_reg<double, false>{reg.real, _mm256_sub_ps(zero, reg.imag)};
+                    auto zero = _mm256_setzero_pd();
+                    return cx_reg<double, false>{reg.real, _mm256_sub_pd(zero, reg.imag)};
                 } else {
                     return reg;
                 }
@@ -461,8 +369,8 @@ struct convert<double> {
                 return pcx::detail_::apply_for_each(swap_24, tup_);
             } else if constexpr (PackTo == 1) {
                 auto pack_1 = []<bool Conj>(cx_reg<double, Conj> reg) {
-                    auto real = unpacklo_pd(reg.real, reg.imag);
-                    auto imag = unpackhi_pd(reg.real, reg.imag);
+                    auto real = avx2::unpacklo_pd(reg.real, reg.imag);
+                    auto imag = avx2::unpackhi_pd(reg.real, reg.imag);
                     return cx_reg<double, Conj>({real, imag});
                 };
                 auto tmp = pcx::detail_::apply_for_each(pack_1, tup_);

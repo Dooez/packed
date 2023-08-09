@@ -623,8 +623,8 @@ struct simd_size_specific<T, 8, SimdCount> {
             auto [b0, b1] = simd::btfly(a0, a1tw);
             auto [b2, b3] = simd::btfly(a2, a3tw);
 
-            auto [shb0, shb1] = simd::unpack_128(b0, b1);
-            auto [shb2, shb3] = simd::unpack_128(b2, b3);
+            auto [shb0, shb1] = simd::avx2::unpack_128(b0, b1);
+            auto [shb2, shb3] = simd::avx2::unpack_128(b2, b3);
 
             auto [shb1tw, shb3tw] = simd::mul({shb1, tw3}, {shb3, tw4});
 
@@ -635,8 +635,8 @@ struct simd_size_specific<T, 8, SimdCount> {
             auto [c0, c1] = simd::btfly(shb0, shb1tw);
             auto [c2, c3] = simd::btfly(shb2, shb3tw);
 
-            auto [shc0, shc1] = simd::unpack_pd(c0, c1);
-            auto [shc2, shc3] = simd::unpack_pd(c2, c3);
+            auto [shc0, shc1] = simd::avx2::unpack_pd(c0, c1);
+            auto [shc2, shc3] = simd::avx2::unpack_pd(c2, c3);
 
             auto [shc1tw, shc3tw] = simd::mul({shc1, tw5}, {shc3, tw6});
 
@@ -665,17 +665,17 @@ struct simd_size_specific<T, 8, SimdCount> {
             cx_reg she0, she1, she2, she3;
             if constexpr (BitReversed) {
                 if constexpr (PDest < 4) {
-                    std::tie(she0, she1) = simd::unpack_ps(e0, e1);
-                    std::tie(she2, she3) = simd::unpack_ps(e2, e3);
-                    std::tie(she0, she1) = simd::unpack_128(she0, she1);
-                    std::tie(she2, she3) = simd::unpack_128(she2, she3);
+                    std::tie(she0, she1) = simd::avx2::unpack_ps(e0, e1);
+                    std::tie(she2, she3) = simd::avx2::unpack_ps(e2, e3);
+                    std::tie(she0, she1) = simd::avx2::unpack_128(she0, she1);
+                    std::tie(she2, she3) = simd::avx2::unpack_128(she2, she3);
                 } else {
-                    std::tie(she0, she1) = simd::unpack_ps(e0, e1);
-                    std::tie(she2, she3) = simd::unpack_ps(e2, e3);
-                    std::tie(she0, she1) = simd::unpack_pd(she0, she1);
-                    std::tie(she2, she3) = simd::unpack_pd(she2, she3);
-                    std::tie(she0, she1) = simd::unpack_128(she0, she1);
-                    std::tie(she2, she3) = simd::unpack_128(she2, she3);
+                    std::tie(she0, she1) = simd::avx2::unpack_ps(e0, e1);
+                    std::tie(she2, she3) = simd::avx2::unpack_ps(e2, e3);
+                    std::tie(she0, she1) = simd::avx2::unpack_pd(she0, she1);
+                    std::tie(she2, she3) = simd::avx2::unpack_pd(she2, she3);
+                    std::tie(she0, she1) = simd::avx2::unpack_128(she0, she1);
+                    std::tie(she2, she3) = simd::avx2::unpack_128(she2, she3);
                 }
                 std::tie(she0, she1, she2, she3) =
                     simd::convert<T>::template combine<PDest>(she0, she1, she2, she3);
@@ -739,8 +739,8 @@ struct simd_size_specific<T, 8, SimdCount> {
             std::tie(she0, she1, she2, she3) =
                 simd::convert<T>::template inverse<true>(she0, she1, she2, she3);
             if constexpr (BitReversed) {
-                std::tie(e0, e1) = simd::unpack_128(she0, she1);
-                std::tie(e2, e3) = simd::unpack_128(she2, she3);
+                std::tie(e0, e1) = simd::avx2::unpack_128(she0, she1);
+                std::tie(e2, e3) = simd::avx2::unpack_128(she2, she3);
             } else {
                 std::tie(e0, e1, e2, e3) = std::tie(she0, she1, she2, she3);
             }
@@ -750,10 +750,10 @@ struct simd_size_specific<T, 8, SimdCount> {
             auto tw8 = simd::cxload<cx_reg::size>(twiddle_ptr + cx_reg::size * 2);
 
             if constexpr (BitReversed) {
-                std::tie(e0, e1) = simd::unpack_ps(e0, e1);
-                std::tie(e2, e3) = simd::unpack_ps(e2, e3);
-                std::tie(e0, e1) = simd::unpack_pd(e0, e1);
-                std::tie(e2, e3) = simd::unpack_pd(e2, e3);
+                std::tie(e0, e1) = simd::avx2::unpack_ps(e0, e1);
+                std::tie(e2, e3) = simd::avx2::unpack_ps(e2, e3);
+                std::tie(e0, e1) = simd::avx2::unpack_pd(e0, e1);
+                std::tie(e2, e3) = simd::avx2::unpack_pd(e2, e3);
             }
             auto [shd0, shd1tw] = simd::ibtfly(e0, e1);
             auto [shd2, shd3tw] = simd::ibtfly(e2, e3);
@@ -764,8 +764,8 @@ struct simd_size_specific<T, 8, SimdCount> {
             auto tw5 = simd::cxload<cx_reg::size>(twiddle_ptr);
             auto tw6 = simd::cxload<cx_reg::size>(twiddle_ptr + cx_reg::size * 2);
 
-            auto [d0, d1] = simd::unpack_ps(shd0, shd1);
-            auto [d2, d3] = simd::unpack_ps(shd2, shd3);
+            auto [d0, d1] = simd::avx2::unpack_ps(shd0, shd1);
+            auto [d2, d3] = simd::avx2::unpack_ps(shd2, shd3);
 
             auto [shc0, shc1tw] = simd::btfly(d0, d1);
             auto [shc2, shc3tw] = simd::btfly(d2, d3);
@@ -776,8 +776,8 @@ struct simd_size_specific<T, 8, SimdCount> {
             auto tw3 = simd::cxload<cx_reg::size>(twiddle_ptr);
             auto tw4 = simd::cxload<cx_reg::size>(twiddle_ptr + cx_reg::size * 2);
 
-            auto [c0, c1] = simd::unpack_pd(shc0, shc1);
-            auto [c2, c3] = simd::unpack_pd(shc2, shc3);
+            auto [c0, c1] = simd::avx2::unpack_pd(shc0, shc1);
+            auto [c2, c3] = simd::avx2::unpack_pd(shc2, shc3);
 
             auto [shb0, shb1tw] = simd::btfly(c0, c1);
             auto [shb2, shb3tw] = simd::btfly(c2, c3);
@@ -789,8 +789,8 @@ struct simd_size_specific<T, 8, SimdCount> {
             cx_reg tw2 = {simd::broadcast(twiddle_ptr + 4), simd::broadcast(twiddle_ptr + 5)};
             cx_reg tw0 = {simd::broadcast(twiddle_ptr + 0), simd::broadcast(twiddle_ptr + 1)};
 
-            auto [b0, b1] = simd::unpack_128(shb0, shb1);
-            auto [b2, b3] = simd::unpack_128(shb2, shb3);
+            auto [b0, b1] = simd::avx2::unpack_128(shb0, shb1);
+            auto [b2, b3] = simd::avx2::unpack_128(shb2, shb3);
 
             auto [a0, a1tw] = simd::btfly(b0, b1);
             auto [a2, a3tw] = simd::btfly(b2, b3);
@@ -1014,16 +1014,16 @@ struct simd_size_specific<T, 8, SimdCount> {
             auto [c4, c5] = simd::btfly(b4, b5_tw);
             auto [c6, c7] = simd::btfly<2>(b6, b7_tw);
 
-            auto [sha0, sha4] = simd::unpack_ps(c0, c4);
-            auto [sha2, sha6] = simd::unpack_ps(c2, c6);
-            auto [sha1, sha5] = simd::unpack_ps(c1, c5);
-            auto [sha3, sha7] = simd::unpack_ps(c3, c7);
+            auto [sha0, sha4] = simd::avx2::unpack_ps(c0, c4);
+            auto [sha2, sha6] = simd::avx2::unpack_ps(c2, c6);
+            auto [sha1, sha5] = simd::avx2::unpack_ps(c1, c5);
+            auto [sha3, sha7] = simd::avx2::unpack_ps(c3, c7);
 
-            auto [shb0, shb2] = simd::unpack_pd(sha0, sha2);
-            auto [shb1, shb3] = simd::unpack_pd(sha1, sha3);
+            auto [shb0, shb2] = simd::avx2::unpack_pd(sha0, sha2);
+            auto [shb1, shb3] = simd::avx2::unpack_pd(sha1, sha3);
 
-            auto [shc0, shc1] = simd::unpack_128(shb0, shb1);
-            auto [shc2, shc3] = simd::unpack_128(shb2, shb3);
+            auto [shc0, shc1] = simd::avx2::unpack_128(shb0, shb1);
+            auto [shc2, shc3] = simd::avx2::unpack_128(shb2, shb3);
 
             reg_t q0, q1, q2, q3, q4, q5, q6, q7;
 
@@ -1057,11 +1057,11 @@ struct simd_size_specific<T, 8, SimdCount> {
             _mm_prefetch(simd::ra_addr<PTform>(src3, offset2), _MM_HINT_T0);
             _mm_prefetch(simd::ra_addr<PTform>(src7, offset2), _MM_HINT_T0);
 
-            auto [shb4, shb6] = simd::unpack_pd(sha4, sha6);
-            auto [shb5, shb7] = simd::unpack_pd(sha5, sha7);
+            auto [shb4, shb6] = simd::avx2::unpack_pd(sha4, sha6);
+            auto [shb5, shb7] = simd::avx2::unpack_pd(sha5, sha7);
 
-            auto [shc4, shc5] = simd::unpack_128(shb4, shb5);
-            auto [shc6, shc7] = simd::unpack_128(shb6, shb7);
+            auto [shc4, shc5] = simd::avx2::unpack_128(shb4, shb5);
+            auto [shc6, shc7] = simd::avx2::unpack_128(shb6, shb7);
 
             std::tie(shc4, shc5, shc6, shc7) =
                 simd::convert<T>::template inverse<Inverse>(shc4, shc5, shc6, shc7);
@@ -1109,16 +1109,16 @@ struct simd_size_specific<T, 8, SimdCount> {
             auto [z4, z5] = simd::btfly(y4, y5_tw);
             auto [z6, z7] = simd::btfly<2>(y6, y7_tw);
 
-            auto [shx0, shx4] = simd::unpack_ps(z0, z4);
-            auto [shx1, shx5] = simd::unpack_ps(z1, z5);
-            auto [shx2, shx6] = simd::unpack_ps(z2, z6);
-            auto [shx3, shx7] = simd::unpack_ps(z3, z7);
+            auto [shx0, shx4] = simd::avx2::unpack_ps(z0, z4);
+            auto [shx1, shx5] = simd::avx2::unpack_ps(z1, z5);
+            auto [shx2, shx6] = simd::avx2::unpack_ps(z2, z6);
+            auto [shx3, shx7] = simd::avx2::unpack_ps(z3, z7);
 
-            auto [shy0, shy2] = simd::unpack_pd(shx0, shx2);
-            auto [shy1, shy3] = simd::unpack_pd(shx1, shx3);
+            auto [shy0, shy2] = simd::avx2::unpack_pd(shx0, shx2);
+            auto [shy1, shy3] = simd::avx2::unpack_pd(shx1, shx3);
 
-            auto [shz0, shz1] = simd::unpack_128(shy0, shy1);
-            auto [shz2, shz3] = simd::unpack_128(shy2, shy3);
+            auto [shz0, shz1] = simd::avx2::unpack_128(shy0, shy1);
+            auto [shz2, shz3] = simd::avx2::unpack_128(shy2, shy3);
 
             std::tie(shz0, shz1, shz2, shz3) =
                 simd::convert<T>::template inverse<Inverse>(shz0, shz1, shz2, shz3);
@@ -1133,11 +1133,11 @@ struct simd_size_specific<T, 8, SimdCount> {
                 simd::cxstore<PTform>(simd::ra_addr<PTform>(src5, offset1), shz3);
             }
 
-            auto [shy4, shy6] = simd::unpack_pd(shx4, shx6);
-            auto [shy5, shy7] = simd::unpack_pd(shx5, shx7);
+            auto [shy4, shy6] = simd::avx2::unpack_pd(shx4, shx6);
+            auto [shy5, shy7] = simd::avx2::unpack_pd(shx5, shx7);
 
-            auto [shz4, shz5] = simd::unpack_128(shy4, shy5);
-            auto [shz6, shz7] = simd::unpack_128(shy6, shy7);
+            auto [shz4, shz5] = simd::avx2::unpack_128(shy4, shy5);
+            auto [shz6, shz7] = simd::avx2::unpack_128(shy6, shy7);
 
             std::tie(shz4, shz5, shz6, shz7) =
                 simd::convert<T>::template inverse<Inverse>(shz4, shz5, shz6, shz7);
@@ -1198,16 +1198,16 @@ struct simd_size_specific<T, 8, SimdCount> {
             auto [c4, c5] = simd::btfly(b4, b5_tw);
             auto [c6, c7] = simd::btfly<2>(b6, b7_tw);
 
-            auto [sha0, sha4] = simd::unpack_ps(c0, c4);
-            auto [sha2, sha6] = simd::unpack_ps(c2, c6);
-            auto [sha1, sha5] = simd::unpack_ps(c1, c5);
-            auto [sha3, sha7] = simd::unpack_ps(c3, c7);
+            auto [sha0, sha4] = simd::avx2::unpack_ps(c0, c4);
+            auto [sha2, sha6] = simd::avx2::unpack_ps(c2, c6);
+            auto [sha1, sha5] = simd::avx2::unpack_ps(c1, c5);
+            auto [sha3, sha7] = simd::avx2::unpack_ps(c3, c7);
 
-            auto [shb0, shb2] = simd::unpack_pd(sha0, sha2);
-            auto [shb1, shb3] = simd::unpack_pd(sha1, sha3);
+            auto [shb0, shb2] = simd::avx2::unpack_pd(sha0, sha2);
+            auto [shb1, shb3] = simd::avx2::unpack_pd(sha1, sha3);
 
-            auto [shc0, shc1] = simd::unpack_128(shb0, shb1);
-            auto [shc2, shc3] = simd::unpack_128(shb2, shb3);
+            auto [shc0, shc1] = simd::avx2::unpack_128(shb0, shb1);
+            auto [shc2, shc3] = simd::avx2::unpack_128(shb2, shb3);
 
             std::tie(shc0, shc1, shc2, shc3) =
                 simd::convert<T>::template inverse<Inverse>(shc0, shc1, shc2, shc3);
@@ -1222,11 +1222,11 @@ struct simd_size_specific<T, 8, SimdCount> {
                 simd::cxstore<PTform>(simd::ra_addr<PTform>(src5, offset), shc3);
             }
 
-            auto [shb4, shb6] = simd::unpack_pd(sha4, sha6);
-            auto [shb5, shb7] = simd::unpack_pd(sha5, sha7);
+            auto [shb4, shb6] = simd::avx2::unpack_pd(sha4, sha6);
+            auto [shb5, shb7] = simd::avx2::unpack_pd(sha5, sha7);
 
-            auto [shc4, shc5] = simd::unpack_128(shb4, shb5);
-            auto [shc6, shc7] = simd::unpack_128(shb6, shb7);
+            auto [shc4, shc5] = simd::avx2::unpack_128(shb4, shb5);
+            auto [shc6, shc7] = simd::avx2::unpack_128(shb6, shb7);
 
             std::tie(shc4, shc5, shc6, shc7) =
                 simd::convert<T>::template inverse<Inverse>(shc4, shc5, shc6, shc7);
@@ -1322,15 +1322,15 @@ struct simd_size_specific<T, 8, SimdCount> {
                 auto [c4, c5] = simd::btfly(b4, b5_tw);
                 auto [c7, c6] = simd::btfly(b6, b7_tw);
 
-                auto [sha0, sha4] = simd::unpack_ps(c0, c4);
-                auto [sha2, sha6] = simd::unpack_ps(c2, c6);
-                auto [sha1, sha5] = simd::unpack_ps(c1, c5);
-                auto [sha3, sha7] = simd::unpack_ps(c3, c7);
+                auto [sha0, sha4] = simd::avx2::unpack_ps(c0, c4);
+                auto [sha2, sha6] = simd::avx2::unpack_ps(c2, c6);
+                auto [sha1, sha5] = simd::avx2::unpack_ps(c1, c5);
+                auto [sha3, sha7] = simd::avx2::unpack_ps(c3, c7);
 
-                auto [shb0, shb2] = simd::unpack_pd(sha0, sha2);
-                auto [shb1, shb3] = simd::unpack_pd(sha1, sha3);
-                auto [shc0, shc1] = simd::unpack_128(shb0, shb1);
-                auto [shc2, shc3] = simd::unpack_128(shb2, shb3);
+                auto [shb0, shb2] = simd::avx2::unpack_pd(sha0, sha2);
+                auto [shb1, shb3] = simd::avx2::unpack_pd(sha1, sha3);
+                auto [shc0, shc1] = simd::avx2::unpack_128(shb0, shb1);
+                auto [shc2, shc3] = simd::avx2::unpack_128(shb2, shb3);
 
                 simd::cxstore<PTform>(simd::ra_addr<PTform>(dst0, offset_dest), shc0);
                 simd::cxstore<PTform>(simd::ra_addr<PTform>(dst4, offset_dest), shc2);
@@ -1342,10 +1342,10 @@ struct simd_size_specific<T, 8, SimdCount> {
                     simd::cxstore<PTform>(simd::ra_addr<PTform>(dst5, offset_dest), shc3);
                 }
 
-                auto [shb4, shb6] = simd::unpack_pd(sha4, sha6);
-                auto [shb5, shb7] = simd::unpack_pd(sha5, sha7);
-                auto [shc4, shc5] = simd::unpack_128(shb4, shb5);
-                auto [shc6, shc7] = simd::unpack_128(shb6, shb7);
+                auto [shb4, shb6] = simd::avx2::unpack_pd(sha4, sha6);
+                auto [shb5, shb7] = simd::avx2::unpack_pd(sha5, sha7);
+                auto [shc4, shc5] = simd::avx2::unpack_128(shb4, shb5);
+                auto [shc6, shc7] = simd::avx2::unpack_128(shb6, shb7);
 
                 if constexpr (PSrc < 4) {
                     simd::cxstore<PTform>(simd::ra_addr<PTform>(dst1, offset_dest), shc4);
@@ -1413,15 +1413,15 @@ struct simd_size_specific<T, 8, SimdCount> {
             auto [c4, c5] = simd::btfly(b4, b5_tw);
             auto [c7, c6] = simd::btfly(b6, b7_tw);
 
-            auto [sha0, sha4] = simd::unpack_ps(c0, c4);
-            auto [sha2, sha6] = simd::unpack_ps(c2, c6);
-            auto [sha1, sha5] = simd::unpack_ps(c1, c5);
-            auto [sha3, sha7] = simd::unpack_ps(c3, c7);
+            auto [sha0, sha4] = simd::avx2::unpack_ps(c0, c4);
+            auto [sha2, sha6] = simd::avx2::unpack_ps(c2, c6);
+            auto [sha1, sha5] = simd::avx2::unpack_ps(c1, c5);
+            auto [sha3, sha7] = simd::avx2::unpack_ps(c3, c7);
 
-            auto [shb0, shb2] = simd::unpack_pd(sha0, sha2);
-            auto [shb1, shb3] = simd::unpack_pd(sha1, sha3);
-            auto [shc0, shc1] = simd::unpack_128(shb0, shb1);
-            auto [shc2, shc3] = simd::unpack_128(shb2, shb3);
+            auto [shb0, shb2] = simd::avx2::unpack_pd(sha0, sha2);
+            auto [shb1, shb3] = simd::avx2::unpack_pd(sha1, sha3);
+            auto [shc0, shc1] = simd::avx2::unpack_128(shb0, shb1);
+            auto [shc2, shc3] = simd::avx2::unpack_128(shb2, shb3);
 
             simd::cxstore<PTform>(simd::ra_addr<PTform>(dst0, offset_dest), shc0);
             simd::cxstore<PTform>(simd::ra_addr<PTform>(dst4, offset_dest), shc2);
@@ -1433,10 +1433,10 @@ struct simd_size_specific<T, 8, SimdCount> {
                 simd::cxstore<PTform>(simd::ra_addr<PTform>(dst5, offset_dest), shc3);
             }
 
-            auto [shb4, shb6] = simd::unpack_pd(sha4, sha6);
-            auto [shb5, shb7] = simd::unpack_pd(sha5, sha7);
-            auto [shc4, shc5] = simd::unpack_128(shb4, shb5);
-            auto [shc6, shc7] = simd::unpack_128(shb6, shb7);
+            auto [shb4, shb6] = simd::avx2::unpack_pd(sha4, sha6);
+            auto [shb5, shb7] = simd::avx2::unpack_pd(sha5, sha7);
+            auto [shc4, shc5] = simd::avx2::unpack_128(shb4, shb5);
+            auto [shc6, shc7] = simd::avx2::unpack_128(shb6, shb7);
 
             if constexpr (PSrc < 4) {
                 simd::cxstore<PTform>(simd::ra_addr<PTform>(dst1, offset_dest), shc4);
@@ -1676,11 +1676,11 @@ public:
     }
 
 private:
-    const size_type                       m_size;
-    [[no_unique_address]] const subsize_t m_sub_size;
-    [[no_unique_address]] const sort_t    m_sort;
-    const twiddle_t                       m_twiddles;
-    const s_twiddle_t                     m_twiddles_strategic = get_twiddles_strategic(m_size, sub_size());
+    const size_type                 m_size;
+    [[no_unique_address]] subsize_t m_sub_size;
+    [[no_unique_address]] sort_t    m_sort;
+    const twiddle_t                 m_twiddles;
+    const s_twiddle_t               m_twiddles_strategic = get_twiddles_strategic(m_size, sub_size());
 
     size_type m_align_count     = 0;
     size_type m_align_count_rec = 0;
@@ -2298,15 +2298,15 @@ public:
                 auto [c4, c5] = simd::btfly(b4, b5_tw);
                 auto [c7, c6] = simd::btfly(b6, b7_tw);
 
-                auto [sha0, sha4] = simd::unpack_ps(c0, c4);
-                auto [sha2, sha6] = simd::unpack_ps(c2, c6);
-                auto [sha1, sha5] = simd::unpack_ps(c1, c5);
-                auto [sha3, sha7] = simd::unpack_ps(c3, c7);
+                auto [sha0, sha4] = simd::avx2::unpack_ps(c0, c4);
+                auto [sha2, sha6] = simd::avx2::unpack_ps(c2, c6);
+                auto [sha1, sha5] = simd::avx2::unpack_ps(c1, c5);
+                auto [sha3, sha7] = simd::avx2::unpack_ps(c3, c7);
 
-                auto [shb0, shb2] = simd::unpack_pd(sha0, sha2);
-                auto [shb1, shb3] = simd::unpack_pd(sha1, sha3);
-                auto [shc0, shc1] = simd::unpack_128(shb0, shb1);
-                auto [shc2, shc3] = simd::unpack_128(shb2, shb3);
+                auto [shb0, shb2] = simd::avx2::unpack_pd(sha0, sha2);
+                auto [shb1, shb3] = simd::avx2::unpack_pd(sha1, sha3);
+                auto [shc0, shc1] = simd::avx2::unpack_128(shb0, shb1);
+                auto [shc2, shc3] = simd::avx2::unpack_128(shb2, shb3);
 
                 simd::cxstore<PTform>(simd::ra_addr<PTform>(dst0, offset_dest), shc0);
                 simd::cxstore<PTform>(simd::ra_addr<PTform>(dst4, offset_dest), shc2);
@@ -2318,10 +2318,10 @@ public:
                     simd::cxstore<PTform>(simd::ra_addr<PTform>(dst5, offset_dest), shc3);
                 }
 
-                auto [shb4, shb6] = simd::unpack_pd(sha4, sha6);
-                auto [shb5, shb7] = simd::unpack_pd(sha5, sha7);
-                auto [shc4, shc5] = simd::unpack_128(shb4, shb5);
-                auto [shc6, shc7] = simd::unpack_128(shb6, shb7);
+                auto [shb4, shb6] = simd::avx2::unpack_pd(sha4, sha6);
+                auto [shb5, shb7] = simd::avx2::unpack_pd(sha5, sha7);
+                auto [shc4, shc5] = simd::avx2::unpack_128(shb4, shb5);
+                auto [shc6, shc7] = simd::avx2::unpack_128(shb6, shb7);
 
                 if constexpr (PSrc < 4) {
                     simd::cxstore<PTform>(simd::ra_addr<PTform>(dst1, offset_dest), shc4);
@@ -2389,15 +2389,15 @@ public:
             auto [c4, c5] = simd::btfly(b4, b5_tw);
             auto [c7, c6] = simd::btfly(b6, b7_tw);
 
-            auto [sha0, sha4] = simd::unpack_ps(c0, c4);
-            auto [sha2, sha6] = simd::unpack_ps(c2, c6);
-            auto [sha1, sha5] = simd::unpack_ps(c1, c5);
-            auto [sha3, sha7] = simd::unpack_ps(c3, c7);
+            auto [sha0, sha4] = simd::avx2::unpack_ps(c0, c4);
+            auto [sha2, sha6] = simd::avx2::unpack_ps(c2, c6);
+            auto [sha1, sha5] = simd::avx2::unpack_ps(c1, c5);
+            auto [sha3, sha7] = simd::avx2::unpack_ps(c3, c7);
 
-            auto [shb0, shb2] = simd::unpack_pd(sha0, sha2);
-            auto [shb1, shb3] = simd::unpack_pd(sha1, sha3);
-            auto [shc0, shc1] = simd::unpack_128(shb0, shb1);
-            auto [shc2, shc3] = simd::unpack_128(shb2, shb3);
+            auto [shb0, shb2] = simd::avx2::unpack_pd(sha0, sha2);
+            auto [shb1, shb3] = simd::avx2::unpack_pd(sha1, sha3);
+            auto [shc0, shc1] = simd::avx2::unpack_128(shb0, shb1);
+            auto [shc2, shc3] = simd::avx2::unpack_128(shb2, shb3);
 
             simd::cxstore<PTform>(simd::ra_addr<PTform>(dst0, offset_dest), shc0);
             simd::cxstore<PTform>(simd::ra_addr<PTform>(dst4, offset_dest), shc2);
@@ -2409,10 +2409,10 @@ public:
                 simd::cxstore<PTform>(simd::ra_addr<PTform>(dst5, offset_dest), shc3);
             }
 
-            auto [shb4, shb6] = simd::unpack_pd(sha4, sha6);
-            auto [shb5, shb7] = simd::unpack_pd(sha5, sha7);
-            auto [shc4, shc5] = simd::unpack_128(shb4, shb5);
-            auto [shc6, shc7] = simd::unpack_128(shb6, shb7);
+            auto [shb4, shb6] = simd::avx2::unpack_pd(sha4, sha6);
+            auto [shb5, shb7] = simd::avx2::unpack_pd(sha5, sha7);
+            auto [shc4, shc5] = simd::avx2::unpack_128(shb4, shb5);
+            auto [shc6, shc7] = simd::avx2::unpack_128(shb6, shb7);
 
             if constexpr (PSrc < 4) {
                 simd::cxstore<PTform>(simd::ra_addr<PTform>(dst1, offset_dest), shc4);
@@ -3252,8 +3252,8 @@ public:
             auto [b0, b1] = simd::btfly(a0, a1tw);
             auto [b2, b3] = simd::btfly(a2, a3tw);
 
-            auto [shb0, shb1] = simd::unpack_128(b0, b1);
-            auto [shb2, shb3] = simd::unpack_128(b2, b3);
+            auto [shb0, shb1] = simd::avx2::unpack_128(b0, b1);
+            auto [shb2, shb3] = simd::avx2::unpack_128(b2, b3);
 
             auto [shb1tw, shb3tw] = simd::mul({shb1, tw3}, {shb3, tw4});
 
@@ -3264,8 +3264,8 @@ public:
             auto [c0, c1] = simd::btfly(shb0, shb1tw);
             auto [c2, c3] = simd::btfly(shb2, shb3tw);
 
-            auto [shc0, shc1] = simd::unpack_pd(c0, c1);
-            auto [shc2, shc3] = simd::unpack_pd(c2, c3);
+            auto [shc0, shc1] = simd::avx2::unpack_pd(c0, c1);
+            auto [shc2, shc3] = simd::avx2::unpack_pd(c2, c3);
 
             auto [shc1tw, shc3tw] = simd::mul({shc1, tw5}, {shc3, tw6});
 
@@ -3294,17 +3294,17 @@ public:
             reg_t she0, she1, she2, she3;
             if constexpr (Order == fft_order::bit_reversed) {
                 if constexpr (PDest < 4) {
-                    std::tie(she0, she1) = simd::unpack_ps(e0, e1);
-                    std::tie(she2, she3) = simd::unpack_ps(e2, e3);
-                    std::tie(she0, she1) = simd::unpack_128(she0, she1);
-                    std::tie(she2, she3) = simd::unpack_128(she2, she3);
+                    std::tie(she0, she1) = simd::avx2::unpack_ps(e0, e1);
+                    std::tie(she2, she3) = simd::avx2::unpack_ps(e2, e3);
+                    std::tie(she0, she1) = simd::avx2::unpack_128(she0, she1);
+                    std::tie(she2, she3) = simd::avx2::unpack_128(she2, she3);
                 } else {
-                    std::tie(she0, she1) = simd::unpack_ps(e0, e1);
-                    std::tie(she2, she3) = simd::unpack_ps(e2, e3);
-                    std::tie(she0, she1) = simd::unpack_pd(she0, she1);
-                    std::tie(she2, she3) = simd::unpack_pd(she2, she3);
-                    std::tie(she0, she1) = simd::unpack_128(she0, she1);
-                    std::tie(she2, she3) = simd::unpack_128(she2, she3);
+                    std::tie(she0, she1) = simd::avx2::unpack_ps(e0, e1);
+                    std::tie(she2, she3) = simd::avx2::unpack_ps(e2, e3);
+                    std::tie(she0, she1) = simd::avx2::unpack_pd(she0, she1);
+                    std::tie(she2, she3) = simd::avx2::unpack_pd(she2, she3);
+                    std::tie(she0, she1) = simd::avx2::unpack_128(she0, she1);
+                    std::tie(she2, she3) = simd::avx2::unpack_128(she2, she3);
                 }
                 std::tie(she0, she1, she2, she3) =
                     simd::convert<float>::combine<PDest>(she0, she1, she2, she3);
@@ -3384,8 +3384,8 @@ public:
             }
             std::tie(she0, she1, she2, she3) = simd::convert<float>::inverse<true>(she0, she1, she2, she3);
             if constexpr (Order == fft_order::bit_reversed) {
-                std::tie(e0, e1) = simd::unpack_128(she0, she1);
-                std::tie(e2, e3) = simd::unpack_128(she2, she3);
+                std::tie(e0, e1) = simd::avx2::unpack_128(she0, she1);
+                std::tie(e2, e3) = simd::avx2::unpack_128(she2, she3);
             } else {
                 std::tie(e0, e1, e2, e3) = std::tie(she0, she1, she2, she3);
             }
@@ -3395,10 +3395,10 @@ public:
             auto tw8 = simd::cxload<simd::reg<T>::size>(twiddle_ptr + simd::reg<T>::size * 2);
 
             if constexpr (Order == fft_order::bit_reversed) {
-                std::tie(e0, e1) = simd::unpack_ps(e0, e1);
-                std::tie(e2, e3) = simd::unpack_ps(e2, e3);
-                std::tie(e0, e1) = simd::unpack_pd(e0, e1);
-                std::tie(e2, e3) = simd::unpack_pd(e2, e3);
+                std::tie(e0, e1) = simd::avx2::unpack_ps(e0, e1);
+                std::tie(e2, e3) = simd::avx2::unpack_ps(e2, e3);
+                std::tie(e0, e1) = simd::avx2::unpack_pd(e0, e1);
+                std::tie(e2, e3) = simd::avx2::unpack_pd(e2, e3);
             }
             auto [shd0, shd1tw] = simd::ibtfly(e0, e1);
             auto [shd2, shd3tw] = simd::ibtfly(e2, e3);
@@ -3409,8 +3409,8 @@ public:
             auto tw5 = simd::cxload<simd::reg<T>::size>(twiddle_ptr);
             auto tw6 = simd::cxload<simd::reg<T>::size>(twiddle_ptr + simd::reg<T>::size * 2);
 
-            auto [d0, d1] = simd::unpack_ps(shd0, shd1);
-            auto [d2, d3] = simd::unpack_ps(shd2, shd3);
+            auto [d0, d1] = simd::avx2::unpack_ps(shd0, shd1);
+            auto [d2, d3] = simd::avx2::unpack_ps(shd2, shd3);
 
             auto [shc0, shc1tw] = simd::btfly(d0, d1);
             auto [shc2, shc3tw] = simd::btfly(d2, d3);
@@ -3421,8 +3421,8 @@ public:
             auto tw3 = simd::cxload<simd::reg<T>::size>(twiddle_ptr);
             auto tw4 = simd::cxload<simd::reg<T>::size>(twiddle_ptr + simd::reg<T>::size * 2);
 
-            auto [c0, c1] = simd::unpack_pd(shc0, shc1);
-            auto [c2, c3] = simd::unpack_pd(shc2, shc3);
+            auto [c0, c1] = simd::avx2::unpack_pd(shc0, shc1);
+            auto [c2, c3] = simd::avx2::unpack_pd(shc2, shc3);
 
             auto [shb0, shb1tw] = simd::btfly(c0, c1);
             auto [shb2, shb3tw] = simd::btfly(c2, c3);
@@ -3434,8 +3434,8 @@ public:
             reg_t tw2 = {simd::broadcast(twiddle_ptr + 4), simd::broadcast(twiddle_ptr + 5)};
             reg_t tw0 = {simd::broadcast(twiddle_ptr + 0), simd::broadcast(twiddle_ptr + 1)};
 
-            auto [b0, b1] = simd::unpack_128(shb0, shb1);
-            auto [b2, b3] = simd::unpack_128(shb2, shb3);
+            auto [b0, b1] = simd::avx2::unpack_128(shb0, shb1);
+            auto [b2, b3] = simd::avx2::unpack_128(shb2, shb3);
 
             auto [a0, a1tw] = simd::btfly(b0, b1);
             auto [a2, a3tw] = simd::btfly(b2, b3);
