@@ -123,8 +123,8 @@ inline auto mul(const cx_reg<Args> (&... args)[2]) {
         return reg_t{real, imag};
     };
 
-    auto tmp = detail_::apply_for_each(real_mul, tup);
-    return detail_::apply_for_each(imag_mul, tmp);
+    auto tmp = pcx::detail_::apply_for_each(real_mul, tup);
+    return pcx::detail_::apply_for_each(imag_mul, tmp);
 }
 }    // namespace simd
 

@@ -1,6 +1,7 @@
 #ifndef VECTOR_UTIL_HPP
 #define VECTOR_UTIL_HPP
 
+#include "simd_impl/avx2.hpp"
 #include "types.hpp"
 
 #include <algorithm>
@@ -12,8 +13,6 @@
 #include <immintrin.h>
 #include <new>
 #include <tuple>
-
-#include "simd_impl/avx2.hpp"
 
 namespace pcx {
 using f32 = float;
@@ -125,19 +124,19 @@ auto conj(cx_reg<T, Conj> reg) -> cx_reg<T, !Conj> {
  * @param args Variable number of complex simd vectors.
  * @return Tuple of invrsed simd complex vectors.
  */
-template<bool Inverse>
-inline auto inverse(auto... args) {
-    auto tup = std::make_tuple(args...);
-    if constexpr (Inverse) {
-        auto inverse = [](auto reg) {
-            using reg_t = decltype(reg);
-            return reg_t{reg.imag, reg.real};
-        };
-        return detail_::apply_for_each(inverse, tup);
-    } else {
-        return tup;
-    }
-};
+// template<bool Inverse>
+// inline auto inverse(auto... args) {
+//     auto tup = std::make_tuple(args...);
+//     if constexpr (Inverse) {
+//         auto inverse = [](auto reg) {
+//             using reg_t = decltype(reg);
+//             return reg_t{reg.imag, reg.real};
+//         };
+//         return detail_::apply_for_each(inverse, tup);
+//     } else {
+//         return tup;
+//     }
+// };
 
 /**
 * @brief Register aligned adress
@@ -282,13 +281,13 @@ struct convert<float> {
                     return cx_reg<float, false>({real, imag});
                 };
 
-                auto tmp = detail_::apply_for_each(swap_48, tup);
-                return detail_::apply_for_each(pack_1, tmp);
+                auto tmp = pcx::detail_::apply_for_each(swap_48, tup);
+                return pcx::detail_::apply_for_each(pack_1, tmp);
             } else if constexpr (PackTo == 4) {
-                auto tmp = detail_::apply_for_each(swap_12, tup);
-                return detail_::apply_for_each(swap_24, tmp);
+                auto tmp = pcx::detail_::apply_for_each(swap_12, tup);
+                return pcx::detail_::apply_for_each(swap_24, tmp);
             } else if constexpr (PackTo == 2) {
-                return detail_::apply_for_each(swap_12, tup);
+                return pcx::detail_::apply_for_each(swap_12, tup);
             }
         } else if constexpr (PackFrom == 2) {
             if constexpr (PackTo >= 8) {
@@ -297,21 +296,21 @@ struct convert<float> {
                     auto imag = unpackhi_pd(reg.real, reg.imag);
                     return cx_reg<float, false>({real, imag});
                 };
-                auto tmp = detail_::apply_for_each(swap_48, tup);
-                return detail_::apply_for_each(pack_1, tmp);
+                auto tmp = pcx::detail_::apply_for_each(swap_48, tup);
+                return pcx::detail_::apply_for_each(pack_1, tmp);
             } else if constexpr (PackTo == 4) {
-                return detail_::apply_for_each(swap_24, tup);
+                return pcx::detail_::apply_for_each(swap_24, tup);
             } else if constexpr (PackTo == 1) {
-                return detail_::apply_for_each(swap_12, tup);
+                return pcx::detail_::apply_for_each(swap_12, tup);
             }
         } else if constexpr (PackFrom == 4) {
             if constexpr (PackTo >= 8) {
-                return detail_::apply_for_each(swap_48, tup);
+                return pcx::detail_::apply_for_each(swap_48, tup);
             } else if constexpr (PackTo == 2) {
-                return detail_::apply_for_each(swap_24, tup);
+                return pcx::detail_::apply_for_each(swap_24, tup);
             } else if constexpr (PackTo == 1) {
-                auto tmp = detail_::apply_for_each(swap_24, tup);
-                return detail_::apply_for_each(swap_12, tmp);
+                auto tmp = pcx::detail_::apply_for_each(swap_24, tup);
+                return pcx::detail_::apply_for_each(swap_12, tmp);
             }
         } else if constexpr (PackFrom >= 8) {
             auto conj = []<bool Conj>(cx_reg<float, Conj> reg) {
@@ -322,20 +321,20 @@ struct convert<float> {
                     return reg;
                 }
             };
-            auto tup_ = detail_::apply_for_each(conj, tup);
+            auto tup_ = pcx::detail_::apply_for_each(conj, tup);
             if constexpr (PackTo == 4) {
-                return detail_::apply_for_each(swap_48, tup_);
+                return pcx::detail_::apply_for_each(swap_48, tup_);
             } else if constexpr (PackTo == 2) {
-                auto tmp = detail_::apply_for_each(swap_48, tup_);
-                return detail_::apply_for_each(swap_24, tmp);
+                auto tmp = pcx::detail_::apply_for_each(swap_48, tup_);
+                return pcx::detail_::apply_for_each(swap_24, tmp);
             } else if constexpr (PackTo == 1) {
                 auto pack_0 = [](cx_reg<float, false> reg) {
                     auto real = unpacklo_ps(reg.real, reg.imag);
                     auto imag = unpackhi_ps(reg.real, reg.imag);
                     return cx_reg<float, false>({real, imag});
                 };
-                auto tmp = detail_::apply_for_each(pack_0, tup_);
-                return detail_::apply_for_each(swap_48, tmp);
+                auto tmp = pcx::detail_::apply_for_each(pack_0, tup_);
+                return pcx::detail_::apply_for_each(swap_48, tmp);
             }
         }
     };
@@ -356,16 +355,16 @@ struct convert<float> {
                 auto imag = _mm256_shuffle_ps(reg.real, reg.imag, 0b11011101);
                 return cx_reg<float, Conj>({real, imag});
             };
-            return detail_::apply_for_each(split, tup);
+            return pcx::detail_::apply_for_each(split, tup);
         } else if constexpr (PackFrom == 2) {
             auto split = []<bool Conj>(cx_reg<float, Conj> reg) {
                 auto real = unpacklo_pd(reg.real, reg.imag);
                 auto imag = unpackhi_pd(reg.real, reg.imag);
                 return cx_reg<float, Conj>({real, imag});
             };
-            return detail_::apply_for_each(split, tup);
+            return pcx::detail_::apply_for_each(split, tup);
         } else if constexpr (PackFrom == 4) {
-            return detail_::apply_for_each(swap_48, tup);
+            return pcx::detail_::apply_for_each(swap_48, tup);
         } else {
             return tup;
         }
@@ -380,16 +379,16 @@ struct convert<float> {
                 auto imag = unpackhi_ps(reg.real, reg.imag);
                 return cx_reg<float, Conj>({real, imag});
             };
-            return detail_::apply_for_each(combine, tup);
+            return pcx::detail_::apply_for_each(combine, tup);
         } else if constexpr (PackTo == 2) {
             auto combine = []<bool Conj>(cx_reg<float, Conj> reg) {
                 auto real = unpacklo_pd(reg.real, reg.imag);
                 auto imag = unpackhi_pd(reg.real, reg.imag);
                 return cx_reg<float, Conj>({real, imag});
             };
-            return detail_::apply_for_each(combine, tup);
+            return pcx::detail_::apply_for_each(combine, tup);
         } else if constexpr (PackTo == 4) {
-            return detail_::apply_for_each(swap_48, tup);
+            return pcx::detail_::apply_for_each(swap_48, tup);
         } else {
             return tup;
         }
@@ -403,7 +402,7 @@ struct convert<float> {
                 using reg_t = decltype(reg);
                 return reg_t{reg.imag, reg.real};
             };
-            return detail_::apply_for_each(inverse, tup);
+            return pcx::detail_::apply_for_each(inverse, tup);
         } else {
             return tup;
         }
@@ -437,16 +436,16 @@ struct convert<double> {
                     auto imag = unpackhi_pd(reg.real, reg.imag);
                     return cx_reg<double, Conj>({real, imag});
                 };
-                auto tmp = detail_::apply_for_each(pack_1, tup);
-                return detail_::apply_for_each(swap_12, tmp);
+                auto tmp = pcx::detail_::apply_for_each(pack_1, tup);
+                return pcx::detail_::apply_for_each(swap_12, tmp);
             } else if constexpr (PackTo == 2) {
-                return detail_::apply_for_each(swap_12, tup);
+                return pcx::detail_::apply_for_each(swap_12, tup);
             }
         } else if constexpr (PackFrom == 2) {
             if constexpr (PackTo >= 4) {
-                return detail_::apply_for_each(swap_24, tup);
+                return pcx::detail_::apply_for_each(swap_24, tup);
             } else if constexpr (PackTo == 1) {
-                return detail_::apply_for_each(swap_12, tup);
+                return pcx::detail_::apply_for_each(swap_12, tup);
             }
         } else if constexpr (PackFrom >= 4) {
             auto conj = []<bool Conj>(cx_reg<double, Conj> reg) {
@@ -457,17 +456,17 @@ struct convert<double> {
                     return reg;
                 }
             };
-            auto tup_ = detail_::apply_for_each(conj, tup);
+            auto tup_ = pcx::detail_::apply_for_each(conj, tup);
             if constexpr (PackTo == 2) {
-                return detail_::apply_for_each(swap_24, tup_);
+                return pcx::detail_::apply_for_each(swap_24, tup_);
             } else if constexpr (PackTo == 1) {
                 auto pack_1 = []<bool Conj>(cx_reg<double, Conj> reg) {
                     auto real = unpacklo_pd(reg.real, reg.imag);
                     auto imag = unpackhi_pd(reg.real, reg.imag);
                     return cx_reg<double, Conj>({real, imag});
                 };
-                auto tmp = detail_::apply_for_each(pack_1, tup_);
-                return detail_::apply_for_each(swap_24, tmp);
+                auto tmp = pcx::detail_::apply_for_each(pack_1, tup_);
+                return pcx::detail_::apply_for_each(swap_24, tmp);
             }
         }
     };
@@ -492,7 +491,7 @@ struct convert<double> {
                 using reg_t = decltype(reg);
                 return reg_t{reg.imag, reg.real};
             };
-            return detail_::apply_for_each(inverse, tup);
+            return pcx::detail_::apply_for_each(inverse, tup);
         } else {
             return tup;
         }

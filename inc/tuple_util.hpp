@@ -4,7 +4,7 @@
 #include "types.hpp"
 
 #include <tuple>
-
+#include <algorithm>
 
 namespace pcx::detail_ {
 

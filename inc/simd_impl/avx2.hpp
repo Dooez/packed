@@ -1,7 +1,7 @@
 #ifndef AVX2_HPP
 #define AVX2_HPP
 
-#include "simd_base.hpp"
+#include "simd_common.hpp"
 
 #include <immintrin.h>
 
@@ -33,11 +33,11 @@ struct simd_traits<reg_t<double>> {
 
 
 template<>
-inline auto setzero<float>() -> reg_t<float> {
+inline auto zero<float>() -> reg_t<float> {
     return _mm256_setzero_ps();
 };
 template<>
-inline auto setzero<double>() -> reg_t<double> {
+inline auto zero<double>() -> reg_t<double> {
     return _mm256_setzero_pd();
 };
 inline auto broadcast(const float* source) -> reg_t<float> {
@@ -75,8 +75,7 @@ template<uZ PackSize, typename T, bool Conj>
 inline void cxstore(T* ptr, cx_reg<T, Conj> reg) {
     store(ptr, reg.real);
     if constexpr (Conj) {
-        auto zero = setzero<T>();
-        store(ptr + PackSize, simd::sub(zero, reg.imag));
+        store(ptr + PackSize, simd::sub(zero<T>(), reg.imag));
     } else {
         store(ptr + PackSize, reg.imag);
     }

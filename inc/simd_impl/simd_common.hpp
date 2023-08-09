@@ -1,5 +1,5 @@
-#ifndef SIMD_BASE_HPP
-#define SIMD_BASE_HPP
+#ifndef SIMD_COMMON_HPP
+#define SIMD_COMMON_HPP
 
 #include "tuple_util.hpp"
 #include "types.hpp"
@@ -20,7 +20,7 @@ template<typename T>
 concept simd_vector = simd_traits<T>::size != 0;
 
 template<typename T>
-inline auto setzero() -> reg_t<T>;
+inline auto zero() -> reg_t<T>;
 template<typename T>
 inline auto broadcast(const T* source) -> reg_t<T>;
 template<typename T>
@@ -52,12 +52,24 @@ inline auto repack(auto... args);
  * @return Tuple of invrsed simd complex vectors.
  */
 template<bool Inverse>
-inline auto inverse(auto... args);
+inline auto inverse(auto... args) {
+    auto tup = std::make_tuple(args...);
+    if constexpr (Inverse) {
+        auto inverse = [](auto reg) {
+            using reg_t = decltype(reg);
+            return reg_t{reg.imag, reg.real};
+        };
+        return detail_::apply_for_each(inverse, tup);
+    } else {
+        return tup;
+    }
+};
 
 /*
  * Simd specific arithmetic declarations.
  * Declaring with templates because simd vector register is
  * not defined at this point yet.
+ * Architecture specific definitions must be defined.
  */
 
 /**/
@@ -79,6 +91,10 @@ inline auto fnmadd(Reg a, Reg b, Reg c) -> Reg;
 template<simd_vector Reg>
 inline auto fnmsub(Reg a, Reg b, Reg c) -> Reg;
 
+/*
+ * Implementation provided below.
+ */
+/**/
 template<typename T, bool ConjLhs, bool ConjRhs>
 inline auto add(cx_reg<T, ConjLhs> lhs, cx_reg<T, ConjRhs> rhs);
 template<typename T, bool ConjLhs, bool ConjRhs>
@@ -105,7 +121,7 @@ template<typename T, bool... Conj>
     requires(sizeof...(Conj) % 2 == 0)
 inline auto div_pairs(cx_reg<T, Conj>... args);
 
-// Complex arithmetic imlpementation
+// Imlpementations
 
 template<typename T, bool Conj>
 inline auto add(cx_reg<T, Conj> lhs, cx_reg<T, Conj> rhs) -> cx_reg<T, Conj> {
@@ -136,6 +152,34 @@ template<typename T>
 inline auto sub(cx_reg<T, true> lhs, cx_reg<T, true> rhs) -> cx_reg<T, false> {
     return {sub(lhs.real, rhs.real), sub(rhs.imag, lhs.imag)};
 }
+
+namespace detail_ {
+
+template<typename T, bool ConjLhs, bool ConjRhs>
+inline auto mul_real_rhs(cx_reg<T, ConjLhs> lhs, cx_reg<T, ConjRhs> rhs) -> cx_reg<T, false> {
+    return {mul(lhs.real, rhs.real), mul(lhs.real, rhs.imag)};
+};
+template<typename T>
+inline auto mul_imag_rhs(cx_reg<T, false> prod_real_rhs, cx_reg<T, false> lhs, cx_reg<T, false> rhs)
+    -> cx_reg<T, false> {
+    return {fnmadd(lhs.imag, rhs.imag, prod_real_rhs.real), fmadd(lhs.imag, rhs.real, prod_real_rhs.imag)};
+}
+template<typename T>
+inline auto mul_imag_rhs(cx_reg<T, false> prod_real_rhs, cx_reg<T, true> lhs, cx_reg<T, false> rhs)
+    -> cx_reg<T, false> {
+    return {fmadd(lhs.imag, rhs.imag, prod_real_rhs.real), fnmadd(lhs.imag, rhs.real, prod_real_rhs.imag)};
+}
+template<typename T>
+inline auto mul_imag_rhs(cx_reg<T, false> prod_real_rhs, cx_reg<T, false> lhs, cx_reg<T, true> rhs)
+    -> cx_reg<T, false> {
+    return {fmadd(lhs.imag, rhs.imag, prod_real_rhs.real), fmsub(lhs.imag, rhs.real, prod_real_rhs.imag)};
+}
+template<typename T>
+inline auto mul_imag_rhs(cx_reg<T, false> prod_real_rhs, cx_reg<T, true> lhs, cx_reg<T, true> rhs)
+    -> cx_reg<T, false> {
+    return {fnmadd(lhs.imag, rhs.imag, prod_real_rhs.real), fnmsub(lhs.imag, rhs.real, prod_real_rhs.imag)};
+}
+}    // namespace detail_
 
 template<typename T>
 inline auto mul(cx_reg<T, false> lhs, cx_reg<T, false> rhs) -> cx_reg<T, false> {
@@ -220,8 +264,7 @@ inline auto sub(reg_t<T> lhs, cx_reg<T, Conj> rhs) -> cx_reg<T, false> {
     if constexpr (Conj) {
         return {sub(lhs, rhs.real), rhs.imag};
     } else {
-        auto zero = setzero<T>();
-        return {sub(lhs, rhs.real), sub(zero, rhs.imag)};
+        return {sub(lhs, rhs.real), sub(zero<T>(), rhs.imag)};
     }
 }
 template<typename T, bool Conj>
@@ -236,8 +279,7 @@ inline auto div(reg_t<T> lhs, cx_reg<T, Conj> rhs) -> cx_reg<T, false> {
     if constexpr (Conj) {
         imag_ = mul(lhs, rhs.imag);
     } else {
-        auto zero = setzero<T>();
-        imag_     = mul(lhs, sub(zero, rhs.imag));
+        imag_ = mul(lhs, sub(zero<T>(), rhs.imag));
     }
     rhs_abs = fmadd(rhs.imag, rhs.imag, rhs_abs);
 
