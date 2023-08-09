@@ -42,8 +42,9 @@ inline void cxstore(T* ptr, cx_reg<T, Conj> reg);
  * @param args Variable number of complex simd vectors.
  * @return Tuple of repacked complex simd vectors in the order of passing.
  */
-template<uZ PackFrom, uZ PackTo>
-inline auto repack(auto... args);
+template<uZ PackFrom, uZ PackTo, typename T, bool... Conj>
+    requires(!(Conj || ...))
+inline auto repack(cx_reg<T, Conj>... args);
 
 /**
  * @brief Conditionaly swaps real and imaginary parts of complex simd vectors.
@@ -156,7 +157,6 @@ inline auto sub(cx_reg<T, true> lhs, cx_reg<T, true> rhs) -> cx_reg<T, false> {
 }
 
 namespace detail_ {
-
 template<typename T, bool ConjLhs, bool ConjRhs>
 inline auto mul_real_rhs(cx_reg<T, ConjLhs> lhs, cx_reg<T, ConjRhs> rhs) -> cx_reg<T, false> {
     return {mul(lhs.real, rhs.real), mul(lhs.real, rhs.imag)};
@@ -189,7 +189,6 @@ inline auto mul(cx_reg<T, ConjLhs> lhs, cx_reg<T, ConjRhs> rhs) {
 };
 
 namespace detail_ {
-
 template<uZ... I>
 inline auto make_pair_of_tuples_(auto&& tuple, std::index_sequence<I...>) {
     return std::make_tuple(std::make_tuple(std::get<I * 2>(tuple)...),

@@ -250,8 +250,9 @@ struct node<4> {
             p0 = simd::cxload<PLoad>(dest[data_idx[0]]);
             p1 = simd::cxload<PLoad>(dest[data_idx[1]]);
         }
-        std::tie(p2, p3, p0, p1) = simd::convert<T>::template repack<PSrc, PLoad>(p2, p3, p0, p1);
-        std::tie(p2, p3, p0, p1) = simd::convert<T>::template inverse<Inverse>(p2, p3, p0, p1);
+        // std::tie(p2, p3, p0, p1) = simd::convert<T>::template repack<PSrc, PLoad>(p2, p3, p0, p1)
+        std::tie(p2, p3, p0, p1) = simd::repack<PSrc, PLoad>(p2, p3, p0, p1);
+        std::tie(p2, p3, p0, p1) = simd::inverse<Inverse>(p2, p3, p0, p1);
         // NOLINTNEXTLINE(*-declaration)
         simd::cx_reg<T> b0, b1, b2, b3;
         if constexpr (Tw) {

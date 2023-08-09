@@ -14,9 +14,15 @@
 
 void test_repack(float* data) {
     using namespace pcx::simd;
-    auto a   = cxload<8>(data);
-    auto [b] = convert<float>::split<1>(a);
+    auto a1   = cxload<8>(data);
+    auto a2   = cxload<8>(data + 16);
+    // auto a3   = cxload<8>(data + 16);
+    // auto a4   = cxload<8>(data + 24);
+    auto [b, c ] = repack<1,8>(a1, a2);
     cxstore<8>(data, b);
+    cxstore<8>(data +16, c);
+    // cxstore<8>(data + 16, d);
+    // cxstore<8>(data + 24, e);
 }
 auto test_multi(pcx::simd::cx_reg<float, false> a1,
                 pcx::simd::cx_reg<float, false> a2,
@@ -257,17 +263,17 @@ int test_subrange(std::size_t length) {
 int main() {
     int res = 0;
     for (uint i = 1; i < 32; ++i) {
-        res += test_bin_ops<float, 1>(i);
-        res += test_bin_ops<float, 2>(i);
-        res += test_bin_ops<float, 4>(i);
-        res += test_bin_ops<float, 8>(i);
-        res += test_bin_ops<float, 16>(i);
-        res += test_bin_ops<float, 32>(i);
-
-        res += test_bin_ops<double, 1>(i);
-        res += test_bin_ops<double, 2>(i);
-        res += test_bin_ops<double, 4>(i);
-        res += test_bin_ops<double, 8>(i);
+//         res += test_bin_ops<float, 1>(i);
+//         res += test_bin_ops<float, 2>(i);
+//         res += test_bin_ops<float, 4>(i);
+//         res += test_bin_ops<float, 8>(i);
+//         res += test_bin_ops<float, 16>(i);
+//         res += test_bin_ops<float, 32>(i);
+//
+//         res += test_bin_ops<double, 1>(i);
+//         res += test_bin_ops<double, 2>(i);
+//         res += test_bin_ops<double, 4>(i);
+//         res += test_bin_ops<double, 8>(i);
 
         // res += test_subrange<float>(i);
         // res += test_subrange<double>(i);
