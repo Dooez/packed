@@ -263,17 +263,17 @@ int test_subrange(std::size_t length) {
 int main() {
     int res = 0;
     for (uint i = 1; i < 32; ++i) {
-//         res += test_bin_ops<float, 1>(i);
-//         res += test_bin_ops<float, 2>(i);
-//         res += test_bin_ops<float, 4>(i);
-//         res += test_bin_ops<float, 8>(i);
-//         res += test_bin_ops<float, 16>(i);
-//         res += test_bin_ops<float, 32>(i);
-//
-//         res += test_bin_ops<double, 1>(i);
-//         res += test_bin_ops<double, 2>(i);
-//         res += test_bin_ops<double, 4>(i);
-//         res += test_bin_ops<double, 8>(i);
+        res += test_bin_ops<float, 1>(i);
+        res += test_bin_ops<float, 2>(i);
+        res += test_bin_ops<float, 4>(i);
+        res += test_bin_ops<float, 8>(i);
+        res += test_bin_ops<float, 16>(i);
+        res += test_bin_ops<float, 32>(i);
+
+        // res += test_bin_ops<double, 1>(i);
+        // res += test_bin_ops<double, 2>(i);
+        // res += test_bin_ops<double, 4>(i);
+        // res += test_bin_ops<double, 8>(i);
 
         // res += test_subrange<float>(i);
         // res += test_subrange<double>(i);

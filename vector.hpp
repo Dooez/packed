@@ -199,11 +199,11 @@ public:
             auto ptr          = &(*it_this);
             for (uint i = 0; i < aligned_size; ++i) {
                 for (uint i_reg = 0; i_reg < store_size; i_reg += reg_size) {
-                    auto offset    = i * store_size + i_reg;
-                    auto data_     = detail_::expression_traits::cx_reg<pack_size_expr>(it_expr, offset);
-                    auto data      = simd::apply_conj<pack_size_expr>(data_);
-                    std::tie(data) = simd::repack<pack_size_expr, pack_size>(data);
-                    simd::cxstore<store_size>(simd::ra_addr<store_size>(ptr, offset), data);
+                    auto offset  = i * store_size + i_reg;
+                    auto data_   = detail_::expression_traits::cx_reg<pack_size_expr>(it_expr, offset);
+                    auto data    = simd::apply_conj(data_);
+                    auto [data2] = simd::repack2<pack_size>(data);
+                    simd::cxstore<pack_size>(simd::ra_addr<store_size>(ptr, offset), data2);
                 }
             }
             it_this += aligned_size * store_size;
@@ -785,11 +785,11 @@ public:
             auto ptr          = &(*it_this);
             for (uint i = 0; i < aligned_size; ++i) {
                 for (uint i_reg = 0; i_reg < store_size; i_reg += reg_size) {
-                    auto offset    = i * store_size + i_reg;
-                    auto data_     = detail_::expression_traits::cx_reg<pack_size_expr>(it_expr, offset);
-                    auto data      = simd::apply_conj<pack_size_expr>(data_);
-                    std::tie(data) = simd::repack<pack_size_expr, pack_size>(data);
-                    simd::cxstore<store_size>(simd::ra_addr<store_size>(ptr, offset), data);
+                    auto offset  = i * store_size + i_reg;
+                    auto data_   = detail_::expression_traits::cx_reg<pack_size_expr>(it_expr, offset);
+                    auto data    = simd::apply_conj(data_);
+                    auto [data2] = simd::repack2<pack_size>(data);
+                    simd::cxstore<pack_size>(simd::ra_addr<store_size>(ptr, offset), data2);
                 }
             }
             it_this += aligned_size * store_size;

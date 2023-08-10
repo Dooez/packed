@@ -1,6 +1,7 @@
 #ifndef TYPES_HPP
 #define TYPES_HPP
 
+#include <concepts>
 #include <cstdint>
 
 namespace pcx {
@@ -36,7 +37,7 @@ using reg_t = typename reg<T>::type;
  * Pack size template parameter could be added to streamline some interactons,
  * but it requires possibly quite large refactor. Should consider in the future.
  */
-template<typename T, bool Conj = false>
+template<typename T, bool Conj = false, uZ PackSize = std::same_as<T, float> ? 8 : 4>
 struct cx_reg {
     reg_t<T>            real;
     reg_t<T>            imag;

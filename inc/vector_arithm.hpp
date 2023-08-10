@@ -142,7 +142,7 @@ struct expression_traits {
     template<std::size_t PackSize, typename I>
     [[nodiscard]] static constexpr auto cx_reg(const I& iterator, std::size_t offset) {
         auto data    = iterator.cx_reg(offset);
-        auto [data_] = simd::repack<I::pack_size, PackSize>(data);
+        auto [data_] = simd::repack2<PackSize>(data);
         return data_;
     }
     /**
@@ -152,14 +152,14 @@ struct expression_traits {
      * @param iterator  must be aligned
      * @param offset    must be a multiple of SIMD vector size
      */
-    template<std::size_t PackSize, typename T, bool Const, std::size_t IPackSize>
+    template<std::size_t PackSize, typename T, bool Const, uZ IPackSize>
     [[nodiscard]] static constexpr auto cx_reg(const iterator<T, Const, IPackSize>& iterator,
                                                std::size_t                          offset) {
         constexpr auto PLoad = std::max(simd::reg<T>::size, IPackSize);
 
-        auto addr      = simd::ra_addr<IPackSize>(&(*iterator), offset);
-        auto data      = simd::cxload<PLoad>(addr);
-        std::tie(data) = simd::repack<IPackSize, PackSize>(data);
+        auto addr   = simd::ra_addr<PLoad>(&(*iterator), offset);
+        auto data_  = simd::cxload<IPackSize>(addr);
+        auto [data] = simd::repack2<PackSize>(data_);
         return data;
     }
 
@@ -1769,8 +1769,8 @@ inline auto operator/(const vector<T, PackSize, Allocator>& vector, const E& exp
 };
 
 template<typename T, std::size_t PackSize, typename Allocator>
-    requires packed_floating_point<T, PackSize> &&
-             requires(subrange<T, false, PackSize> subrange) { conj(subrange); }
+    requires packed_floating_point<T, PackSize>    // &&
+//  requires(subrange<T, false, PackSize> subrange) { conj(subrange); }
 inline auto conj(const vector<T, PackSize, Allocator>& vector) {
     return conj(subrange(vector.begin(), vector.size()));
 };
