@@ -31,6 +31,11 @@ struct reg;
 template<typename T>
 using reg_t = typename reg<T>::type;
 
+/**
+ * @brief Complex simd vector.
+ * Pack size template parameter could be added to streamline some interactons,
+ * but it requires possibly quite large refactor. Should consider in the future.
+ */
 template<typename T, bool Conj = false>
 struct cx_reg {
     reg_t<T>            real;

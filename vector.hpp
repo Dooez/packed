@@ -1,5 +1,6 @@
 #ifndef PCX_VECTOR_HPP
 #define PCX_VECTOR_HPP
+#include "avx2.hpp"
 #include "vector_arithm.hpp"
 #include "vector_util.hpp"
 
@@ -188,6 +189,8 @@ public:
         auto it_this = begin();
         auto it_expr = other.begin();
 
+        constexpr auto pack_size_expr = decltype(it_expr)::pack_size;
+
         if (it_expr.aligned()) {
             constexpr auto reg_size   = 32 / sizeof(T);
             constexpr auto store_size = std::max(reg_size, pack_size);
@@ -196,8 +199,10 @@ public:
             auto ptr          = &(*it_this);
             for (uint i = 0; i < aligned_size; ++i) {
                 for (uint i_reg = 0; i_reg < store_size; i_reg += reg_size) {
-                    auto offset = i * store_size + i_reg;
-                    auto data   = detail_::expression_traits::cx_reg<pack_size>(it_expr, offset);
+                    auto offset    = i * store_size + i_reg;
+                    auto data_     = detail_::expression_traits::cx_reg<pack_size_expr>(it_expr, offset);
+                    auto data      = simd::apply_conj<pack_size_expr>(data_);
+                    std::tie(data) = simd::repack<pack_size_expr, pack_size>(data);
                     simd::cxstore<store_size>(simd::ra_addr<store_size>(ptr, offset), data);
                 }
             }
@@ -678,7 +683,7 @@ public:
 
     template<typename VAllocator>
     explicit subrange(const vector<real_type, pack_size, VAllocator>& vector) noexcept
-        requires (Const)
+        requires(Const)
     : m_begin(vector.begin())
     , m_size(vector.size()){};
 
@@ -770,6 +775,7 @@ public:
             ++it_this;
             ++it_expr;
         }
+        constexpr auto pack_size_expr = decltype(it_expr)::pack_size;
 
         if (it_this.aligned() && it_expr.aligned()) {
             constexpr auto reg_size   = 32 / sizeof(T);
@@ -779,8 +785,10 @@ public:
             auto ptr          = &(*it_this);
             for (uint i = 0; i < aligned_size; ++i) {
                 for (uint i_reg = 0; i_reg < store_size; i_reg += reg_size) {
-                    auto offset = i * store_size + i_reg;
-                    auto data   = detail_::expression_traits::cx_reg<pack_size>(it_expr, offset);
+                    auto offset    = i * store_size + i_reg;
+                    auto data_     = detail_::expression_traits::cx_reg<pack_size_expr>(it_expr, offset);
+                    auto data      = simd::apply_conj<pack_size_expr>(data_);
+                    std::tie(data) = simd::repack<pack_size_expr, pack_size>(data);
                     simd::cxstore<store_size>(simd::ra_addr<store_size>(ptr, offset), data);
                 }
             }

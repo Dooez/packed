@@ -142,7 +142,7 @@ struct expression_traits {
     template<std::size_t PackSize, typename I>
     [[nodiscard]] static constexpr auto cx_reg(const I& iterator, std::size_t offset) {
         auto data    = iterator.cx_reg(offset);
-        auto [data_] = simd::convert<typename I::real_type>::template repack<I::pack_size, PackSize>(data);
+        auto [data_] = simd::repack<I::pack_size, PackSize>(data);
         return data_;
     }
     /**
@@ -159,7 +159,7 @@ struct expression_traits {
 
         auto addr      = simd::ra_addr<IPackSize>(&(*iterator), offset);
         auto data      = simd::cxload<PLoad>(addr);
-        std::tie(data) = simd::convert<T>::template repack<IPackSize, PackSize>(data);
+        std::tie(data) = simd::repack<IPackSize, PackSize>(data);
         return data;
     }
 

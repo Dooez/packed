@@ -35,15 +35,31 @@ template<typename T>
 inline auto broadcast(std::complex<T> source) -> cx_reg<T, false>;
 template<uZ PackSize, typename T>
 inline auto cxload(const T* ptr) -> cx_reg<T, false>;
-template<uZ PackSize, typename T, bool Conj>
-inline void cxstore(T* ptr, cx_reg<T, Conj> reg);
+template<uZ PackSize, typename T>
+inline void cxstore(T* ptr, cx_reg<T, false> reg);
+
+/**
+ * @brief Should not be used
+ *
+ * @tparam T
+ * @tparam Conj
+ * @param reg
+ * @return cx_reg<T, !Conj>
+ */
+template<typename T, bool Conj>
+auto conj(cx_reg<T, Conj> reg) -> cx_reg<T, !Conj> {
+    return {reg.real, reg.imag};
+}
+
+template<typename T, uZ PackSize, bool Conj_>
+auto apply_conj(cx_reg<T, Conj_> reg) -> cx_reg<T, false>;
 
 /**
  * @param args Variable number of complex simd vectors.
  * @return Tuple of repacked complex simd vectors in the order of passing.
  */
 template<uZ PackFrom, uZ PackTo, typename T, bool... Conj>
-    requires(!(Conj || ...))
+    requires((PackFrom > 0) && (PackTo > 0))
 inline auto repack(cx_reg<T, Conj>... args);
 
 /**
@@ -53,8 +69,8 @@ inline auto repack(cx_reg<T, Conj>... args);
  * @param args Variable number of complex simd vectors.
  * @return Tuple of invrsed simd complex vectors.
  */
-template<bool Inverse>
-inline auto inverse(auto... args) {
+template<bool Inverse = true, typename... T>
+inline auto inverse(cx_reg<T, false>... args) {
     auto tup = std::make_tuple(args...);
     if constexpr (Inverse) {
         auto inverse = [](auto reg) {
@@ -66,7 +82,6 @@ inline auto inverse(auto... args) {
         return tup;
     }
 };
-
 /*
  * Simd specific arithmetic declarations.
  * Declaring with templates because simd vector register is
@@ -95,6 +110,8 @@ inline auto fnmsub(Reg a, Reg b, Reg c) -> Reg;
 
 /*
  * Implementation provided below.
+ * Operation on complex conjugate vectors are only valid
+ * if data pack size is greater or equal to simd vecor size.
  */
 /**/
 template<typename T, bool ConjLhs, bool ConjRhs>

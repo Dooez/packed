@@ -36,13 +36,13 @@ constexpr const std::size_t default_pack_size = 32 / sizeof(T);
 
 constexpr const std::size_t dynamic_size = -1;
 
-template<std::size_t N>
-concept power_of_two = N > 0 && (N & (N - 1)) == 0;
+template<uZ N>
+concept pack_size = N > 0 && (N & (N - 1)) == 0;
 
-template<typename T, std::size_t PackSize>
-concept packed_floating_point = std::floating_point<T> && power_of_two<PackSize>;
+template<typename T, uZ PackSize>
+concept packed_floating_point = std::floating_point<T> && pack_size<PackSize>;
 
-template<typename T, std::size_t PackSize, typename Allocator>
+template<typename T, uZ PackSize, typename Allocator>
     requires packed_floating_point<T, PackSize>
 class vector;
 
@@ -109,10 +109,10 @@ bool operator!=(const aligned_allocator<T, Alignment>&, const aligned_allocator<
 
 namespace simd {
 
-template<typename T, bool Conj>
-auto conj(cx_reg<T, Conj> reg) -> cx_reg<T, !Conj> {
-    return {reg.real, reg.imag};
-}
+// template<typename T, bool Conj>
+// auto conj(cx_reg<T, Conj> reg) -> cx_reg<T, !Conj> {
+//     return {reg.real, reg.imag};
+// }
 
 /**
 * @brief Register aligned adress
@@ -152,99 +152,10 @@ struct convert;
 
 template<>
 struct convert<float> {
-    static constexpr auto swap_12 = [](cx_reg<float, false> reg) {
-        auto real = _mm256_shuffle_ps(reg.real, reg.real, 0b11011000);
-        auto imag = _mm256_shuffle_ps(reg.imag, reg.imag, 0b11011000);
-        return cx_reg<float, false>({real, imag});
-    };
-
-    static constexpr auto swap_24 = [](cx_reg<float, false> reg) {
-        auto real = _mm256_permute4x64_pd(_mm256_castps_pd(reg.real), 0b11011000);
-        auto imag = _mm256_permute4x64_pd(_mm256_castps_pd(reg.imag), 0b11011000);
-        return cx_reg<float, false>({_mm256_castpd_ps(real), _mm256_castpd_ps(imag)});
-    };
-
     static constexpr auto swap_48 = [](cx_reg<float, false> reg) {
         auto real = avx2::unpacklo_128(reg.real, reg.imag);
         auto imag = avx2::unpackhi_128(reg.real, reg.imag);
         return cx_reg<float, false>({real, imag});
-    };
-
-    /**
-     * @brief Shuffles data to convert from PackFrom to PackTo pack size;
-     *
-     * @param args arbitrary number of cx_reg<T>
-     */
-    template<std::size_t PackFrom, std::size_t PackTo>
-        requires(PackFrom > 0) && (PackTo > 0)
-    static inline auto repack(auto... args) {
-        auto tup = std::make_tuple(args...);
-        if constexpr (PackFrom == PackTo || (PackFrom >= 8 && PackTo >= 8)) {
-            return tup;
-        } else if constexpr (PackFrom == 1) {
-            if constexpr (PackTo >= 8) {
-                auto pack_1 = [](cx_reg<float, false> reg) {
-                    auto real = _mm256_shuffle_ps(reg.real, reg.imag, 0b10001000);
-                    auto imag = _mm256_shuffle_ps(reg.real, reg.imag, 0b11011101);
-                    return cx_reg<float, false>({real, imag});
-                };
-
-                auto tmp = pcx::detail_::apply_for_each(swap_48, tup);
-                return pcx::detail_::apply_for_each(pack_1, tmp);
-            } else if constexpr (PackTo == 4) {
-                auto tmp = pcx::detail_::apply_for_each(swap_12, tup);
-                return pcx::detail_::apply_for_each(swap_24, tmp);
-            } else if constexpr (PackTo == 2) {
-                return pcx::detail_::apply_for_each(swap_12, tup);
-            }
-        } else if constexpr (PackFrom == 2) {
-            if constexpr (PackTo >= 8) {
-                auto pack_1 = [](cx_reg<float, false> reg) {
-                    auto real = avx2::unpacklo_pd(reg.real, reg.imag);
-                    auto imag = avx2::unpackhi_pd(reg.real, reg.imag);
-                    return cx_reg<float, false>({real, imag});
-                };
-                auto tmp = pcx::detail_::apply_for_each(swap_48, tup);
-                return pcx::detail_::apply_for_each(pack_1, tmp);
-            } else if constexpr (PackTo == 4) {
-                return pcx::detail_::apply_for_each(swap_24, tup);
-            } else if constexpr (PackTo == 1) {
-                return pcx::detail_::apply_for_each(swap_12, tup);
-            }
-        } else if constexpr (PackFrom == 4) {
-            if constexpr (PackTo >= 8) {
-                return pcx::detail_::apply_for_each(swap_48, tup);
-            } else if constexpr (PackTo == 2) {
-                return pcx::detail_::apply_for_each(swap_24, tup);
-            } else if constexpr (PackTo == 1) {
-                auto tmp = pcx::detail_::apply_for_each(swap_24, tup);
-                return pcx::detail_::apply_for_each(swap_12, tmp);
-            }
-        } else if constexpr (PackFrom >= 8) {
-            auto conj = []<bool Conj>(cx_reg<float, Conj> reg) {
-                if constexpr (Conj) {
-                    auto zero = _mm256_setzero_ps();
-                    return cx_reg<float, false>{reg.real, _mm256_sub_ps(zero, reg.imag)};
-                } else {
-                    return reg;
-                }
-            };
-            auto tup_ = pcx::detail_::apply_for_each(conj, tup);
-            if constexpr (PackTo == 4) {
-                return pcx::detail_::apply_for_each(swap_48, tup_);
-            } else if constexpr (PackTo == 2) {
-                auto tmp = pcx::detail_::apply_for_each(swap_48, tup_);
-                return pcx::detail_::apply_for_each(swap_24, tmp);
-            } else if constexpr (PackTo == 1) {
-                auto pack_0 = [](cx_reg<float, false> reg) {
-                    auto real = simd::avx2::unpacklo_ps(reg.real, reg.imag);
-                    auto imag = simd::avx2::unpackhi_ps(reg.real, reg.imag);
-                    return cx_reg<float, false>({real, imag});
-                };
-                auto tmp = pcx::detail_::apply_for_each(pack_0, tup_);
-                return pcx::detail_::apply_for_each(swap_48, tmp);
-            }
-        }
     };
 
     /**
@@ -301,110 +212,8 @@ struct convert<float> {
             return tup;
         }
     }
-
-    template<bool Inverse = true>
-    static inline auto inverse(auto... args) {
-        auto tup = std::make_tuple(args...);
-        if constexpr (Inverse) {
-            auto inverse = [](auto reg) {
-                using reg_t = decltype(reg);
-                return reg_t{reg.imag, reg.real};
-            };
-            return pcx::detail_::apply_for_each(inverse, tup);
-        } else {
-            return tup;
-        }
-    };
 };
 
-template<>
-struct convert<double> {
-    static constexpr auto swap_12 = []<bool Conj>(cx_reg<double, Conj> reg) {
-        auto real = _mm256_permute4x64_pd(reg.real, 0b11011000);
-        auto imag = _mm256_permute4x64_pd(reg.imag, 0b11011000);
-        return cx_reg<double, Conj>({real, imag});
-    };
-
-    static constexpr auto swap_24 = []<bool Conj>(cx_reg<double, Conj> reg) {
-        auto real = avx2::unpacklo_128(reg.real, reg.imag);
-        auto imag = avx2::unpackhi_128(reg.real, reg.imag);
-        return cx_reg<double, Conj>({real, imag});
-    };
-
-    template<std::size_t PackFrom, std::size_t PackTo>
-        requires(PackFrom > 0) && (PackTo > 0)
-    static inline auto repack(auto... args) {
-        auto tup = std::make_tuple(args...);
-        if constexpr (PackFrom == PackTo || (PackFrom >= 4 && PackTo >= 4)) {
-            return tup;
-        } else if constexpr (PackFrom == 1) {
-            if constexpr (PackTo >= 4) {
-                auto pack_1 = []<bool Conj>(cx_reg<double, Conj> reg) {
-                    auto real = avx2::unpacklo_pd(reg.real, reg.imag);
-                    auto imag = avx2::unpackhi_pd(reg.real, reg.imag);
-                    return cx_reg<double, Conj>({real, imag});
-                };
-                auto tmp = pcx::detail_::apply_for_each(pack_1, tup);
-                return pcx::detail_::apply_for_each(swap_12, tmp);
-            } else if constexpr (PackTo == 2) {
-                return pcx::detail_::apply_for_each(swap_12, tup);
-            }
-        } else if constexpr (PackFrom == 2) {
-            if constexpr (PackTo >= 4) {
-                return pcx::detail_::apply_for_each(swap_24, tup);
-            } else if constexpr (PackTo == 1) {
-                return pcx::detail_::apply_for_each(swap_12, tup);
-            }
-        } else if constexpr (PackFrom >= 4) {
-            auto conj = []<bool Conj>(cx_reg<double, Conj> reg) {
-                if constexpr (Conj) {
-                    auto zero = _mm256_setzero_pd();
-                    return cx_reg<double, false>{reg.real, _mm256_sub_pd(zero, reg.imag)};
-                } else {
-                    return reg;
-                }
-            };
-            auto tup_ = pcx::detail_::apply_for_each(conj, tup);
-            if constexpr (PackTo == 2) {
-                return pcx::detail_::apply_for_each(swap_24, tup_);
-            } else if constexpr (PackTo == 1) {
-                auto pack_1 = []<bool Conj>(cx_reg<double, Conj> reg) {
-                    auto real = avx2::unpacklo_pd(reg.real, reg.imag);
-                    auto imag = avx2::unpackhi_pd(reg.real, reg.imag);
-                    return cx_reg<double, Conj>({real, imag});
-                };
-                auto tmp = pcx::detail_::apply_for_each(pack_1, tup_);
-                return pcx::detail_::apply_for_each(swap_24, tmp);
-            }
-        }
-    };
-
-    template<std::size_t PackFrom>
-    static inline auto split(auto... args) {
-        auto tup = std::make_tuple(args...);
-        { return tup; }
-    }
-
-    template<std::size_t PackTo>
-    static inline auto combine(auto... args) {
-        auto tup = std::make_tuple(args...);
-        { return tup; }
-    }
-
-    template<bool Inverse = true>
-    static inline auto inverse(auto... args) {
-        auto tup = std::make_tuple(args...);
-        if constexpr (Inverse) {
-            auto inverse = [](auto reg) {
-                using reg_t = decltype(reg);
-                return reg_t{reg.imag, reg.real};
-            };
-            return pcx::detail_::apply_for_each(inverse, tup);
-        } else {
-            return tup;
-        }
-    };
-};
 }    // namespace simd
 
 template<typename T, bool Const, std::size_t PackSize>

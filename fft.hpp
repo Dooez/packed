@@ -186,8 +186,8 @@ struct node<2> {
             p0 = simd::cxload<PLoad>(dest[0]);
             p1 = simd::cxload<PLoad>(dest[1]);
         }
-        std::tie(p0, p1) = simd::convert<T>::template repack<PSrc, PLoad>(p0, p1);
-        std::tie(p0, p1) = simd::convert<T>::template inverse<Inverse>(p0, p1);
+        std::tie(p0, p1) = simd::repack<PSrc, PLoad>(p0, p1);
+        std::tie(p0, p1) = simd::inverse<Inverse>(p0, p1);
         // NOLINTNEXTLINE(*-declaration)
         simd::cx_reg<T> a0, a1;
         if constexpr (Reverse) {
@@ -208,8 +208,8 @@ struct node<2> {
             a0            = simd::mul(a0, scaling);
             a1            = simd::mul(a1, scaling);
         }
-        std::tie(a0, a1) = simd::convert<T>::template inverse<Inverse>(a0, a1);
-        std::tie(a0, a1) = simd::convert<T>::template repack<PStore, PDest>(a0, a1);
+        std::tie(a0, a1) = simd::inverse<Inverse>(a0, a1);
+        std::tie(a0, a1) = simd::repack<PStore, PDest>(a0, a1);
 
         cxstore<PStore>(dest[0], a0);
         cxstore<PStore>(dest[1], a1);
@@ -250,7 +250,7 @@ struct node<4> {
             p0 = simd::cxload<PLoad>(dest[data_idx[0]]);
             p1 = simd::cxload<PLoad>(dest[data_idx[1]]);
         }
-        // std::tie(p2, p3, p0, p1) = simd::convert<T>::template repack<PSrc, PLoad>(p2, p3, p0, p1)
+        // std::tie(p2, p3, p0, p1) = simd::repack<PSrc, PLoad>(p2, p3, p0, p1)
         std::tie(p2, p3, p0, p1) = simd::repack<PSrc, PLoad>(p2, p3, p0, p1);
         std::tie(p2, p3, p0, p1) = simd::inverse<Inverse>(p2, p3, p0, p1);
         // NOLINTNEXTLINE(*-declaration)
@@ -293,8 +293,8 @@ struct node<4> {
             b2            = simd::mul(b2, scaling);
             b3            = simd::mul(b3, scaling);
         }
-        std::tie(b0, b1, b2, b3) = simd::convert<T>::template inverse<Inverse>(b0, b1, b2, b3);
-        std::tie(b0, b1, b2, b3) = simd::convert<T>::template repack<PStore, PDest>(b0, b1, b2, b3);
+        std::tie(b0, b1, b2, b3) = simd::inverse<Inverse>(b0, b1, b2, b3);
+        std::tie(b0, b1, b2, b3) = simd::repack<PStore, PDest>(b0, b1, b2, b3);
 
         cxstore<PStore>(dest[data_idx[0]], b0);
         cxstore<PStore>(dest[data_idx[1]], b1);
@@ -339,8 +339,8 @@ struct node<8> {
                 c6 = simd::cxload<PLoad>(dest[data_idx[6]]);
                 c7 = simd::cxload<PLoad>(dest[data_idx[7]]);
             }
-            std::tie(c4, c5, c6, c7) = simd::convert<T>::template repack<PSrc, PLoad>(c4, c5, c6, c7);
-            std::tie(c4, c5, c6, c7) = simd::convert<T>::template inverse<Inverse>(c4, c5, c6, c7);
+            std::tie(c4, c5, c6, c7) = simd::repack<PSrc, PLoad>(c4, c5, c6, c7);
+            std::tie(c4, c5, c6, c7) = simd::inverse<Inverse>(c4, c5, c6, c7);
             simd::cx_reg<T> a4, a5, a6, a7;
             if constexpr (Tw) {
                 auto& tw        = std::get<tw_type&>(std::tie(args...));
@@ -379,8 +379,8 @@ struct node<8> {
                 c2 = simd::cxload<PLoad>(dest[data_idx[2]]);
                 c3 = simd::cxload<PLoad>(dest[data_idx[3]]);
             }
-            std::tie(c0, c1, c2, c3) = simd::convert<T>::template repack<PSrc, PLoad>(c0, c1, c2, c3);
-            std::tie(c0, c1, c2, c3) = simd::convert<T>::template inverse<Inverse>(c0, c1, c2, c3);
+            std::tie(c0, c1, c2, c3) = simd::repack<PSrc, PLoad>(c0, c1, c2, c3);
+            std::tie(c0, c1, c2, c3) = simd::inverse<Inverse>(c0, c1, c2, c3);
 
             simd::cx_reg<T> p0, p2, p4, p6, a1, a3;
             if constexpr (Tw) {
@@ -413,8 +413,8 @@ struct node<8> {
                 p2            = simd::mul(p2, scaling);
                 p6            = simd::mul(p6, scaling);
             }
-            std::tie(p0, p4, p2, p6) = simd::convert<T>::template inverse<Inverse>(p0, p4, p2, p6);
-            std::tie(p0, p4, p2, p6) = simd::convert<T>::template repack<PStore, PDest>(p0, p4, p2, p6);
+            std::tie(p0, p4, p2, p6) = simd::inverse<Inverse>(p0, p4, p2, p6);
+            std::tie(p0, p4, p2, p6) = simd::repack<PStore, PDest>(p0, p4, p2, p6);
 
             simd::cxstore<PStore>(dest[data_idx[0]], p0);
             simd::cxstore<PStore>(dest[data_idx[4]], p4);
@@ -434,8 +434,8 @@ struct node<8> {
                 p3            = simd::mul(p3, scaling);
                 p7            = simd::mul(p7, scaling);
             }
-            std::tie(p1, p5, p3, p7) = simd::convert<T>::template inverse<Inverse>(p1, p5, p3, p7);
-            std::tie(p1, p5, p3, p7) = simd::convert<T>::template repack<PStore, PDest>(p1, p5, p3, p7);
+            std::tie(p1, p5, p3, p7) = simd::inverse<Inverse>(p1, p5, p3, p7);
+            std::tie(p1, p5, p3, p7) = simd::repack<PStore, PDest>(p1, p5, p3, p7);
 
             simd::cxstore<PStore>(dest[data_idx[1]], p1);
             simd::cxstore<PStore>(dest[data_idx[5]], p5);
@@ -455,8 +455,8 @@ struct node<8> {
                 p7 = simd::cxload<PLoad>(dest[data_idx[7]]);
                 p3 = simd::cxload<PLoad>(dest[data_idx[3]]);
             }
-            std::tie(p5, p1, p7, p3) = simd::convert<T>::template repack<PSrc, PLoad>(p5, p1, p7, p3);
-            std::tie(p5, p1, p7, p3) = simd::convert<T>::template inverse<Inverse>(p5, p1, p7, p3);
+            std::tie(p5, p1, p7, p3) = simd::repack<PSrc, PLoad>(p5, p1, p7, p3);
+            std::tie(p5, p1, p7, p3) = simd::inverse<Inverse>(p5, p1, p7, p3);
 
             simd::cx_reg<T> b1, b3, b5, b7;
             if constexpr (Tw) {
@@ -497,8 +497,8 @@ struct node<8> {
                 p6 = simd::cxload<PLoad>(dest[data_idx[6]]);
                 p2 = simd::cxload<PLoad>(dest[data_idx[2]]);
             }
-            std::tie(p4, p0, p6, p2) = simd::convert<T>::template repack<PSrc, PLoad>(p4, p0, p6, p2);
-            std::tie(p4, p0, p6, p2) = simd::convert<T>::template inverse<Inverse>(p4, p0, p6, p2);
+            std::tie(p4, p0, p6, p2) = simd::repack<PSrc, PLoad>(p4, p0, p6, p2);
+            std::tie(p4, p0, p6, p2) = simd::inverse<Inverse>(p4, p0, p6, p2);
 
             simd::cx_reg<T> c0, c1, c2, c3, b4, b6;
             if constexpr (Tw) {
@@ -530,8 +530,8 @@ struct node<8> {
                 c2            = simd::mul(c2, scaling);
                 c3            = simd::mul(c3, scaling);
             }
-            std::tie(c0, c1, c2, c3) = simd::convert<T>::template inverse<Inverse>(c0, c1, c2, c3);
-            std::tie(c0, c1, c2, c3) = simd::convert<T>::template repack<PStore, PDest>(c0, c1, c2, c3);
+            std::tie(c0, c1, c2, c3) = simd::inverse<Inverse>(c0, c1, c2, c3);
+            std::tie(c0, c1, c2, c3) = simd::repack<PStore, PDest>(c0, c1, c2, c3);
 
             cxstore<PStore>(dest[data_idx[0]], c0);
             cxstore<PStore>(dest[data_idx[1]], c1);
@@ -553,8 +553,8 @@ struct node<8> {
                 c6            = simd::mul(c6, scaling);
                 c7            = simd::mul(c7, scaling);
             }
-            std::tie(c4, c5, c6, c7) = simd::convert<T>::template inverse<Inverse>(c4, c5, c6, c7);
-            std::tie(c4, c5, c6, c7) = simd::convert<T>::template repack<PStore, PDest>(c4, c5, c6, c7);
+            std::tie(c4, c5, c6, c7) = simd::inverse<Inverse>(c4, c5, c6, c7);
+            std::tie(c4, c5, c6, c7) = simd::repack<PStore, PDest>(c4, c5, c6, c7);
 
             cxstore<PStore>(dest[data_idx[4]], c4);
             cxstore<PStore>(dest[data_idx[5]], c5);
@@ -734,11 +734,9 @@ struct simd_size_specific<T, 8, SimdCount> {
 
             cx_reg e0, e1, e2, e3;
             if constexpr (BitReversed) {
-                std::tie(she0, she1, she2, she3) =
-                    simd::convert<T>::template repack<PSrc, PTform>(she0, she1, she2, she3);
+                std::tie(she0, she1, she2, she3) = simd::repack<PSrc, PTform>(she0, she1, she2, she3);
             }
-            std::tie(she0, she1, she2, she3) =
-                simd::convert<T>::template inverse<true>(she0, she1, she2, she3);
+            std::tie(she0, she1, she2, she3) = simd::inverse<true>(she0, she1, she2, she3);
             if constexpr (BitReversed) {
                 std::tie(e0, e1) = simd::avx2::unpack_128(she0, she1);
                 std::tie(e2, e3) = simd::avx2::unpack_128(she2, she3);
@@ -812,7 +810,7 @@ struct simd_size_specific<T, 8, SimdCount> {
                 p3 = simd::mul(p3, scaling);
             }
 
-            std::tie(p0, p2, p1, p3) = simd::convert<T>::template inverse<true>(p0, p2, p1, p3);
+            std::tie(p0, p2, p1, p3) = simd::inverse<true>(p0, p2, p1, p3);
 
             simd::cxstore<PTform>(ptr0, p0);
             simd::cxstore<PTform>(ptr2, p2);
@@ -968,7 +966,7 @@ struct simd_size_specific<T, 8, SimdCount> {
 
 
             std::tie(p1, p5, p3, p7) = simd::convert<T>::template split<PSrc>(p1, p5, p3, p7);
-            std::tie(p1, p5, p3, p7) = simd::convert<T>::template inverse<Inverse>(p1, p5, p3, p7);
+            std::tie(p1, p5, p3, p7) = simd::inverse<Inverse>(p1, p5, p3, p7);
 
             auto [a1, a5] = simd::btfly(p1, p5);
             auto [a3, a7] = simd::btfly(p3, p7);
@@ -1002,7 +1000,7 @@ struct simd_size_specific<T, 8, SimdCount> {
             }
 
             std::tie(p0, p4, p2, p6) = simd::convert<T>::template split<PSrc>(p0, p4, p2, p6);
-            std::tie(p0, p4, p2, p6) = simd::convert<T>::template inverse<Inverse>(p0, p4, p2, p6);
+            std::tie(p0, p4, p2, p6) = simd::inverse<Inverse>(p0, p4, p2, p6);
 
             auto [a0, a4] = simd::btfly(p0, p4);
             auto [a2, a6] = simd::btfly(p2, p6);
@@ -1028,8 +1026,7 @@ struct simd_size_specific<T, 8, SimdCount> {
 
             reg_t q0, q1, q2, q3, q4, q5, q6, q7;
 
-            std::tie(shc0, shc1, shc2, shc3) =
-                simd::convert<T>::template inverse<Inverse>(shc0, shc1, shc2, shc3);
+            std::tie(shc0, shc1, shc2, shc3) = simd::inverse<Inverse>(shc0, shc1, shc2, shc3);
 
             q0 = cxloadstore<PTform>(simd::ra_addr<PTform>(src0, offset2), shc0);
             q4 = cxloadstore<PTform>(simd::ra_addr<PTform>(src4, offset2), shc2);
@@ -1039,13 +1036,13 @@ struct simd_size_specific<T, 8, SimdCount> {
                 q6 = cxloadstore<PTform>(simd::ra_addr<PTform>(src6, offset2), shc3);
 
                 std::tie(q0, q4, q2, q6) = simd::convert<T>::template split<PSrc>(q0, q4, q2, q6);
-                std::tie(q0, q4, q2, q6) = simd::convert<T>::template inverse<Inverse>(q0, q4, q2, q6);
+                std::tie(q0, q4, q2, q6) = simd::inverse<Inverse>(q0, q4, q2, q6);
             } else {
                 q1 = cxloadstore<PTform>(simd::ra_addr<PTform>(src1, offset2), shc1);
                 q5 = cxloadstore<PTform>(simd::ra_addr<PTform>(src5, offset2), shc3);
 
                 std::tie(q0, q4, q1, q5) = simd::convert<T>::template split<PSrc>(q0, q4, q1, q5);
-                std::tie(q0, q4, q1, q5) = simd::convert<T>::template inverse<Inverse>(q0, q4, q1, q5);
+                std::tie(q0, q4, q1, q5) = simd::inverse<Inverse>(q0, q4, q1, q5);
             }
 
             if constexpr (PSrc < 4) {
@@ -1064,8 +1061,7 @@ struct simd_size_specific<T, 8, SimdCount> {
             auto [shc4, shc5] = simd::avx2::unpack_128(shb4, shb5);
             auto [shc6, shc7] = simd::avx2::unpack_128(shb6, shb7);
 
-            std::tie(shc4, shc5, shc6, shc7) =
-                simd::convert<T>::template inverse<Inverse>(shc4, shc5, shc6, shc7);
+            std::tie(shc4, shc5, shc6, shc7) = simd::inverse<Inverse>(shc4, shc5, shc6, shc7);
 
             if constexpr (PSrc < 4) {
                 q1 = cxloadstore<PTform>(simd::ra_addr<PTform>(src1, offset2), shc4);
@@ -1079,10 +1075,10 @@ struct simd_size_specific<T, 8, SimdCount> {
 
             if constexpr (PSrc < 4) {
                 std::tie(q1, q5, q3, q7) = simd::convert<T>::template split<PSrc>(q1, q5, q3, q7);
-                std::tie(q1, q5, q3, q7) = simd::convert<T>::template inverse<Inverse>(q1, q5, q3, q7);
+                std::tie(q1, q5, q3, q7) = simd::inverse<Inverse>(q1, q5, q3, q7);
             } else {
                 std::tie(q2, q6, q3, q7) = simd::convert<T>::template split<PSrc>(q2, q6, q3, q7);
-                std::tie(q2, q6, q3, q7) = simd::convert<T>::template inverse<Inverse>(q2, q6, q3, q7);
+                std::tie(q2, q6, q3, q7) = simd::inverse<Inverse>(q2, q6, q3, q7);
             }
 
             auto [x1, x5] = simd::btfly(q1, q5);
@@ -1121,8 +1117,7 @@ struct simd_size_specific<T, 8, SimdCount> {
             auto [shz0, shz1] = simd::avx2::unpack_128(shy0, shy1);
             auto [shz2, shz3] = simd::avx2::unpack_128(shy2, shy3);
 
-            std::tie(shz0, shz1, shz2, shz3) =
-                simd::convert<T>::template inverse<Inverse>(shz0, shz1, shz2, shz3);
+            std::tie(shz0, shz1, shz2, shz3) = simd::inverse<Inverse>(shz0, shz1, shz2, shz3);
 
             simd::cxstore<PTform>(simd::ra_addr<PTform>(src4, offset1), shz2);
             simd::cxstore<PTform>(simd::ra_addr<PTform>(src0, offset1), shz0);
@@ -1140,8 +1135,7 @@ struct simd_size_specific<T, 8, SimdCount> {
             auto [shz4, shz5] = simd::avx2::unpack_128(shy4, shy5);
             auto [shz6, shz7] = simd::avx2::unpack_128(shy6, shy7);
 
-            std::tie(shz4, shz5, shz6, shz7) =
-                simd::convert<T>::template inverse<Inverse>(shz4, shz5, shz6, shz7);
+            std::tie(shz4, shz5, shz6, shz7) = simd::inverse<Inverse>(shz4, shz5, shz6, shz7);
 
             if constexpr (PSrc < 4) {
                 simd::cxstore<PTform>(simd::ra_addr<PTform>(src1, offset1), shz4);
@@ -1164,7 +1158,7 @@ struct simd_size_specific<T, 8, SimdCount> {
             auto p7 = simd::cxload<PTform>(simd::ra_addr<PTform>(src7, offset));
 
             std::tie(p1, p5, p3, p7) = simd::convert<T>::template split<PSrc>(p1, p5, p3, p7);
-            std::tie(p1, p5, p3, p7) = simd::convert<T>::template inverse<Inverse>(p1, p5, p3, p7);
+            std::tie(p1, p5, p3, p7) = simd::inverse<Inverse>(p1, p5, p3, p7);
 
             auto [a1, a5] = simd::btfly(p1, p5);
             auto [a3, a7] = simd::btfly(p3, p7);
@@ -1186,7 +1180,7 @@ struct simd_size_specific<T, 8, SimdCount> {
             auto p6 = simd::cxload<PTform>(simd::ra_addr<PTform>(src6, offset));
 
             std::tie(p0, p4, p2, p6) = simd::convert<T>::template split<PSrc>(p0, p4, p2, p6);
-            std::tie(p0, p4, p2, p6) = simd::convert<T>::template inverse<Inverse>(p0, p4, p2, p6);
+            std::tie(p0, p4, p2, p6) = simd::inverse<Inverse>(p0, p4, p2, p6);
 
             auto [a0, a4] = simd::btfly(p0, p4);
             auto [a2, a6] = simd::btfly(p2, p6);
@@ -1210,8 +1204,7 @@ struct simd_size_specific<T, 8, SimdCount> {
             auto [shc0, shc1] = simd::avx2::unpack_128(shb0, shb1);
             auto [shc2, shc3] = simd::avx2::unpack_128(shb2, shb3);
 
-            std::tie(shc0, shc1, shc2, shc3) =
-                simd::convert<T>::template inverse<Inverse>(shc0, shc1, shc2, shc3);
+            std::tie(shc0, shc1, shc2, shc3) = simd::inverse<Inverse>(shc0, shc1, shc2, shc3);
 
             simd::cxstore<PTform>(simd::ra_addr<PTform>(src0, offset), shc0);
             simd::cxstore<PTform>(simd::ra_addr<PTform>(src4, offset), shc2);
@@ -1229,8 +1222,7 @@ struct simd_size_specific<T, 8, SimdCount> {
             auto [shc4, shc5] = simd::avx2::unpack_128(shb4, shb5);
             auto [shc6, shc7] = simd::avx2::unpack_128(shb6, shb7);
 
-            std::tie(shc4, shc5, shc6, shc7) =
-                simd::convert<T>::template inverse<Inverse>(shc4, shc5, shc6, shc7);
+            std::tie(shc4, shc5, shc6, shc7) = simd::inverse<Inverse>(shc4, shc5, shc6, shc7);
 
             if constexpr (PSrc < 4) {
                 simd::cxstore<PTform>(simd::ra_addr<PTform>(src1, offset), shc4);
@@ -1503,7 +1495,7 @@ template<typename T,
          typename Strategy       = strategy42,
          typename StrategyRec    = strategy42>
     requires(std::same_as<T, float> || std::same_as<T, double>) &&
-            (pcx::power_of_two<SubSize> && SubSize >= pcx::default_pack_size<T> ||
+            (pcx::pack_size<SubSize> && SubSize >= pcx::default_pack_size<T> ||
              (SubSize == pcx::dynamic_size))
 class fft_unit {
 public:
@@ -1792,7 +1784,7 @@ public:
                     auto p0 = simd::cxload<PTform>(ptr0);
 
                     if constexpr (PDest < PTform) {
-                        std::tie(p1, p0) = simd::convert<float>::repack<PDest, PTform>(p1, p0);
+                        std::tie(p1, p0) = simd::repack<PDest, PTform>(p1, p0);
                     }
 
                     auto p1tw = simd::mul(p1, tw0);
@@ -1904,12 +1896,12 @@ public:
                 auto a1 = simd::cxload<PTform>(ptr1);
                 auto a0 = simd::cxload<PTform>(ptr0);
 
-                std::tie(a1, a0) = simd::convert<float>::repack<PData, PTform>(a1, a0);
-                std::tie(a1, a0) = simd::convert<float>::inverse(a1, a0);
+                std::tie(a1, a0) = simd::repack<PData, PTform>(a1, a0);
+                std::tie(a1, a0) = simd::inverse<true>(a1, a0);
 
                 auto [p0, p1] = simd::ibtfly(a0, a1);
 
-                std::tie(p1, p0) = simd::convert<float>::inverse(p1, p0);
+                std::tie(p1, p0) = simd::inverse<true>(p1, p0);
 
                 cxstore<PTform>(ptr0, p0);
                 cxstore<PTform>(ptr1, p1);
@@ -1951,7 +1943,7 @@ public:
         //
         //
         //             std::tie(p1, p5, p3, p7) = simd::convert<float>::split<PSrc>(p1, p5, p3, p7);
-        //             std::tie(p1, p5, p3, p7) = simd::convert<float>::inverse<Inverse>(p1, p5, p3, p7);
+        //             std::tie(p1, p5, p3, p7) = simd::inverse<Inverse>(p1, p5, p3, p7);
         //
         //             auto [a1, a5] = simd::btfly(p1, p5);
         //             auto [a3, a7] = simd::btfly(p3, p7);
@@ -1985,7 +1977,7 @@ public:
         //             }
         //
         //             std::tie(p0, p4, p2, p6) = simd::convert<float>::split<PSrc>(p0, p4, p2, p6);
-        //             std::tie(p0, p4, p2, p6) = simd::convert<float>::inverse<Inverse>(p0, p4, p2, p6);
+        //             std::tie(p0, p4, p2, p6) = simd::inverse<Inverse>(p0, p4, p2, p6);
         //
         //             auto [a0, a4] = simd::btfly(p0, p4);
         //             auto [a2, a6] = simd::btfly(p2, p6);
@@ -2011,7 +2003,7 @@ public:
         //
         //             reg_t q0, q1, q2, q3, q4, q5, q6, q7;
         //
-        //             std::tie(shc0, shc1, shc2, shc3) = simd::convert<float>::inverse<Inverse>(shc0, shc1, shc2, shc3);
+        //             std::tie(shc0, shc1, shc2, shc3) = simd::inverse<Inverse>(shc0, shc1, shc2, shc3);
         //
         //             q0 = cxloadstore<PTform>(simd::ra_addr<PTform>(src0, offset2), shc0);
         //             q4 = cxloadstore<PTform>(simd::ra_addr<PTform>(src4, offset2), shc2);
@@ -2021,13 +2013,13 @@ public:
         //                 q6 = cxloadstore<PTform>(simd::ra_addr<PTform>(src6, offset2), shc3);
         //
         //                 std::tie(q0, q4, q2, q6) = simd::convert<float>::split<PSrc>(q0, q4, q2, q6);
-        //                 std::tie(q0, q4, q2, q6) = simd::convert<float>::inverse<Inverse>(q0, q4, q2, q6);
+        //                 std::tie(q0, q4, q2, q6) = simd::inverse<Inverse>(q0, q4, q2, q6);
         //             } else {
         //                 q1 = cxloadstore<PTform>(simd::ra_addr<PTform>(src1, offset2), shc1);
         //                 q5 = cxloadstore<PTform>(simd::ra_addr<PTform>(src5, offset2), shc3);
         //
         //                 std::tie(q0, q4, q1, q5) = simd::convert<float>::split<PSrc>(q0, q4, q1, q5);
-        //                 std::tie(q0, q4, q1, q5) = simd::convert<float>::inverse<Inverse>(q0, q4, q1, q5);
+        //                 std::tie(q0, q4, q1, q5) = simd::inverse<Inverse>(q0, q4, q1, q5);
         //             }
         //
         //             if constexpr (PSrc < 4) {
@@ -2046,7 +2038,7 @@ public:
         //             auto [shc4, shc5] = simd::unpack_128(shb4, shb5);
         //             auto [shc6, shc7] = simd::unpack_128(shb6, shb7);
         //
-        //             std::tie(shc4, shc5, shc6, shc7) = simd::convert<float>::inverse<Inverse>(shc4, shc5, shc6, shc7);
+        //             std::tie(shc4, shc5, shc6, shc7) = simd::inverse<Inverse>(shc4, shc5, shc6, shc7);
         //
         //             if constexpr (PSrc < 4) {
         //                 q1 = cxloadstore<PTform>(simd::ra_addr<PTform>(src1, offset2), shc4);
@@ -2060,10 +2052,10 @@ public:
         //
         //             if constexpr (PSrc < 4) {
         //                 std::tie(q1, q5, q3, q7) = simd::convert<float>::split<PSrc>(q1, q5, q3, q7);
-        //                 std::tie(q1, q5, q3, q7) = simd::convert<float>::inverse<Inverse>(q1, q5, q3, q7);
+        //                 std::tie(q1, q5, q3, q7) = simd::inverse<Inverse>(q1, q5, q3, q7);
         //             } else {
         //                 std::tie(q2, q6, q3, q7) = simd::convert<float>::split<PSrc>(q2, q6, q3, q7);
-        //                 std::tie(q2, q6, q3, q7) = simd::convert<float>::inverse<Inverse>(q2, q6, q3, q7);
+        //                 std::tie(q2, q6, q3, q7) = simd::inverse<Inverse>(q2, q6, q3, q7);
         //             }
         //
         //             auto [x1, x5] = simd::btfly(q1, q5);
@@ -2102,7 +2094,7 @@ public:
         //             auto [shz0, shz1] = simd::unpack_128(shy0, shy1);
         //             auto [shz2, shz3] = simd::unpack_128(shy2, shy3);
         //
-        //             std::tie(shz0, shz1, shz2, shz3) = simd::convert<float>::inverse<Inverse>(shz0, shz1, shz2, shz3);
+        //             std::tie(shz0, shz1, shz2, shz3) = simd::inverse<Inverse>(shz0, shz1, shz2, shz3);
         //
         //             simd::cxstore<PTform>(simd::ra_addr<PTform>(src4, offset1), shz2);
         //             simd::cxstore<PTform>(simd::ra_addr<PTform>(src0, offset1), shz0);
@@ -2120,7 +2112,7 @@ public:
         //             auto [shz4, shz5] = simd::unpack_128(shy4, shy5);
         //             auto [shz6, shz7] = simd::unpack_128(shy6, shy7);
         //
-        //             std::tie(shz4, shz5, shz6, shz7) = simd::convert<float>::inverse<Inverse>(shz4, shz5, shz6, shz7);
+        //             std::tie(shz4, shz5, shz6, shz7) = simd::inverse<Inverse>(shz4, shz5, shz6, shz7);
         //
         //             if constexpr (PSrc < 4) {
         //                 simd::cxstore<PTform>(simd::ra_addr<PTform>(src1, offset1), shz4);
@@ -2142,7 +2134,7 @@ public:
         //             auto p7 = simd::cxload<PTform>(simd::ra_addr<PTform>(src7, offset));
         //
         //             std::tie(p1, p5, p3, p7) = simd::convert<float>::split<PSrc>(p1, p5, p3, p7);
-        //             std::tie(p1, p5, p3, p7) = simd::convert<float>::inverse<Inverse>(p1, p5, p3, p7);
+        //             std::tie(p1, p5, p3, p7) = simd::inverse<Inverse>(p1, p5, p3, p7);
         //
         //             auto [a1, a5] = simd::btfly(p1, p5);
         //             auto [a3, a7] = simd::btfly(p3, p7);
@@ -2164,7 +2156,7 @@ public:
         //             auto p6 = simd::cxload<PTform>(simd::ra_addr<PTform>(src6, offset));
         //
         //             std::tie(p0, p4, p2, p6) = simd::convert<float>::split<PSrc>(p0, p4, p2, p6);
-        //             std::tie(p0, p4, p2, p6) = simd::convert<float>::inverse<Inverse>(p0, p4, p2, p6);
+        //             std::tie(p0, p4, p2, p6) = simd::inverse<Inverse>(p0, p4, p2, p6);
         //
         //             auto [a0, a4] = simd::btfly(p0, p4);
         //             auto [a2, a6] = simd::btfly(p2, p6);
@@ -2188,7 +2180,7 @@ public:
         //             auto [shc0, shc1] = simd::unpack_128(shb0, shb1);
         //             auto [shc2, shc3] = simd::unpack_128(shb2, shb3);
         //
-        //             std::tie(shc0, shc1, shc2, shc3) = simd::convert<float>::inverse<Inverse>(shc0, shc1, shc2, shc3);
+        //             std::tie(shc0, shc1, shc2, shc3) = simd::inverse<Inverse>(shc0, shc1, shc2, shc3);
         //
         //             simd::cxstore<PTform>(simd::ra_addr<PTform>(src0, offset), shc0);
         //             simd::cxstore<PTform>(simd::ra_addr<PTform>(src4, offset), shc2);
@@ -2206,7 +2198,7 @@ public:
         //             auto [shc4, shc5] = simd::unpack_128(shb4, shb5);
         //             auto [shc6, shc7] = simd::unpack_128(shb6, shb7);
         //
-        //             std::tie(shc4, shc5, shc6, shc7) = simd::convert<float>::inverse<Inverse>(shc4, shc5, shc6, shc7);
+        //             std::tie(shc4, shc5, shc6, shc7) = simd::inverse<Inverse>(shc4, shc5, shc6, shc7);
         //
         //             if constexpr (PSrc < 4) {
         //                 simd::cxstore<PTform>(simd::ra_addr<PTform>(src1, offset), shc4);
@@ -3380,10 +3372,9 @@ public:
 
             reg_t e0, e1, e2, e3;
             if constexpr (Order == fft_order::bit_reversed) {
-                std::tie(she0, she1, she2, she3) =
-                    simd::convert<float>::repack<PSrc, PTform>(she0, she1, she2, she3);
+                std::tie(she0, she1, she2, she3) = simd::repack<PSrc, PTform>(she0, she1, she2, she3);
             }
-            std::tie(she0, she1, she2, she3) = simd::convert<float>::inverse<true>(she0, she1, she2, she3);
+            std::tie(she0, she1, she2, she3) = simd::inverse<true>(she0, she1, she2, she3);
             if constexpr (Order == fft_order::bit_reversed) {
                 std::tie(e0, e1) = simd::avx2::unpack_128(she0, she1);
                 std::tie(e2, e3) = simd::avx2::unpack_128(she2, she3);
@@ -3457,7 +3448,7 @@ public:
                 p3 = simd::mul(p3, scaling);
             }
 
-            std::tie(p0, p2, p1, p3) = simd::convert<float>::inverse<true>(p0, p2, p1, p3);
+            std::tie(p0, p2, p1, p3) = simd::inverse<true>(p0, p2, p1, p3);
 
             cxstore<PTform>(ptr0, p0);
             cxstore<PTform>(ptr2, p2);
