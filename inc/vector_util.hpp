@@ -106,45 +106,6 @@ bool operator!=(const aligned_allocator<T, Alignment>&, const aligned_allocator<
     return false;
 }
 
-
-namespace simd {
-
-// template<typename T, bool Conj>
-// auto conj(cx_reg<T, Conj> reg) -> cx_reg<T, !Conj> {
-//     return {reg.real, reg.imag};
-// }
-
-/**
-* @brief Register aligned adress
-*
-* @tparam PackSize
-* @tparam T
-* @param data Base address. Must be aligned by simd register size.
-* @param offset New address offset. Must be a multiple of simd register size.
-* If data in-pack index I is non-zero, offset must be less then PackSize - I;
-* @return T*
-*/
-template<uZ PackSize, typename T>
-constexpr auto ra_addr(T* data, uZ offset) -> T* {
-    return data + offset + (offset / PackSize) * PackSize;
-}
-template<uZ PackSize, typename T>
-constexpr auto ra_addr(const T* data, uZ offset) -> const T* {
-    return data + offset + (offset / PackSize) * PackSize;
-}
-template<uZ PackSize, typename T>
-    requires(PackSize <= reg<T>::size)
-constexpr auto ra_addr(T* data, uZ offset) -> T* {
-    return data + offset * 2;
-}
-template<uZ PackSize, typename T>
-    requires(PackSize <= reg<T>::size)
-constexpr auto ra_addr(const T* data, uZ offset) -> const T* {
-    return data + offset * 2;
-}
-
-}    // namespace simd
-
 namespace simd {
 
 template<typename T>

@@ -354,44 +354,57 @@ static inline auto repack(cx_reg<double, Conj>... args) {
     }
 };
 
+// TODO: remove nested if since they are constexpr anyway
 template<uZ PackTo, uZ PackFrom, bool... Conj>
     requires((PackFrom > 0) && (PackTo > 0))
 static inline auto repack2(cx_reg<double, Conj, PackFrom>... args) {
+    constexpr auto swap_12 = []<bool Conj_, uZ PackSize>(cx_reg<double, Conj_, PackSize> reg) {
+        auto real = _mm256_permute4x64_pd(reg.real, 0b11011000);
+        auto imag = _mm256_permute4x64_pd(reg.imag, 0b11011000);
+        return cx_reg<double, Conj_, PackTo>({real, imag});
+    };
+    constexpr auto swap_24 = []<bool Conj_, uZ PackSize>(cx_reg<double, Conj_, PackSize> reg) {
+        auto real = avx2::unpacklo_128(reg.real, reg.imag);
+        auto imag = avx2::unpackhi_128(reg.real, reg.imag);
+        return cx_reg<double, Conj_, PackTo>({real, imag});
+    };
+
     auto tup = std::make_tuple(args...);
     if constexpr (PackFrom == PackTo || (PackFrom >= 4 && PackTo >= 4)) {
         return tup;
     } else if constexpr (PackFrom == 1) {
         if constexpr (PackTo >= 4) {
-            auto pack_1 = []<bool Conj_>(cx_reg<double, Conj_> reg) {
+            constexpr auto pack_1 = []<bool Conj_, uZ PackSize>(cx_reg<double, Conj_, PackSize> reg) {
                 auto real = avx2::unpacklo_pd(reg.real, reg.imag);
                 auto imag = avx2::unpackhi_pd(reg.real, reg.imag);
-                return cx_reg<double, Conj_>({real, imag});
+                return cx_reg<double, Conj_, PackTo>({real, imag});
             };
             auto tmp = pcx::detail_::apply_for_each(pack_1, tup);
-            return pcx::detail_::apply_for_each(avx2::double_swap_12, tmp);
+            return pcx::detail_::apply_for_each(swap_12, tmp);
         } else if constexpr (PackTo == 2) {
-            return pcx::detail_::apply_for_each(avx2::double_swap_12, tup);
+            return pcx::detail_::apply_for_each(swap_12, tup);
         }
     } else if constexpr (PackFrom == 2) {
         if constexpr (PackTo >= 4) {
-            return pcx::detail_::apply_for_each(avx2::double_swap_24, tup);
+            return pcx::detail_::apply_for_each(swap_24, tup);
         } else if constexpr (PackTo == 1) {
-            return pcx::detail_::apply_for_each(avx2::double_swap_12, tup);
+            return pcx::detail_::apply_for_each(swap_12, tup);
         }
     } else if constexpr (PackFrom >= 4) {
         if constexpr (PackTo == 2) {
-            return pcx::detail_::apply_for_each(avx2::double_swap_24, tup);
+            return pcx::detail_::apply_for_each(swap_24, tup);
         } else if constexpr (PackTo == 1) {
-            auto pack_1 = []<bool Conj_>(cx_reg<double, Conj_> reg) {
+            constexpr auto pack_1 = []<bool Conj_, uZ PackSize>(cx_reg<double, Conj_, PackSize> reg) {
                 auto real = avx2::unpacklo_pd(reg.real, reg.imag);
                 auto imag = avx2::unpackhi_pd(reg.real, reg.imag);
-                return cx_reg<double, Conj_>({real, imag});
+                return cx_reg<double, Conj_, PackTo>({real, imag});
             };
             auto tmp = pcx::detail_::apply_for_each(pack_1, tup);
-            return pcx::detail_::apply_for_each(avx2::double_swap_24, tmp);
+            return pcx::detail_::apply_for_each(swap_24, tmp);
         }
     }
 };
+
 template<uZ SrcSize, uZ PackSize, typename T>
 inline auto cxload(const T* ptr) {
     constexpr auto LoadSize  = std::max(SrcSize, reg<T>::size);
@@ -494,24 +507,16 @@ auto apply_conj(cx_reg<float, Conj_, PackSize> reg) -> cx_reg<float, false, Pack
         auto pos  = zero<float>();
         auto neg  = broadcast(-0.F);
         auto mask = avx2::unpacklo_128(pos, neg);
-        auto re   = _mm256_xor_ps(reg.real, mask);
-        auto im   = _mm256_xor_ps(reg.imag, mask);
-        return {re, im};
+        return {_mm256_xor_ps(reg.real, mask), _mm256_xor_ps(reg.imag, mask)};
     } else if constexpr (PackSize == 2) {
         auto pos  = zero<float>();
         auto neg  = broadcast(-0.F);
         auto mask = avx2::unpacklo_pd(pos, neg);
-        auto re   = _mm256_xor_ps(reg.real, mask);
-        auto im   = _mm256_xor_ps(reg.imag, mask);
-        return {re, im};
         return {_mm256_xor_ps(reg.real, mask), _mm256_xor_ps(reg.imag, mask)};
     } else {
         auto pos  = zero<float>();
         auto neg  = broadcast(-0.F);
-        auto mask = avx2::unpacklo_ps(neg, pos);
-        auto re   = _mm256_xor_ps(reg.real, mask);
-        auto im   = _mm256_xor_ps(reg.imag, mask);
-        return {re, im};
+        auto mask = avx2::unpacklo_ps(pos, neg);
         return {_mm256_xor_ps(reg.real, mask), _mm256_xor_ps(reg.imag, mask)};
     }
 }

@@ -39,24 +39,37 @@ template<uZ DestSize, uZ PackSize, typename T>
 inline void cxstore(T* ptr, cx_reg<T, false, PackSize> data);
 
 /**
- * @brief Should not be used
- *
- * @tparam T
- * @tparam Conj
- * @param reg
- * @return cx_reg<T, !Conj>
+* @brief Register aligned adress
+*
+* @param data Base address. Must be aligned by simd register size.
+* @param offset New address offset. Must be a multiple of simd register size.
+* If data in-pack index I is non-zero, offset must be less then PackSize - I;
+*/
+template<uZ PackSize, typename T>
+constexpr auto ra_addr(T* data, uZ offset) -> T* {
+    return data + offset + (offset / PackSize) * PackSize;
+}
+template<uZ PackSize, typename T>
+    requires(PackSize <= reg<T>::size)
+constexpr auto ra_addr(T* data, uZ offset) -> T* {
+    return data + offset * 2;
+}
+
+/**
+ * @brief Lazy conjugate. Can be applied with apply_conj() before
+ * operations that require cx_reg<T, false, PackSize>, e.g. cxstore
  */
 template<typename T, bool Conj, uZ PackSize>
 auto conj(cx_reg<T, Conj, PackSize> reg) -> cx_reg<T, !Conj, PackSize> {
     return {reg.real, reg.imag};
 }
-
 template<typename T, bool Conj_, uZ PackSize>
 auto apply_conj(cx_reg<T, Conj_, PackSize> reg) -> cx_reg<T, false, PackSize>;
 
 /**
  * @param args Variable number of complex simd vectors.
  * @return Tuple of repacked complex simd vectors in the order of passing.
+ * For some pack sized grouped repack can be more performative.
  */
 template<uZ PackTo, uZ PackFrom, typename T, bool... Conj>
     requires((PackFrom > 0) && (PackTo > 0))
@@ -124,10 +137,10 @@ template<typename T, bool ConjLhs, bool ConjRhs, uZ PackSize>
     requires(PackSize >= reg_size<T> || !(ConjLhs || ConjRhs))
 inline auto sub(cx_reg<T, ConjLhs, PackSize> lhs, cx_reg<T, ConjRhs, PackSize> rhs);
 template<typename T, bool ConjLhs, bool ConjRhs, uZ PackSize>
-    requires(PackSize >= reg_size<T> || !(ConjLhs || ConjRhs))
+    requires(PackSize >= reg_size<T>)
 inline auto mul(cx_reg<T, ConjLhs, PackSize> lhs, cx_reg<T, ConjRhs, PackSize> rhs);
 template<typename T, bool ConjLhs, bool ConjRhs, uZ PackSize>
-    requires(PackSize >= reg_size<T> || !(ConjLhs || ConjRhs))
+    requires(PackSize >= reg_size<T>)
 inline auto div(cx_reg<T, ConjLhs, PackSize> lhs, cx_reg<T, ConjRhs, PackSize> rhs);
 
 /**
@@ -220,7 +233,7 @@ inline auto mul_imag_rhs(cx_reg<T, false, PackSize> prod_real_rhs,
 }    // namespace detail_
 
 template<typename T, bool ConjLhs, bool ConjRhs, uZ PackSize>
-    requires(PackSize >= reg_size<T> || !(ConjLhs || ConjRhs))
+    requires(PackSize >= reg_size<T>)
 inline auto mul(cx_reg<T, ConjLhs, PackSize> lhs, cx_reg<T, ConjRhs, PackSize> rhs) {
     return detail_::mul_imag_rhs(detail_::mul_real_rhs(lhs, rhs), lhs, rhs);
 };

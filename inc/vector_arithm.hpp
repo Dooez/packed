@@ -1,5 +1,6 @@
 #ifndef VECTOR_ARITHM_HPP
 #define VECTOR_ARITHM_HPP
+#include "simd_common.hpp"
 #include "vector_util.hpp"
 
 #include <cassert>
@@ -141,9 +142,9 @@ struct expression_traits {
      */
     template<std::size_t PackSize, typename I>
     [[nodiscard]] static constexpr auto cx_reg(const I& iterator, std::size_t offset) {
-        auto data    = iterator.cx_reg(offset);
-        auto [data_] = simd::repack2<PackSize>(data);
-        return data_;
+        auto data_  = iterator.cx_reg(offset);
+        auto [data] = simd::repack2<PackSize>(data_);
+        return data;
     }
     /**
      * @brief Extracts simd vector from iterator.
@@ -155,11 +156,8 @@ struct expression_traits {
     template<std::size_t PackSize, typename T, bool Const, uZ IPackSize>
     [[nodiscard]] static constexpr auto cx_reg(const iterator<T, Const, IPackSize>& iterator,
                                                std::size_t                          offset) {
-        constexpr auto PLoad = std::max(simd::reg<T>::size, IPackSize);
-
-        auto addr   = simd::ra_addr<PLoad>(&(*iterator), offset);
-        auto data_  = simd::cxload<IPackSize>(addr);
-        auto [data] = simd::repack2<PackSize>(data_);
+        auto addr = simd::ra_addr<IPackSize>(&(*iterator), offset);
+        auto data = simd::cxload<IPackSize, PackSize>(addr);
         return data;
     }
 
@@ -359,8 +357,13 @@ public:
         [[nodiscard]] auto cx_reg(std::size_t idx) const {
             const auto lhs = expression_traits::cx_reg<pack_size>(m_lhs, idx);
             const auto rhs = expression_traits::cx_reg<pack_size>(m_rhs, idx);
-
-            return simd::add(lhs, rhs);
+            if constexpr (pack_size < simd::reg<real_type>::size) {
+                auto c_lhs = simd::apply_conj(lhs);
+                auto c_rhs = simd::apply_conj(rhs);
+                return simd::add(c_lhs, c_rhs);
+            } else {
+                return simd::add(lhs, rhs);
+            }
         }
 
         [[nodiscard]] constexpr bool aligned(std::size_t offset = 0) const noexcept {
@@ -517,8 +520,13 @@ public:
         [[nodiscard]] auto cx_reg(std::size_t idx) const {
             const auto lhs = expression_traits::cx_reg<pack_size>(m_lhs, idx);
             const auto rhs = expression_traits::cx_reg<pack_size>(m_rhs, idx);
-
-            return simd::sub(lhs, rhs);
+            if constexpr (pack_size < simd::reg<real_type>::size) {
+                auto c_lhs = simd::apply_conj(lhs);
+                auto c_rhs = simd::apply_conj(rhs);
+                return simd::sub(c_lhs, c_rhs);
+            } else {
+                return simd::sub(lhs, rhs);
+            }
         }
 
         [[nodiscard]] constexpr bool aligned(std::size_t offset = 0) const noexcept {
@@ -1506,7 +1514,7 @@ class conjugate : public std::ranges::view_base {
 public:
     using real_type = typename E::real_type;
 
-    static constexpr auto pack_size = simd::reg<real_type>::size;
+    static constexpr auto pack_size = E::pack_size;
     class iterator {
         friend class conjugate;
 

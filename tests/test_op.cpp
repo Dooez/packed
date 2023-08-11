@@ -270,10 +270,10 @@ int main() {
         res += test_bin_ops<float, 16>(i);
         res += test_bin_ops<float, 32>(i);
 
-        // res += test_bin_ops<double, 1>(i);
-        // res += test_bin_ops<double, 2>(i);
-        // res += test_bin_ops<double, 4>(i);
-        // res += test_bin_ops<double, 8>(i);
+        res += test_bin_ops<double, 1>(i);
+        res += test_bin_ops<double, 2>(i);
+        res += test_bin_ops<double, 4>(i);
+        res += test_bin_ops<double, 8>(i);
 
         // res += test_subrange<float>(i);
         // res += test_subrange<double>(i);
