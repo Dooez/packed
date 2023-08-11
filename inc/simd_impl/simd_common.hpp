@@ -33,6 +33,8 @@ inline void store(T* dest, reg_t<T> reg);
 
 template<uZ PackSize, typename T>
 inline auto broadcast(std::complex<T> source) -> cx_reg<T, false, PackSize>;
+template<typename T>
+inline auto broadcast(std::complex<T> source) -> cx_reg<T, false, reg<T>::size>;
 template<uZ SrcSize, uZ PackSize = SrcSize, typename T = double>
 inline auto cxload(const T* ptr);
 template<uZ DestSize, uZ PackSize, typename T>

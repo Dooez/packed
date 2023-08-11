@@ -20,11 +20,11 @@ namespace simd {
   *
   * @tparam RhsRotI number of multiplications by imaginary unity
   */
-template<uint RhsRotI = 0, typename T = double>
+template<uint RhsRotI = 0, uZ PackSize, typename T>
     requires(RhsRotI < 4)
-inline auto ibtfly(cx_reg<T> lhs, cx_reg<T> rhs) {
-    cx_reg<T> s;
-    cx_reg<T> d;
+inline auto ibtfly(cx_reg<T, false, PackSize> lhs, cx_reg<T, false, PackSize> rhs) {
+    cx_reg<T, false, PackSize> s;
+    cx_reg<T, false, PackSize> d;
     if constexpr (RhsRotI == 0) {
         auto s_re = add(lhs.real, rhs.real);
         auto d_re = sub(lhs.real, rhs.real);
@@ -63,11 +63,11 @@ inline auto ibtfly(cx_reg<T> lhs, cx_reg<T> rhs) {
   *
   * @tparam RhsRotI number of multiplications by imaginary unity
   */
-template<uint RhsRotI = 0, typename T = double>
+template<uint RhsRotI = 0, uZ PackSize, typename T>
     requires(RhsRotI < 4)
-inline auto btfly(cx_reg<T> lhs, cx_reg<T> rhs) {
-    cx_reg<T> s;
-    cx_reg<T> d;
+inline auto btfly(cx_reg<T, false, PackSize> lhs, cx_reg<T, false, PackSize> rhs) {
+    cx_reg<T, false, PackSize> s;
+    cx_reg<T, false, PackSize> d;
     if constexpr (RhsRotI == 0) {
         auto s_re = add(lhs.real, rhs.real);
         auto d_re = sub(lhs.real, rhs.real);

@@ -64,11 +64,14 @@ inline void store(double* dest, reg_t<double> reg) {
     return _mm256_storeu_pd(dest, reg);
 }
 
-template<typename T>
-inline auto broadcast(std::complex<T> source) -> cx_reg<T, false> {
+template<uZ PackSize, typename T>
+inline auto broadcast(std::complex<T> source) -> cx_reg<T, false, PackSize> {
     return {broadcast(source.real()), broadcast(source.imag())};
 }
-
+template<typename T>
+inline auto broadcast(std::complex<T> source) -> cx_reg<T, false, reg<T>::size> {
+    return {broadcast(source.real()), broadcast(source.imag())};
+}
 namespace avx2 {
 
 inline auto unpacklo_ps(reg_t<float> a, reg_t<float> b) -> reg_t<float> {
