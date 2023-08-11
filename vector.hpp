@@ -1,6 +1,5 @@
 #ifndef PCX_VECTOR_HPP
 #define PCX_VECTOR_HPP
-#include "avx2.hpp"
 #include "vector_arithm.hpp"
 #include "vector_util.hpp"
 

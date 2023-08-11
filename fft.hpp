@@ -1,6 +1,7 @@
 #ifndef FFT_HPP
 #define FFT_HPP
 
+#include "avx2_fft.hpp"
 #include "types.hpp"
 #include "vector.hpp"
 #include "vector_arithm.hpp"
@@ -25,9 +26,6 @@
 // NOLINTBEGIN (*magic-numbers)
 namespace pcx {
 namespace detail_ {
-template<typename T, typename... U>
-concept has_type = (std::same_as<T, U> || ...);
-
 
 template<typename V_>
 struct vector_traits {
@@ -1578,7 +1576,8 @@ public:
         } else {
             constexpr auto PTform = std::max(PackSize, simd::reg<T>::size);
             // depth3_and_sort<PTform, PackSize, false>(data);
-            size_specific::template tform_sort<PTform, PackSize, false>(data, size(), m_sort);
+            // size_specific::template tform_sort<PTform, PackSize, false>(data, size(), m_sort);
+            simd::size_specific::tform_sort<PTform, PackSize, false>(data, size(), m_sort);
             apply_subtform<PackSize, PTform, false, false>(data, size());
         }
     }
@@ -2751,8 +2750,10 @@ public:
             n_groups *= node_size;
         }
 
-        return size_specific::template unsorted<PDest, PTform, Order == fft_order::bit_reversed>(
+        return simd::size_specific::unsorted<PDest, PTform, Order == fft_order::bit_reversed>(
             dest, twiddle_ptr, size);
+        // return size_specific::template unsorted<PDest, PTform, Order == fft_order::bit_reversed>(
+        //     dest, twiddle_ptr, size);
     };
 
     template<uZ PDest, uZ PSrc, bool First, bool Scale, uZ AlignSize>
@@ -2764,8 +2765,11 @@ public:
         constexpr auto PTform    = std::max(PDest, reg_size);
         constexpr auto node_size = Strategy::node_size;
 
+        // twiddle_ptr =
+        //     size_specific::template unsorted_reverse<PTform, PSrc, Scale, Order == fft_order::bit_reversed>(
+        //         dest, twiddle_ptr, size, this->size(), optional...);
         twiddle_ptr =
-            size_specific::template unsorted_reverse<PTform, PSrc, Scale, Order == fft_order::bit_reversed>(
+            simd::size_specific::unsorted_reverse<PTform, PSrc, Scale, Order == fft_order::bit_reversed>(
                 dest, twiddle_ptr, size, this->size(), optional...);
 
         uZ l_size   = size_specific::unsorted_size;
@@ -3561,15 +3565,18 @@ public:
                 args...);
         };
 
-        constexpr auto Idxs = std::make_index_sequence<NodeSize>{};
-        constexpr auto get_data_array =
-            []<std::size_t... I>(auto data, auto offset, auto l_size, std::index_sequence<I...>) {
-                constexpr auto Size = sizeof...(I);
-                return std::array<decltype(data), Size>{
-                    simd::ra_addr<PStore>(data, offset + l_size / Size * I)...};
-            };
+        constexpr auto Idxs           = std::make_index_sequence<NodeSize>{};
+        constexpr auto get_data_array = []<uZ PackSize, uZ... I>(auto data,
+                                                                 auto offset,
+                                                                 auto l_size,
+                                                                 std::integral_constant<uZ, PackSize>,
+                                                                 std::index_sequence<I...>) {
+            constexpr auto Size = sizeof...(I);
+            return std::array<decltype(data), Size>{
+                simd::ra_addr<PackSize>(data, offset + l_size / Size * I)...};
+        };
 
-        auto dst = get_data_array(dest, offset, l_size, Idxs);
+        auto dst = get_data_array(dest, offset, l_size, std::integral_constant<uZ, PDest>{}, Idxs);
 
         if constexpr (Src) {
             auto source = std::get<source_type&>(std::tie(optional...));
@@ -3577,7 +3584,8 @@ public:
                 auto data_size = std::get<std::size_t&>(std::tie(optional...));
 
                 if (offset + l_size / NodeSize * (NodeSize - 1) + simd::reg<T>::size <= data_size) {
-                    auto src = get_data_array(source, offset, l_size, Idxs);
+                    auto src =
+                        get_data_array(source, offset, l_size, std::integral_constant<uZ, PSrc>{}, Idxs);
                     perform(dst, src, optional...);
                 } else {
                     std::array<T, simd::reg<T>::size * 2> zeros{};
@@ -3609,7 +3617,7 @@ public:
                     perform(dst, src, optional...);
                 };
             } else {
-                auto src = get_data_array(source, offset, l_size, Idxs);
+                auto src = get_data_array(source, offset, l_size, std::integral_constant<uZ, PSrc>{}, Idxs);
                 perform(dst, src, optional...);
             }
         } else {

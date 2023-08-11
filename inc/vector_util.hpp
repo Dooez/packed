@@ -1,7 +1,7 @@
 #ifndef VECTOR_UTIL_HPP
 #define VECTOR_UTIL_HPP
 
-#include "simd_impl/avx2.hpp"
+#include "simd_impl/avx2_common.hpp"
 #include "types.hpp"
 
 #include <algorithm>

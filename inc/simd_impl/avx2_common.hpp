@@ -1,5 +1,5 @@
-#ifndef AVX2_HPP
-#define AVX2_HPP
+#ifndef AVX2_COMMON_HPP
+#define AVX2_COMMON_HPP
 
 #include "simd_common.hpp"
 #include "types.hpp"
@@ -427,10 +427,15 @@ inline void cxstore(T* ptr, cx_reg<T, false, PackSize> data) {
 }
 
 template<uZ PackSize, typename T, bool Conj>
-    requires(PackSize >= reg<T>::size)
-inline auto cxloadstore(T* ptr, cx_reg<T, Conj, PackSize> reg) -> cx_reg<T, false> {
+inline auto cxloadstore(T* ptr, cx_reg<T, Conj, PackSize> reg) -> cx_reg<T, false, PackSize> {
     auto tmp = cxload<PackSize>(ptr);
     cxstore<PackSize>(ptr, reg);
+    return tmp;
+}
+template<uZ LoadSize, uZ StoreSize, typename T, bool Conj, uZ PackSize>
+inline auto cxloadstore(T* ptr, cx_reg<T, Conj, PackSize> reg) -> cx_reg<T, false, LoadSize> {
+    auto tmp = cxload<LoadSize>(ptr);
+    cxstore<StoreSize>(ptr, reg);
     return tmp;
 }
 
