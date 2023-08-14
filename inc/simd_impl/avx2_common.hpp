@@ -239,7 +239,7 @@ inline auto repack(cx_reg<float, Conj>... args) {
 };
 
 template<uZ PackTo, uZ PackFrom, bool... Conj>
-    requires((PackTo > 0))
+    requires pack_size<PackTo> && (PackTo <= reg<float>::size)
 inline auto repack2(cx_reg<float, Conj, PackFrom>... args) {
     auto tup = std::make_tuple(args...);
 
@@ -260,10 +260,13 @@ inline auto repack2(cx_reg<float, Conj, PackFrom>... args) {
     };
 
     if constexpr (PackFrom == PackTo || (PackFrom >= 8 && PackTo >= 8)) {
-        return tup;
+        auto pack = []<bool Conj_>(cx_reg<float, Conj_, PackFrom> reg) {
+            return cx_reg<float, Conj_, PackTo>{reg.real, reg.imag};
+        };
+        return pcx::detail_::apply_for_each(pack, tup);
     } else if constexpr (PackFrom == 1) {
         if constexpr (PackTo >= 8) {
-            auto pack_1 = []<bool Conj_>(cx_reg<float, Conj_> reg) {
+            auto pack_1 = []<bool Conj_, uZ PackSize>(cx_reg<float, Conj_, PackSize> reg) {
                 auto real = _mm256_shuffle_ps(reg.real, reg.imag, 0b10001000);
                 auto imag = _mm256_shuffle_ps(reg.real, reg.imag, 0b11011101);
                 return cx_reg<float, Conj_, PackTo>({real, imag});
@@ -279,7 +282,7 @@ inline auto repack2(cx_reg<float, Conj, PackFrom>... args) {
         }
     } else if constexpr (PackFrom == 2) {
         if constexpr (PackTo >= 8) {
-            auto pack_1 = []<bool Conj_>(cx_reg<float, Conj_> reg) {
+            auto pack_1 = []<bool Conj_, uZ PackSize>(cx_reg<float, Conj_, PackSize> reg) {
                 auto real = avx2::unpacklo_pd(reg.real, reg.imag);
                 auto imag = avx2::unpackhi_pd(reg.real, reg.imag);
                 return cx_reg<float, Conj_, PackTo>({real, imag});
@@ -307,7 +310,7 @@ inline auto repack2(cx_reg<float, Conj, PackFrom>... args) {
             auto tmp = pcx::detail_::apply_for_each(swap_48, tup);
             return pcx::detail_::apply_for_each(swap_24, tmp);
         } else if constexpr (PackTo == 1) {
-            auto pack_0 = []<bool Conj_>(cx_reg<float, Conj_> reg) {
+            auto pack_0 = []<bool Conj_, uZ PackSize>(cx_reg<float, Conj_, PackSize> reg) {
                 auto real = simd::avx2::unpacklo_ps(reg.real, reg.imag);
                 auto imag = simd::avx2::unpackhi_ps(reg.real, reg.imag);
                 return cx_reg<float, Conj_, PackTo>({real, imag});
@@ -359,7 +362,7 @@ static inline auto repack(cx_reg<double, Conj>... args) {
 
 // TODO: remove nested if since they are constexpr anyway
 template<uZ PackTo, uZ PackFrom, bool... Conj>
-    requires((PackFrom > 0) && (PackTo > 0))
+    requires pack_size<PackTo> && (PackTo <= reg<double>::size)
 static inline auto repack2(cx_reg<double, Conj, PackFrom>... args) {
     constexpr auto swap_12 = []<bool Conj_, uZ PackSize>(cx_reg<double, Conj_, PackSize> reg) {
         auto real = _mm256_permute4x64_pd(reg.real, 0b11011000);
@@ -374,7 +377,10 @@ static inline auto repack2(cx_reg<double, Conj, PackFrom>... args) {
 
     auto tup = std::make_tuple(args...);
     if constexpr (PackFrom == PackTo || (PackFrom >= 4 && PackTo >= 4)) {
-        return tup;
+        auto pack = []<bool Conj_>(cx_reg<double, Conj_, PackFrom> reg) {
+            return cx_reg<double, Conj_, PackTo>({reg.real, reg.imag});
+        };
+        return pcx::detail_::apply_for_each(pack, tup);
     } else if constexpr (PackFrom == 1) {
         if constexpr (PackTo >= 4) {
             constexpr auto pack_1 = []<bool Conj_, uZ PackSize>(cx_reg<double, Conj_, PackSize> reg) {
@@ -411,17 +417,17 @@ static inline auto repack2(cx_reg<double, Conj, PackFrom>... args) {
 template<uZ SrcSize, uZ PackSize, typename T>
 inline auto cxload(const T* ptr) {
     constexpr auto LoadSize  = std::max(SrcSize, reg<T>::size);
-    constexpr auto PackSize_ = std::min(SrcSize, reg<T>::size);
+    constexpr auto PackSize_ = std::min(PackSize, reg<T>::size);
 
-    auto data_  = cx_reg<T, false, PackSize_>{load(ptr), load(ptr + LoadSize)};
-    auto [data] = repack2<PackSize>(data_);
+    auto data_  = cx_reg<T, false, std::min(SrcSize, reg<T>::size)>{load(ptr), load(ptr + LoadSize)};
+    auto [data] = repack2<PackSize_>(data_);
     return data;
 }
-template<uZ DestSize, uZ PackSize, typename T>
-inline void cxstore(T* ptr, cx_reg<T, false, PackSize> data) {
+template<uZ DestSize, uZ PackSize_, typename T>
+inline void cxstore(T* ptr, cx_reg<T, false, PackSize_> data) {
     constexpr auto StoreSize = std::max(DestSize, reg<T>::size);
 
-    auto [data_] = repack2<DestSize>(data);
+    auto [data_] = repack2<std::min(DestSize, reg<T>::size)>(data);
     store(ptr, data_.real);
     store(ptr + StoreSize, data_.imag);
 }

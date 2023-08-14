@@ -1553,7 +1553,8 @@ public:
         } else {
             constexpr auto PTform = std::max(PData, simd::reg<T>::size);
             // depth3_and_sort<PTform, PData, false>(v_traits::data(vector));
-            size_specific::template tform_sort<PTform, PData, false>(v_traits::data(vector), size(), m_sort);
+            // size_specific::template tform_sort<PTform, PData, false>(v_traits::data(vector), size(), m_sort);
+            simd::size_specific::tform_sort<PTform, PData, false>(v_traits::data(vector), size(), m_sort);
             apply_subtform<PData, PTform, false, false>(v_traits::data(vector), size());
         }
     }
@@ -1572,7 +1573,7 @@ public:
     template<uZ PackSize = 1>
     void fft_raw_s(T* data) {
         if constexpr (!sorted) {
-            apply_unsorted<PackSize, PackSize, false, false>(data, size());
+            apply_unsorted<PackSize, PackSize, false, false>(data);
         } else {
             constexpr auto PTform = std::max(PackSize, simd::reg<T>::size);
             // depth3_and_sort<PTform, PackSize, false>(data);
@@ -1584,7 +1585,7 @@ public:
     template<bool Normalized = true, uZ PackSize = 1>
     void ifft_raw_s(T* data) {
         if constexpr (!sorted) {
-            apply_unsorted<PackSize, PackSize, true, Normalized>(data, size());
+            apply_unsorted<PackSize, PackSize, true, Normalized>(data);
         } else {
             constexpr auto PTform = std::max(PackSize, simd::reg<T>::size);
             depth3_and_sort<PTform, PackSize, true>(data);
@@ -1599,14 +1600,14 @@ public:
         if (dst_traits::size(dest) != m_size) {
             throw(std::invalid_argument(std::string("destination size (which is ")
                                             .append(std::to_string(dst_traits::size(dest)))
-                                            .append(" is not equal to fft size (which is ")
+                                            .append(") is not equal to fft size (which is ")
                                             .append(std::to_string(size()))
                                             .append(")")));
         }
         if (src_traits::size(source) > m_size) {
             throw(std::invalid_argument(std::string("source size (which is ")
                                             .append(std::to_string(src_traits::size(source)))
-                                            .append(" is bigger than fft size (which is ")
+                                            .append(") is bigger than fft size (which is ")
                                             .append(std::to_string(size()))
                                             .append(")")));
         }
@@ -1615,21 +1616,37 @@ public:
 
         auto dst_ptr = dst_traits::data(dest);
         auto src_ptr = src_traits::data(source);
-        if constexpr (!sorted) {
-            if (src_traits::size(source) < size()) {
-                fftu_internal<PDest, PSrc>(dst_ptr, src_ptr, src_traits::size(source));
-            } else {
-                fftu_internal<PDest, PSrc>(dst_ptr, src_ptr);
+        if constexpr (PSrc != PDest && std::max(PSrc, PDest) > simd::reg<T>::size) {
+            if (dst_ptr == src_ptr) {
+                throw(std::invalid_argument(
+                    std::string("cannot perform in-place repack from source pack size (which is ")
+                        .append(std::to_string(PSrc))
+                        .append(") to destination pack size (which is ")
+                        .append(std::to_string(PDest))
+                        .append(")")));
             }
+        }
+        if constexpr (!sorted) {
+            apply_unsorted<PDest, PSrc, false, false>(dst_ptr, src_ptr, src_traits::size(source));
+            // if (src_traits::size(source) < size()) {
+            //     fftu_internal<PDest, PSrc>(dst_ptr, src_ptr, src_traits::size(source));
+            // } else {
+            //     fftu_internal<PDest, PSrc>(dst_ptr, src_ptr);
+            // }
         } else {
+            // TODO:  source upsize
             constexpr auto PTform = std::max(PDest, simd::reg<T>::size);
             if (dst_ptr == src_ptr) {
-                size_specific::template tform_sort<PTform, PDest, false>(
-                    dst_traits::data(dest), size(), m_sort);
+                // size_specific::template tform_sort<PTform, PDest, false>(
+                //     dst_traits::data(dest), size(), m_sort);
+
+                simd::size_specific::tform_sort<PTform, PDest, false>(dst_traits::data(dest), size(), m_sort);
                 // depth3_and_sort<PTform, PDest, false>(dst_traits::data(dest));
                 apply_subtform<PDest, PTform, false, false>(dst_traits::data(dest), size());
             } else {
-                size_specific::template tform_sort<PTform, PDest, false>(
+                // size_specific::template tform_sort<PTform, PDest, false>(
+                //     dst_traits::data(dest), src_traits::data(source), size(), m_sort);
+                simd::size_specific::tform_sort<PTform, PSrc, false>(
                     dst_traits::data(dest), src_traits::data(source), size(), m_sort);
                 // depth3_and_sort<PTform, PSrc, false>(dst_traits::data(dest));
                 apply_subtform<PDest, PTform, false, false>(dst_traits::data(dest), size());
@@ -1650,11 +1667,15 @@ public:
         }
         constexpr auto PData = v_traits::pack_size;
         if constexpr (!sorted) {
-            ifftu_internal<PData>(v_traits::data(vector));
+            // ifftu_internal<PData>(v_traits::data(vector));
+
+            apply_unsorted<PData, PData, true, Normalized>(v_traits::data(vector));
         } else {
             constexpr auto PTform = std::max(PData, simd::reg<T>::size);
 
-            size_specific::template tform_sort<PTform, PData, true>(v_traits::data(vector), size(), m_sort);
+            // size_specific::template tform_sort<PTform, PData, true>(v_traits::data(vector), size(), m_sort);
+            simd::size_specific::tform_sort<PTform, PData, true>(v_traits::data(vector), size(), m_sort);
+
             // depth3_and_sort<PTform, PData, true>(v_traits::data(vector));
             apply_subtform<PData, PTform, true, true>(v_traits::data(vector), size());
         }
@@ -2982,6 +3003,22 @@ public:
         };
         return twiddle_ptr;
     };
+    template<uZ PDest, uZ PSrc, bool First, uZ AlignSize, uZ AlignSizeRec>
+    inline auto usubtform_recursive_src(T*       dest,
+                                        uZ       size,
+                                        const T* twiddle_ptr,
+                                        uZ       align_count,
+                                        const uZ align_count_rec,
+                                        const T* src,
+                                        uZ       src_size) {
+        if (src_size < size) {
+            return usubtform_recursive_strategic<PDest, PSrc, First, AlignSize, AlignSizeRec>(
+                dest, size, twiddle_ptr, align_count, align_count_rec, src, src_size);
+        } else {
+            return usubtform_recursive_strategic<PDest, PSrc, First, AlignSize, AlignSizeRec>(
+                dest, size, twiddle_ptr, align_count, align_count_rec, src);
+        }
+    }
 
     template<uZ   PDest,
              uZ   PSrc,
@@ -3072,8 +3109,25 @@ public:
         return twiddle_ptr;
     };
 
+    template<uZ   PDest,
+             uZ   PSrc,
+             bool First,
+             bool Scale,
+             uZ   AlignSize,
+             uZ   AlignSizeRec>
+    inline auto usubtform_recursive_reverse_src(T*       dest,    //
+                                                uZ       size,
+                                                const T* twiddle_ptr,
+                                                uZ       align_count,
+                                                uZ       align_count_rec,
+                                                const T* src,
+                                                uZ = {}) -> const T* {
+        return usubtform_recursive_strategic_reverse<PDest, PSrc, First, Scale, AlignSize, AlignSizeRec>(
+            dest, size, twiddle_ptr, align_count, align_count_rec, src);
+    };
+
     template<uZ PDest, uZ PSrc, bool Reverse, bool Normalized>
-    inline auto apply_unsorted(T* data, uZ size) {
+    inline auto apply_unsorted(T* data) {
         static constexpr auto subtform_array = []() {
             auto add_first_zero = []<uZ... I>(std::array<uZ, sizeof...(I)> sizes, std::index_sequence<I...>) {
                 return std::array<uZ, sizeof...(I) + 1>{0, sizes[I]...};
@@ -3119,13 +3173,65 @@ public:
 
         if constexpr (Reverse) {
             (this->*subtform_array[m_subtform_idx])(
-                data, size, &*m_twiddles_strategic.end(), m_align_count, m_align_count_rec);
+                data, size(), &*m_twiddles_strategic.end(), m_align_count, m_align_count_rec);
         } else {
             (this->*subtform_array[m_subtform_idx])(
-                data, size, m_twiddles_strategic.data(), m_align_count, m_align_count_rec);
+                data, size(), m_twiddles_strategic.data(), m_align_count, m_align_count_rec);
         }
     };
 
+    template<uZ PDest, uZ PSrc, bool Reverse, bool Normalized>
+    inline auto apply_unsorted(T* data, const T* src, uZ src_size) {
+        static constexpr auto subtform_array = []() {
+            auto add_first_zero = []<uZ... I>(std::array<uZ, sizeof...(I)> sizes, std::index_sequence<I...>) {
+                return std::array<uZ, sizeof...(I) + 1>{0, sizes[I]...};
+            };
+            using subtform_t     = const T* (fft_unit::*)(T*, uZ, const T*, uZ, uZ, const T*, uZ);
+            constexpr auto align = add_first_zero(
+                Strategy::align_node_size, std::make_index_sequence<Strategy::align_node_size.size()>{});
+            constexpr auto align_rec =
+                add_first_zero(StrategyRec::align_node_size,
+                               std::make_index_sequence<StrategyRec::align_node_size.size()>{});
+            constexpr auto n_combine_rem = align.size() * align_rec.size();
+
+            std::array<subtform_t, n_combine_rem> subtform_table{};
+
+            constexpr auto fill_rec = [=]<uZ AlignSize, uZ... I>(    //
+                                          subtform_t* begin,
+                                          std::integral_constant<uZ, AlignSize>,
+                                          std::index_sequence<I...>) {
+                if (Reverse)
+                    ((*(begin + I) = &fft_unit::usubtform_recursive_reverse_src<PDest,
+                                                                                PSrc,
+                                                                                true,
+                                                                                Normalized,
+                                                                                AlignSize,
+                                                                                align_rec[I]>),
+                     ...);
+                else
+                    ((*(begin + I) =
+                          &fft_unit::usubtform_recursive_src<PDest, PSrc, true, AlignSize, align_rec[I]>),
+                     ...);
+            };
+            [=]<uZ... I>(subtform_t* begin, std::index_sequence<I...>) {
+                fill_rec(
+                    begin, std::integral_constant<uZ, 0>{}, std::make_index_sequence<align_rec.size()>{});
+                (fill_rec(begin + (I + 1) * align_rec.size(),
+                          std::integral_constant<uZ, Strategy::align_node_size[I]>{},
+                          std::make_index_sequence<align_rec.size()>{}),
+                 ...);
+            }(subtform_table.data(), std::make_index_sequence<Strategy::align_node_size.size()>{});
+            return subtform_table;
+        }();
+
+        if constexpr (Reverse) {
+            (this->*subtform_array[m_subtform_idx])(
+                data, size(), &*m_twiddles_strategic.end(), m_align_count, m_align_count_rec, src);
+        } else {
+            (this->*subtform_array[m_subtform_idx])(
+                data, size(), m_twiddles_strategic.data(), m_align_count, m_align_count_rec, src, src_size);
+        }
+    };
 
     template<std::size_t PDest, std::size_t PSrc, bool First = false, typename... Optional>
     inline auto unsorted_subtransform(float*       dest,

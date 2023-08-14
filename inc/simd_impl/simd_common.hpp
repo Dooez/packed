@@ -35,10 +35,14 @@ template<uZ PackSize, typename T>
 inline auto broadcast(std::complex<T> source) -> cx_reg<T, false, PackSize>;
 template<typename T>
 inline auto broadcast(std::complex<T> source) -> cx_reg<T, false, reg<T>::size>;
+/**
+ * @brief Loads packed complex data starting at ptr.
+ * Repacks data to min(PackSize, reg<T>::size).
+ */
 template<uZ SrcSize, uZ PackSize = SrcSize, typename T = double>
 inline auto cxload(const T* ptr);
-template<uZ DestSize, uZ PackSize, typename T>
-inline void cxstore(T* ptr, cx_reg<T, false, PackSize> data);
+template<uZ DestSize, uZ PackSize_, typename T>
+inline void cxstore(T* ptr, cx_reg<T, false, PackSize_> data);
 
 /**
 * @brief Register aligned adress
@@ -133,16 +137,16 @@ template<typename T>
 constexpr auto reg_size = cx_reg<T, false, 1>::size;
 
 template<typename T, bool ConjLhs, bool ConjRhs, uZ PackSize>
-    requires(PackSize >= reg_size<T> || !(ConjLhs || ConjRhs))
+    requires(PackSize >= reg<T>::size || !(ConjLhs || ConjRhs))
 inline auto add(cx_reg<T, ConjLhs, PackSize> lhs, cx_reg<T, ConjRhs, PackSize> rhs);
 template<typename T, bool ConjLhs, bool ConjRhs, uZ PackSize>
-    requires(PackSize >= reg_size<T> || !(ConjLhs || ConjRhs))
+    requires(PackSize >= reg<T>::size || !(ConjLhs || ConjRhs))
 inline auto sub(cx_reg<T, ConjLhs, PackSize> lhs, cx_reg<T, ConjRhs, PackSize> rhs);
 template<typename T, bool ConjLhs, bool ConjRhs, uZ PackSize>
-    requires(PackSize >= reg_size<T>)
+    requires(PackSize >= reg<T>::size)
 inline auto mul(cx_reg<T, ConjLhs, PackSize> lhs, cx_reg<T, ConjRhs, PackSize> rhs);
 template<typename T, bool ConjLhs, bool ConjRhs, uZ PackSize>
-    requires(PackSize >= reg_size<T>)
+    requires(PackSize >= reg<T>::size)
 inline auto div(cx_reg<T, ConjLhs, PackSize> lhs, cx_reg<T, ConjRhs, PackSize> rhs);
 
 /**
@@ -156,27 +160,27 @@ inline auto div(cx_reg<T, ConjLhs, PackSize> lhs, cx_reg<T, ConjRhs, PackSize> r
  * Real results depends on compiler.
  */
 template<typename T, bool... Conj, uZ PackSize>
-    requires(sizeof...(Conj) % 2 == 0 && PackSize >= reg_size<T>)
+    requires(sizeof...(Conj) % 2 == 0 && PackSize >= reg<T>::size)
 inline auto mul_pairs(cx_reg<T, Conj, PackSize>... args);
 
 template<typename T, bool... Conj, uZ PackSize>
-    requires(sizeof...(Conj) % 2 == 0 && PackSize >= reg_size<T>)
+    requires(sizeof...(Conj) % 2 == 0 && PackSize >= reg<T>::size)
 inline auto div_pairs(cx_reg<T, Conj, PackSize>... args);
 
 // Imlpementations
 
 template<typename T, bool Conj, uZ PackSize>
-    requires(PackSize >= reg_size<T> || !Conj)
+    requires(PackSize >= reg<T>::size || !Conj)
 inline auto add(cx_reg<T, Conj, PackSize> lhs, cx_reg<T, Conj, PackSize> rhs) -> cx_reg<T, Conj, PackSize> {
     return {add(lhs.real, rhs.real), add(lhs.imag, rhs.imag)};
 }
 template<typename T, uZ PackSize>
-    requires(PackSize >= reg_size<T>)
+    requires(PackSize >= reg<T>::size)
 inline auto add(cx_reg<T, true, PackSize> lhs, cx_reg<T, false, PackSize> rhs) -> cx_reg<T, false, PackSize> {
     return {add(lhs.real, rhs.real), sub(rhs.imag, lhs.imag)};
 }
 template<typename T, uZ PackSize>
-    requires(PackSize >= reg_size<T>)
+    requires(PackSize >= reg<T>::size)
 inline auto add(cx_reg<T, false, PackSize> lhs, cx_reg<T, true, PackSize> rhs) -> cx_reg<T, false, PackSize> {
     return {add(lhs.real, rhs.real), sub(lhs.imag, rhs.imag)};
 }
@@ -187,17 +191,17 @@ inline auto sub(cx_reg<T, false, PackSize> lhs, cx_reg<T, false, PackSize> rhs)
     return {sub(lhs.real, rhs.real), sub(lhs.imag, rhs.imag)};
 }
 template<typename T, uZ PackSize>
-    requires(PackSize >= reg_size<T>)
+    requires(PackSize >= reg<T>::size)
 inline auto sub(cx_reg<T, true, PackSize> lhs, cx_reg<T, false, PackSize> rhs) -> cx_reg<T, true, PackSize> {
     return {sub(lhs.real, rhs.real), add(lhs.imag, rhs.imag)};
 }
 template<typename T, uZ PackSize>
-    requires(PackSize >= reg_size<T>)
+    requires(PackSize >= reg<T>::size)
 inline auto sub(cx_reg<T, false, PackSize> lhs, cx_reg<T, true, PackSize> rhs) -> cx_reg<T, false, PackSize> {
     return {sub(lhs.real, rhs.real), add(lhs.imag, rhs.imag)};
 }
 template<typename T, uZ PackSize>
-    requires(PackSize >= reg_size<T>)
+    requires(PackSize >= reg<T>::size)
 inline auto sub(cx_reg<T, true, PackSize> lhs, cx_reg<T, true, PackSize> rhs) -> cx_reg<T, false, PackSize> {
     return {sub(lhs.real, rhs.real), sub(rhs.imag, lhs.imag)};
 }
@@ -235,7 +239,7 @@ inline auto mul_imag_rhs(cx_reg<T, false, PackSize> prod_real_rhs,
 }    // namespace detail_
 
 template<typename T, bool ConjLhs, bool ConjRhs, uZ PackSize>
-    requires(PackSize >= reg_size<T>)
+    requires(PackSize >= reg<T>::size)
 inline auto mul(cx_reg<T, ConjLhs, PackSize> lhs, cx_reg<T, ConjRhs, PackSize> rhs) {
     return detail_::mul_imag_rhs(detail_::mul_real_rhs(lhs, rhs), lhs, rhs);
 };
@@ -254,7 +258,7 @@ inline auto make_pair_of_tuples(Args&&... args) {
 }    // namespace detail_
 
 template<typename T, bool... Conj, uZ PackSize>
-    requires(sizeof...(Conj) % 2 == 0 && PackSize >= reg_size<T>)
+    requires(sizeof...(Conj) % 2 == 0 && PackSize >= reg<T>::size)
 inline auto mul_pairs(cx_reg<T, Conj, PackSize>... args) {
     auto [lhs_tup, rhs_tup] = detail_::make_pair_of_tuples(std::forward<cx_reg<T, Conj, PackSize>>(args)...);
     auto mul_real_rhs       = [](auto&& lhs, auto&& rhs) { return detail_::mul_real_rhs(lhs, rhs); };
@@ -267,7 +271,7 @@ inline auto mul_pairs(cx_reg<T, Conj, PackSize>... args) {
 
 
 template<typename T, uZ PackSize>
-    requires(PackSize >= reg_size<T>)
+    requires(PackSize >= reg<T>::size)
 inline auto div(cx_reg<T, false, PackSize> lhs, cx_reg<T, false, PackSize> rhs)
     -> cx_reg<T, false, PackSize> {
     auto rhs_abs = mul(rhs.real, rhs.real);
@@ -281,7 +285,7 @@ inline auto div(cx_reg<T, false, PackSize> lhs, cx_reg<T, false, PackSize> rhs)
     return {div(real_, rhs_abs), div(imag_, rhs_abs)};
 }
 template<typename T, uZ PackSize>
-    requires(PackSize >= reg_size<T>)
+    requires(PackSize >= reg<T>::size)
 inline auto div(cx_reg<T, true, PackSize> lhs, cx_reg<T, false, PackSize> rhs) -> cx_reg<T, false, PackSize> {
     auto rhs_abs = mul(rhs.real, rhs.real);
     auto real_   = mul(lhs.real, rhs.real);
@@ -294,7 +298,7 @@ inline auto div(cx_reg<T, true, PackSize> lhs, cx_reg<T, false, PackSize> rhs) -
     return {div(real_, rhs_abs), div(imag_, rhs_abs)};
 }
 template<typename T, uZ PackSize>
-    requires(PackSize >= reg_size<T>)
+    requires(PackSize >= reg<T>::size)
 inline auto div(cx_reg<T, false, PackSize> lhs, cx_reg<T, true, PackSize> rhs) -> cx_reg<T, false, PackSize> {
     auto rhs_abs = mul(rhs.real, rhs.real);
     auto real_   = mul(lhs.real, rhs.real);
@@ -307,7 +311,7 @@ inline auto div(cx_reg<T, false, PackSize> lhs, cx_reg<T, true, PackSize> rhs) -
     return {div(real_, rhs_abs), div(imag_, rhs_abs)};
 }
 template<typename T, uZ PackSize>
-    requires(PackSize >= reg_size<T>)
+    requires(PackSize >= reg<T>::size)
 inline auto div(cx_reg<T, true, PackSize> lhs, cx_reg<T, true, PackSize> rhs) -> cx_reg<T, false, PackSize> {
     auto rhs_abs = mul(rhs.real, rhs.real);
     auto real_   = mul(lhs.real, rhs.real);

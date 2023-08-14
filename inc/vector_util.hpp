@@ -36,9 +36,6 @@ constexpr const std::size_t default_pack_size = 32 / sizeof(T);
 
 constexpr const std::size_t dynamic_size = -1;
 
-template<uZ N>
-concept pack_size = N > 0 && (N & (N - 1)) == 0;
-
 template<typename T, uZ PackSize>
 concept packed_floating_point = std::floating_point<T> && pack_size<PackSize>;
 

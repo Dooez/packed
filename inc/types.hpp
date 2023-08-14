@@ -21,6 +21,9 @@ using i32 = int32_t;
 using i16 = int16_t;
 using i8  = int8_t;
 
+template<uZ N>
+concept pack_size = N > 0 && (N & (N - 1)) == 0;
+
 namespace simd {
 
 /**
@@ -37,7 +40,8 @@ using reg_t = typename reg<T>::type;
  * Pack size template parameter could be added to streamline some interactons,
  * but it requires possibly quite large refactor. Should consider in the future.
  */
-template<typename T, bool Conj = false, uZ PackSize = std::same_as<T, float> ? 8 : 4>
+template<typename T, bool Conj = false, uZ PackSize = reg<T>::size>
+    requires pack_size<PackSize> && (PackSize <= reg<T>::size)
 struct cx_reg {
     reg_t<T>            real;
     reg_t<T>            imag;

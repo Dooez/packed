@@ -92,6 +92,8 @@ static inline auto combine(cx_reg<float, false, PackSize>... args) {
     }
 }
 }    // namespace avx2
+// NOLINTBEGIN(*pointer-arithmetic*)
+
 /**
  * @brief Contains functions specific to data type and simd sizes
  *
@@ -208,10 +210,11 @@ struct size_specific {
                 cxstore<PDest>(ptr2, she2);
                 cxstore<PDest>(ptr3, she3);
             } else {
-                cxstore<PDest>(ptr0, e0);
-                cxstore<PDest>(ptr1, e1);
-                cxstore<PDest>(ptr2, e2);
-                cxstore<PDest>(ptr3, e3);
+                constexpr auto PStore = std::max(PDest, reg_size);
+                cxstore<PStore>(ptr0, e0);
+                cxstore<PStore>(ptr1, e1);
+                cxstore<PStore>(ptr2, e2);
+                cxstore<PStore>(ptr3, e3);
             }
         }
         return twiddle_ptr;
@@ -225,25 +228,26 @@ struct size_specific {
                                         auto... optional) {
         constexpr auto reg_size = reg<float>::size;
         using cx_reg            = cx_reg<float, false, reg_size>;
-        constexpr auto PLoad    = BitReversed ? PSrc : reg_size;
+        constexpr auto PLoad    = BitReversed ? PSrc : std::max(PSrc, reg_size);
 
         using source_type  = const float*;
         constexpr bool Src = pcx::detail_::has_type<source_type, decltype(optional)...>;
 
         auto scale = [](uZ size) {
-            if constexpr (Scale)
+            if constexpr (Scale) {
                 return static_cast<float>(1. / static_cast<double>(size));
-            else
+            } else {
                 return [] {};
+            }
         }(fft_size);
 
-        for (iZ i_group = size / unsorted_size<float> - 1; i_group >= 0; --i_group) {
+        for (iZ i_group = static_cast<iZ>(size / unsorted_size<float> - 1); i_group >= 0; --i_group) {
             auto* ptr0 = ra_addr<PTform>(dest, reg_size * (i_group * 4));
             auto* ptr1 = ra_addr<PTform>(dest, reg_size * (i_group * 4 + 1));
             auto* ptr2 = ra_addr<PTform>(dest, reg_size * (i_group * 4 + 2));
             auto* ptr3 = ra_addr<PTform>(dest, reg_size * (i_group * 4 + 3));
 
-            simd::cx_reg<float, false, PLoad> she0_, she1_, she2_, she3_;
+            simd::cx_reg<float, false, PLoad> she0_, she1_, she2_, she3_;    // NOLINT (*declaration*)
             if constexpr (Src) {
                 auto src = std::get<source_type&>(std::tie(optional...));
 
@@ -258,7 +262,8 @@ struct size_specific {
                 she3_ = cxload<PLoad>(ptr3);
             }
 
-            cx_reg e0, e1, e2, e3;
+            cx_reg e0, e1, e2, e3;    // NOLINT (*declaration*)
+
             auto [she0, she1, she2, she3]    = repack2<reg_size>(she0_, she1_, she2_, she3_);
             std::tie(she0, she1, she2, she3) = inverse<true>(she0, she1, she2, she3);
 
@@ -308,9 +313,10 @@ struct size_specific {
 
             auto [shb1, shb3] = mul_pairs(shb1tw, tw3, shb3tw, tw4);
 
-            twiddle_ptr -= 6;
+            twiddle_ptr -= 6;    //NOLINT (*magic-numbers*)
             cx_reg tw1 = {broadcast(twiddle_ptr + 2), broadcast(twiddle_ptr + 3)};
-            cx_reg tw2 = {broadcast(twiddle_ptr + 4), broadcast(twiddle_ptr + 5)};
+            cx_reg tw2 = {broadcast(twiddle_ptr + 4),
+                          broadcast(twiddle_ptr + 5)};    //NOLINT (*magic-numbers*)
             cx_reg tw0 = {broadcast(twiddle_ptr + 0), broadcast(twiddle_ptr + 1)};
 
             auto [b0, b1] = avx2::unpack_128(shb0, shb1);
@@ -447,7 +453,7 @@ struct size_specific {
             ins2(tw13.imag());
             ins2(tw14.imag());
 
-            std::array<uint, 8> switched_k = {0, 2, 1, 3, 4, 6, 5, 7};
+            const std::array<uint, 8> switched_k = {0, 2, 1, 3, 4, 6, 5, 7};
             for (auto k: switched_k) {
                 auto tw = wnk<T>(l_size * 16,    //
                                  pcx::detail_::fft::reverse_bit_order(start * 16 + k,
@@ -509,7 +515,6 @@ struct size_specific {
             // _mm_prefetch(ra_addr<PTform>(src2, offset1), _MM_HINT_T0);
             // _mm_prefetch(ra_addr<PTform>(src6, offset1), _MM_HINT_T0);
 
-
             auto [p1, p5, p3, p7]    = avx2::split(p1_, p5_, p3_, p7_);
             std::tie(p1, p5, p3, p7) = inverse<Inverse>(p1, p5, p3, p7);
 
@@ -569,7 +574,7 @@ struct size_specific {
             auto [shc0, shc1] = avx2::unpack_128(shb0, shb1);
             auto [shc2, shc3] = avx2::unpack_128(shb2, shb3);
 
-            cx_reg q0, q1, q2, q3, q4, q5, q6, q7;
+            cx_reg q0, q1, q2, q3, q4, q5, q6, q7;    // NOLINT (*declaration*)
 
             std::tie(shc0, shc1, shc2, shc3) = inverse<Inverse>(shc0, shc1, shc2, shc3);
 
@@ -781,210 +786,203 @@ struct size_specific {
 
     template<uZ PTform, uZ PSrc, bool Inverse>
     static inline void tform_sort(float* dest, const float* source, uZ size, const auto& sort) {
-        //         constexpr auto PLoad = std::max(PSrc, reg<float>::size);
-        //
-        //         const auto sq2   = detail_::fft::wnk<float>(8, 1);
-        //         auto       twsq2 = broadcast(sq2.real());
-        //
-        //         const auto* const src0 = source;
-        //         const auto* const src1 = ra_addr<PTform>(source, 1 * size / 8);
-        //         const auto* const src2 = ra_addr<PTform>(source, 2 * size / 8);
-        //         const auto* const src3 = ra_addr<PTform>(source, 3 * size / 8);
-        //         const auto* const src4 = ra_addr<PTform>(source, 4 * size / 8);
-        //         const auto* const src5 = ra_addr<PTform>(source, 5 * size / 8);
-        //         const auto* const src6 = ra_addr<PTform>(source, 6 * size / 8);
-        //         const auto* const src7 = ra_addr<PTform>(source, 7 * size / 8);
-        //
-        //         auto* const dst0 = dest;
-        //         auto* const dst1 = ra_addr<PTform>(dest, 1 * size / 8);
-        //         auto* const dst2 = ra_addr<PTform>(dest, 2 * size / 8);
-        //         auto* const dst3 = ra_addr<PTform>(dest, 3 * size / 8);
-        //         auto* const dst4 = ra_addr<PTform>(dest, 4 * size / 8);
-        //         auto* const dst5 = ra_addr<PTform>(dest, 5 * size / 8);
-        //         auto* const dst6 = ra_addr<PTform>(dest, 6 * size / 8);
-        //         auto* const dst7 = ra_addr<PTform>(dest, 7 * size / 8);
-        //
-        //         uint i = 0;
-        //         for (; i < pcx::detail_::fft::n_reversals(size / 64); i += 2) {
-        //             using reg_t = cx_reg<float>;
-        //
-        //             auto offset_src  = sort[i] * reg<float>::size;
-        //             auto offset_dest = sort[i + 1] * reg<float>::size;
-        //
-        //             for (uint k = 0; k < 2; ++k) {
-        //                 auto p1 = cxload<PLoad>(ra_addr<PLoad>(src1, offset_src));
-        //                 auto p5 = cxload<PLoad>(ra_addr<PLoad>(src5, offset_src));
-        //                 auto p3 = cxload<PLoad>(ra_addr<PLoad>(src3, offset_src));
-        //                 auto p7 = cxload<PLoad>(ra_addr<PLoad>(src7, offset_src));
-        //
-        //                 if constexpr (PSrc < PLoad) {
-        //                     std::tie(p1, p5, p3, p7) = convert<float>::split<PSrc>(p1, p5, p3, p7);
-        //                 }
-        //
-        //                 auto [a1, a5] = btfly(p1, p5);
-        //                 auto [a3, a7] = btfly(p3, p7);
-        //
-        //                 reg_t b5 = {add(a5.real, a7.imag), sub(a5.imag, a7.real)};
-        //                 reg_t b7 = {sub(a5.real, a7.imag), add(a5.imag, a7.real)};
-        //
-        //                 reg_t b5_tw = {add(b5.real, b5.imag), sub(b5.imag, b5.real)};
-        //                 reg_t b7_tw = {sub(b7.real, b7.imag), add(b7.real, b7.imag)};
-        //
-        //                 auto [b1, b3] = btfly(a1, a3);
-        //
-        //                 b5_tw = mul(b5_tw, twsq2);
-        //                 b7_tw = mul(b7_tw, twsq2);
-        //
-        //                 auto p0 = cxload<PLoad>(ra_addr<PLoad>(src0, offset_src));
-        //                 auto p4 = cxload<PLoad>(ra_addr<PLoad>(src4, offset_src));
-        //                 auto p2 = cxload<PLoad>(ra_addr<PLoad>(src2, offset_src));
-        //                 auto p6 = cxload<PLoad>(ra_addr<PLoad>(src6, offset_src));
-        //
-        //                 if constexpr (PSrc < PLoad) {
-        //                     std::tie(p0, p4, p2, p6) = convert<float>::split<PSrc>(p0, p4, p2, p6);
-        //                 }
-        //
-        //                 auto [a0, a4] = btfly(p0, p4);
-        //                 auto [a2, a6] = btfly(p2, p6);
-        //
-        //                 auto [b0, b2] = btfly(a0, a2);
-        //                 reg_t b4      = {add(a4.real, a6.imag), sub(a4.imag, a6.real)};
-        //                 reg_t b6      = {sub(a4.real, a6.imag), add(a4.imag, a6.real)};
-        //
-        //                 auto [c0, c1] = btfly(b0, b1);
-        //                 reg_t c2      = {add(b2.real, b3.imag), sub(b2.imag, b3.real)};
-        //                 reg_t c3      = {sub(b2.real, b3.imag), add(b2.imag, b3.real)};
-        //
-        //                 auto [c4, c5] = btfly(b4, b5_tw);
-        //                 auto [c7, c6] = btfly(b6, b7_tw);
-        //
-        //                 auto [sha0, sha4] = avx2::unpack_ps(c0, c4);
-        //                 auto [sha2, sha6] = avx2::unpack_ps(c2, c6);
-        //                 auto [sha1, sha5] = avx2::unpack_ps(c1, c5);
-        //                 auto [sha3, sha7] = avx2::unpack_ps(c3, c7);
-        //
-        //                 auto [shb0, shb2] = avx2::unpack_pd(sha0, sha2);
-        //                 auto [shb1, shb3] = avx2::unpack_pd(sha1, sha3);
-        //                 auto [shc0, shc1] = avx2::unpack_128(shb0, shb1);
-        //                 auto [shc2, shc3] = avx2::unpack_128(shb2, shb3);
-        //
-        //                 cxstore<PTform>(ra_addr<PTform>(dst0, offset_dest), shc0);
-        //                 cxstore<PTform>(ra_addr<PTform>(dst4, offset_dest), shc2);
-        //                 if constexpr (PSrc < 4) {
-        //                     cxstore<PTform>(ra_addr<PTform>(dst2, offset_dest), shc1);
-        //                     cxstore<PTform>(ra_addr<PTform>(dst6, offset_dest), shc3);
-        //                 } else {
-        //                     cxstore<PTform>(ra_addr<PTform>(dst1, offset_dest), shc1);
-        //                     cxstore<PTform>(ra_addr<PTform>(dst5, offset_dest), shc3);
-        //                 }
-        //
-        //                 auto [shb4, shb6] = avx2::unpack_pd(sha4, sha6);
-        //                 auto [shb5, shb7] = avx2::unpack_pd(sha5, sha7);
-        //                 auto [shc4, shc5] = avx2::unpack_128(shb4, shb5);
-        //                 auto [shc6, shc7] = avx2::unpack_128(shb6, shb7);
-        //
-        //                 if constexpr (PSrc < 4) {
-        //                     cxstore<PTform>(ra_addr<PTform>(dst1, offset_dest), shc4);
-        //                     cxstore<PTform>(ra_addr<PTform>(dst5, offset_dest), shc6);
-        //                 } else {
-        //                     cxstore<PTform>(ra_addr<PTform>(dst2, offset_dest), shc4);
-        //                     cxstore<PTform>(ra_addr<PTform>(dst6, offset_dest), shc6);
-        //                 }
-        //                 cxstore<PTform>(ra_addr<PTform>(dst3, offset_dest), shc5);
-        //                 cxstore<PTform>(ra_addr<PTform>(dst7, offset_dest), shc7);
-        //
-        //                 offset_src  = sort[i + 1] * reg<float>::size;
-        //                 offset_dest = sort[i] * reg<float>::size;
-        //             }
-        //         };
-        //         for (; i < size / 64; ++i) {
-        //             using reg_t = cx_reg<float>;
-        //
-        //             auto offset_src  = sort[i] * reg<float>::size;
-        //             auto offset_dest = sort[i] * reg<float>::size;
-        //
-        //             auto p1 = cxload<PLoad>(ra_addr<PLoad>(src1, offset_src));
-        //             auto p5 = cxload<PLoad>(ra_addr<PLoad>(src5, offset_src));
-        //             auto p3 = cxload<PLoad>(ra_addr<PLoad>(src3, offset_src));
-        //             auto p7 = cxload<PLoad>(ra_addr<PLoad>(src7, offset_src));
-        //
-        //             if constexpr (PSrc < PLoad) {
-        //                 std::tie(p1, p5, p3, p7) = convert<float>::split<PSrc>(p1, p5, p3, p7);
-        //             }
-        //
-        //             auto [a1, a5] = btfly(p1, p5);
-        //             auto [a3, a7] = btfly(p3, p7);
-        //
-        //             reg_t b5 = {add(a5.real, a7.imag), sub(a5.imag, a7.real)};
-        //             reg_t b7 = {sub(a5.real, a7.imag), add(a5.imag, a7.real)};
-        //
-        //             reg_t b5_tw = {add(b5.real, b5.imag), sub(b5.imag, b5.real)};
-        //             reg_t b7_tw = {sub(b7.real, b7.imag), add(b7.real, b7.imag)};
-        //
-        //             auto [b1, b3] = btfly(a1, a3);
-        //
-        //             b5_tw = mul(b5_tw, twsq2);
-        //             b7_tw = mul(b7_tw, twsq2);
-        //
-        //             auto p0 = cxload<PLoad>(ra_addr<PLoad>(src0, offset_src));
-        //             auto p4 = cxload<PLoad>(ra_addr<PLoad>(src4, offset_src));
-        //             auto p2 = cxload<PLoad>(ra_addr<PLoad>(src2, offset_src));
-        //             auto p6 = cxload<PLoad>(ra_addr<PLoad>(src6, offset_src));
-        //
-        //             if constexpr (PSrc < PLoad) {
-        //                 std::tie(p0, p4, p2, p6) = convert<float>::split<PSrc>(p0, p4, p2, p6);
-        //             }
-        //
-        //             auto [a0, a4] = btfly(p0, p4);
-        //             auto [a2, a6] = btfly(p2, p6);
-        //
-        //             auto [b0, b2] = btfly(a0, a2);
-        //             reg_t b4      = {add(a4.real, a6.imag), sub(a4.imag, a6.real)};
-        //             reg_t b6      = {sub(a4.real, a6.imag), add(a4.imag, a6.real)};
-        //
-        //             auto [c0, c1] = btfly(b0, b1);
-        //             reg_t c2      = {add(b2.real, b3.imag), sub(b2.imag, b3.real)};
-        //             reg_t c3      = {sub(b2.real, b3.imag), add(b2.imag, b3.real)};
-        //
-        //             auto [c4, c5] = btfly(b4, b5_tw);
-        //             auto [c7, c6] = btfly(b6, b7_tw);
-        //
-        //             auto [sha0, sha4] = avx2::unpack_ps(c0, c4);
-        //             auto [sha2, sha6] = avx2::unpack_ps(c2, c6);
-        //             auto [sha1, sha5] = avx2::unpack_ps(c1, c5);
-        //             auto [sha3, sha7] = avx2::unpack_ps(c3, c7);
-        //
-        //             auto [shb0, shb2] = avx2::unpack_pd(sha0, sha2);
-        //             auto [shb1, shb3] = avx2::unpack_pd(sha1, sha3);
-        //             auto [shc0, shc1] = avx2::unpack_128(shb0, shb1);
-        //             auto [shc2, shc3] = avx2::unpack_128(shb2, shb3);
-        //
-        //             cxstore<PTform>(ra_addr<PTform>(dst0, offset_dest), shc0);
-        //             cxstore<PTform>(ra_addr<PTform>(dst4, offset_dest), shc2);
-        //             if constexpr (PSrc < 4) {
-        //                 cxstore<PTform>(ra_addr<PTform>(dst2, offset_dest), shc1);
-        //                 cxstore<PTform>(ra_addr<PTform>(dst6, offset_dest), shc3);
-        //             } else {
-        //                 cxstore<PTform>(ra_addr<PTform>(dst1, offset_dest), shc1);
-        //                 cxstore<PTform>(ra_addr<PTform>(dst5, offset_dest), shc3);
-        //             }
-        //
-        //             auto [shb4, shb6] = avx2::unpack_pd(sha4, sha6);
-        //             auto [shb5, shb7] = avx2::unpack_pd(sha5, sha7);
-        //             auto [shc4, shc5] = avx2::unpack_128(shb4, shb5);
-        //             auto [shc6, shc7] = avx2::unpack_128(shb6, shb7);
-        //
-        //             if constexpr (PSrc < 4) {
-        //                 cxstore<PTform>(ra_addr<PTform>(dst1, offset_dest), shc4);
-        //                 cxstore<PTform>(ra_addr<PTform>(dst5, offset_dest), shc6);
-        //             } else {
-        //                 cxstore<PTform>(ra_addr<PTform>(dst2, offset_dest), shc4);
-        //                 cxstore<PTform>(ra_addr<PTform>(dst6, offset_dest), shc6);
-        //             }
-        //             cxstore<PTform>(ra_addr<PTform>(dst3, offset_dest), shc5);
-        //             cxstore<PTform>(ra_addr<PTform>(dst7, offset_dest), shc7);
-        //         }
+        constexpr auto reg_size = reg<float>::size;
+        using cx_reg            = cx_reg<float, false, reg_size>;
+
+        const auto sq2   = pcx::detail_::fft::wnk<float>(8, 1);
+        auto       twsq2 = broadcast(sq2.real());
+
+        const auto* const src0 = source;
+        const auto* const src1 = ra_addr<PSrc>(source, 1 * size / 8);
+        const auto* const src2 = ra_addr<PSrc>(source, 2 * size / 8);
+        const auto* const src3 = ra_addr<PSrc>(source, 3 * size / 8);
+        const auto* const src4 = ra_addr<PSrc>(source, 4 * size / 8);
+        const auto* const src5 = ra_addr<PSrc>(source, 5 * size / 8);
+        const auto* const src6 = ra_addr<PSrc>(source, 6 * size / 8);
+        const auto* const src7 = ra_addr<PSrc>(source, 7 * size / 8);
+
+        auto* const dst0 = dest;
+        auto* const dst1 = ra_addr<PTform>(dest, 1 * size / 8);
+        auto* const dst2 = ra_addr<PTform>(dest, 2 * size / 8);
+        auto* const dst3 = ra_addr<PTform>(dest, 3 * size / 8);
+        auto* const dst4 = ra_addr<PTform>(dest, 4 * size / 8);
+        auto* const dst5 = ra_addr<PTform>(dest, 5 * size / 8);
+        auto* const dst6 = ra_addr<PTform>(dest, 6 * size / 8);
+        auto* const dst7 = ra_addr<PTform>(dest, 7 * size / 8);
+
+        uint i = 0;
+        for (; i < pcx::detail_::fft::n_reversals(size / 64); i += 2) {
+            auto offset_src  = sort[i] * reg_size;
+            auto offset_dest = sort[i + 1] * reg_size;
+
+            for (uint k = 0; k < 2; ++k) {
+                auto p1_ = cxload<PSrc>(ra_addr<PSrc>(src1, offset_src));
+                auto p5_ = cxload<PSrc>(ra_addr<PSrc>(src5, offset_src));
+                auto p3_ = cxload<PSrc>(ra_addr<PSrc>(src3, offset_src));
+                auto p7_ = cxload<PSrc>(ra_addr<PSrc>(src7, offset_src));
+
+                auto [p1, p5, p3, p7] = avx2::split(p1_, p5_, p3_, p7_);
+
+                auto [a1, a5] = btfly(p1, p5);
+                auto [a3, a7] = btfly(p3, p7);
+
+                cx_reg b5 = {add(a5.real, a7.imag), sub(a5.imag, a7.real)};
+                cx_reg b7 = {sub(a5.real, a7.imag), add(a5.imag, a7.real)};
+
+                cx_reg b5_tw = {add(b5.real, b5.imag), sub(b5.imag, b5.real)};
+                cx_reg b7_tw = {sub(b7.real, b7.imag), add(b7.real, b7.imag)};
+
+                auto [b1, b3] = btfly(a1, a3);
+
+                b5_tw = mul(b5_tw, twsq2);
+                b7_tw = mul(b7_tw, twsq2);
+
+                auto p0_ = cxload<PSrc>(ra_addr<PSrc>(src0, offset_src));
+                auto p4_ = cxload<PSrc>(ra_addr<PSrc>(src4, offset_src));
+                auto p2_ = cxload<PSrc>(ra_addr<PSrc>(src2, offset_src));
+                auto p6_ = cxload<PSrc>(ra_addr<PSrc>(src6, offset_src));
+
+                auto [p0, p4, p2, p6] = avx2::split(p0_, p4_, p2_, p6_);
+
+
+                auto [a0, a4] = btfly(p0, p4);
+                auto [a2, a6] = btfly(p2, p6);
+
+                auto [b0, b2] = btfly(a0, a2);
+                cx_reg b4     = {add(a4.real, a6.imag), sub(a4.imag, a6.real)};
+                cx_reg b6     = {sub(a4.real, a6.imag), add(a4.imag, a6.real)};
+
+                auto [c0, c1] = btfly(b0, b1);
+                cx_reg c2     = {add(b2.real, b3.imag), sub(b2.imag, b3.real)};
+                cx_reg c3     = {sub(b2.real, b3.imag), add(b2.imag, b3.real)};
+
+                auto [c4, c5] = btfly(b4, b5_tw);
+                auto [c7, c6] = btfly(b6, b7_tw);
+
+                auto [sha0, sha4] = avx2::unpack_ps(c0, c4);
+                auto [sha2, sha6] = avx2::unpack_ps(c2, c6);
+                auto [sha1, sha5] = avx2::unpack_ps(c1, c5);
+                auto [sha3, sha7] = avx2::unpack_ps(c3, c7);
+
+                auto [shb0, shb2] = avx2::unpack_pd(sha0, sha2);
+                auto [shb1, shb3] = avx2::unpack_pd(sha1, sha3);
+                auto [shc0, shc1] = avx2::unpack_128(shb0, shb1);
+                auto [shc2, shc3] = avx2::unpack_128(shb2, shb3);
+
+                cxstore<PTform>(ra_addr<PTform>(dst0, offset_dest), shc0);
+                cxstore<PTform>(ra_addr<PTform>(dst4, offset_dest), shc2);
+                if constexpr (PSrc < 4) {
+                    cxstore<PTform>(ra_addr<PTform>(dst2, offset_dest), shc1);
+                    cxstore<PTform>(ra_addr<PTform>(dst6, offset_dest), shc3);
+                } else {
+                    cxstore<PTform>(ra_addr<PTform>(dst1, offset_dest), shc1);
+                    cxstore<PTform>(ra_addr<PTform>(dst5, offset_dest), shc3);
+                }
+
+                auto [shb4, shb6] = avx2::unpack_pd(sha4, sha6);
+                auto [shb5, shb7] = avx2::unpack_pd(sha5, sha7);
+                auto [shc4, shc5] = avx2::unpack_128(shb4, shb5);
+                auto [shc6, shc7] = avx2::unpack_128(shb6, shb7);
+
+                if constexpr (PSrc < 4) {
+                    cxstore<PTform>(ra_addr<PTform>(dst1, offset_dest), shc4);
+                    cxstore<PTform>(ra_addr<PTform>(dst5, offset_dest), shc6);
+                } else {
+                    cxstore<PTform>(ra_addr<PTform>(dst2, offset_dest), shc4);
+                    cxstore<PTform>(ra_addr<PTform>(dst6, offset_dest), shc6);
+                }
+                cxstore<PTform>(ra_addr<PTform>(dst3, offset_dest), shc5);
+                cxstore<PTform>(ra_addr<PTform>(dst7, offset_dest), shc7);
+
+                offset_src  = sort[i + 1] * reg_size;
+                offset_dest = sort[i] * reg_size;
+            }
+        };
+        for (; i < size / 64; ++i) {
+            auto offset_src  = sort[i] * reg_size;
+            auto offset_dest = sort[i] * reg_size;
+
+            auto p1_ = cxload<PSrc>(ra_addr<PSrc>(src1, offset_src));
+            auto p5_ = cxload<PSrc>(ra_addr<PSrc>(src5, offset_src));
+            auto p3_ = cxload<PSrc>(ra_addr<PSrc>(src3, offset_src));
+            auto p7_ = cxload<PSrc>(ra_addr<PSrc>(src7, offset_src));
+
+            auto [p1, p5, p3, p7] = avx2::split(p1_, p5_, p3_, p7_);
+
+            auto [a1, a5] = btfly(p1, p5);
+            auto [a3, a7] = btfly(p3, p7);
+
+            cx_reg b5 = {add(a5.real, a7.imag), sub(a5.imag, a7.real)};
+            cx_reg b7 = {sub(a5.real, a7.imag), add(a5.imag, a7.real)};
+
+            cx_reg b5_tw = {add(b5.real, b5.imag), sub(b5.imag, b5.real)};
+            cx_reg b7_tw = {sub(b7.real, b7.imag), add(b7.real, b7.imag)};
+
+            auto [b1, b3] = btfly(a1, a3);
+
+            b5_tw = mul(b5_tw, twsq2);
+            b7_tw = mul(b7_tw, twsq2);
+
+            auto p0_ = cxload<PSrc>(ra_addr<PSrc>(src0, offset_src));
+            auto p4_ = cxload<PSrc>(ra_addr<PSrc>(src4, offset_src));
+            auto p2_ = cxload<PSrc>(ra_addr<PSrc>(src2, offset_src));
+            auto p6_ = cxload<PSrc>(ra_addr<PSrc>(src6, offset_src));
+
+            auto [p0, p4, p2, p6] = avx2::split(p0_, p4_, p2_, p6_);
+
+            auto [a0, a4] = btfly(p0, p4);
+            auto [a2, a6] = btfly(p2, p6);
+
+            auto [b0, b2] = btfly(a0, a2);
+            cx_reg b4     = {add(a4.real, a6.imag), sub(a4.imag, a6.real)};
+            cx_reg b6     = {sub(a4.real, a6.imag), add(a4.imag, a6.real)};
+
+            auto [c0, c1] = btfly(b0, b1);
+            cx_reg c2     = {add(b2.real, b3.imag), sub(b2.imag, b3.real)};
+            cx_reg c3     = {sub(b2.real, b3.imag), add(b2.imag, b3.real)};
+
+            auto [c4, c5] = btfly(b4, b5_tw);
+            auto [c7, c6] = btfly(b6, b7_tw);
+
+            auto [sha0, sha4] = avx2::unpack_ps(c0, c4);
+            auto [sha2, sha6] = avx2::unpack_ps(c2, c6);
+            auto [sha1, sha5] = avx2::unpack_ps(c1, c5);
+            auto [sha3, sha7] = avx2::unpack_ps(c3, c7);
+
+            auto [shb0, shb2] = avx2::unpack_pd(sha0, sha2);
+            auto [shb1, shb3] = avx2::unpack_pd(sha1, sha3);
+            auto [shc0, shc1] = avx2::unpack_128(shb0, shb1);
+            auto [shc2, shc3] = avx2::unpack_128(shb2, shb3);
+
+            cxstore<PTform>(ra_addr<PTform>(dst0, offset_dest), shc0);
+            cxstore<PTform>(ra_addr<PTform>(dst4, offset_dest), shc2);
+            if constexpr (PSrc < 4) {
+                cxstore<PTform>(ra_addr<PTform>(dst2, offset_dest), shc1);
+                cxstore<PTform>(ra_addr<PTform>(dst6, offset_dest), shc3);
+            } else {
+                cxstore<PTform>(ra_addr<PTform>(dst1, offset_dest), shc1);
+                cxstore<PTform>(ra_addr<PTform>(dst5, offset_dest), shc3);
+            }
+
+            auto [shb4, shb6] = avx2::unpack_pd(sha4, sha6);
+            auto [shb5, shb7] = avx2::unpack_pd(sha5, sha7);
+            auto [shc4, shc5] = avx2::unpack_128(shb4, shb5);
+            auto [shc6, shc7] = avx2::unpack_128(shb6, shb7);
+
+            if constexpr (PSrc < 4) {
+                cxstore<PTform>(ra_addr<PTform>(dst1, offset_dest), shc4);
+                cxstore<PTform>(ra_addr<PTform>(dst5, offset_dest), shc6);
+            } else {
+                cxstore<PTform>(ra_addr<PTform>(dst2, offset_dest), shc4);
+                cxstore<PTform>(ra_addr<PTform>(dst6, offset_dest), shc6);
+            }
+            cxstore<PTform>(ra_addr<PTform>(dst3, offset_dest), shc5);
+            cxstore<PTform>(ra_addr<PTform>(dst7, offset_dest), shc7);
+        }
     }
 };
+
+// NOLINTEND(*pointer-arithmetic*)
+
 }    // namespace pcx::simd
 #endif

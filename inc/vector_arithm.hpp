@@ -187,12 +187,14 @@ concept vector_expression =    //
         requires(E expression, std::size_t idx) {
             {
                 expression_traits::cx_reg<simd::reg<typename E::real_type>::size>(expression.begin(), idx)
-            } -> std::same_as<simd::cx_reg<typename E::real_type, false>>;
+            } -> std::same_as<
+                simd::cx_reg<typename E::real_type, false, simd::reg<typename E::real_type>::size>>;
         } ||
         requires(E expression, std::size_t idx) {
             {
                 expression_traits::cx_reg<simd::reg<typename E::real_type>::size>(expression.begin(), idx)
-            } -> std::same_as<simd::cx_reg<typename E::real_type, true>>;
+            } -> std::same_as<
+                simd::cx_reg<typename E::real_type, true, simd::reg<typename E::real_type>::size>>;
         });
 
 template<typename E1, typename E2>
