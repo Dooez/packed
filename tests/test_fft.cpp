@@ -183,7 +183,7 @@ int test_fft_float(std::size_t size) {
         int  ret  = 0;
 
         vec_out = vec;
-        unit.fft_raw_s(vec_out.data());
+        unit.fft_raw(vec_out.data());
         vec_out = vec;
         //
         //         unit.do_it(vec_out);
@@ -344,8 +344,8 @@ int test_fftu_float(std::size_t size) {
 
         int ret = 0;
 
-        unit.fft_raw_s<PackSize>(vec_out.data());
-        unit.ifft_raw_s<true, PackSize>(vec_out.data());
+        unit.fft_raw<PackSize>(vec_out.data());
+        unit.ifft_raw<true, PackSize>(vec_out.data());
         for (uint i = 0; i < size; ++i) {
             auto val = std::complex<float>(vec[i].value());
             if (!equal_eps(val, vec_out[i].value(), eps_u)) {
@@ -364,7 +364,7 @@ int test_fftu_float(std::size_t size) {
         vec_out  = vec;
         auto ffu = vec_out;
         unit(ffu);
-        unit.fft_raw_s<PackSize>(vec_out.data());
+        unit.fft_raw<PackSize>(vec_out.data());
         for (uint i = 0; i < size; ++i) {
             auto val = std::complex<float>(ffu[i].value());
             if (!equal_eps(val, vec_out[i].value(), eps_u)) {
@@ -384,7 +384,7 @@ int test_fftu_float(std::size_t size) {
         ret           = 0;
         auto vec_out2 = vec_out;
         // unit.ifftu_internal<PackSize>(vec_out2.data());
-        // unit.ifft_raw_s<true, PackSize>(vec_out.data());
+        // unit.ifft_raw<true, PackSize>(vec_out.data());
         // for (uint i = 0; i < size; ++i) {
         //     auto val = std::complex<float>(vec_out2[i].value());
         //     if (!equal_eps(val, vec_out[i].value(), eps_u)) {
@@ -474,7 +474,7 @@ int test_fftu_float(std::size_t size) {
         auto svec_out2 = svec_out;
 
         unit(svec_out2);
-        unit.fft_raw_s<1>(reinterpret_cast<float*>(svec_out.data()));
+        unit.fft_raw<1>(reinterpret_cast<float*>(svec_out.data()));
         for (uint i = 0; i < size; ++i) {
             auto val = std::complex<float>(ffu[i].value());
             // auto val = std::complex<float>(svec_out2[i]);

@@ -1536,13 +1536,28 @@ public:
         return m_size;
     }
 
+    //     template<uZ PackSize = 1>
+    //     void fft_raw(T* data) {
+    //         if constexpr (!sorted) {
+    //             fftu_internal<PackSize>(data);
+    //         } else {
+    //             constexpr auto PTform = std::max(PackSize, simd::reg<T>::size);
+    //             depth3_and_sort<PTform, PackSize, false>(data);
+    //             apply_subtform<PackSize, PTform, false, false>(data, size());
+    //         }
+    //     }
+    //
+
+
     template<uZ PackSize = 1>
     void fft_raw(T* data) {
         if constexpr (!sorted) {
-            fftu_internal<PackSize>(data);
+            apply_unsorted<PackSize, PackSize, false, false>(data);
         } else {
             constexpr auto PTform = std::max(PackSize, simd::reg<T>::size);
-            depth3_and_sort<PTform, PackSize, false>(data);
+            // depth3_and_sort<PTform, PackSize, false>(data);
+            // size_specific::template tform_sort<PTform, PackSize, false>(data, size(), m_sort);
+            simd::size_specific::tform_sort<PTform, PackSize, false>(data, size(), m_sort);
             apply_subtform<PackSize, PTform, false, false>(data, size());
         }
     }
@@ -1563,27 +1578,27 @@ public:
         }
     }
 
-    template<uZ PackSize = 1>
-    void fft_raw_s(T* data) {
+    template<bool Normalized = true, uZ PackSize = 1>
+    void ifft_raw(T* data) {
         if constexpr (!sorted) {
-            apply_unsorted<PackSize, PackSize, false, false>(data);
+            apply_unsorted<PackSize, PackSize, true, Normalized>(data);
         } else {
             constexpr auto PTform = std::max(PackSize, simd::reg<T>::size);
             // depth3_and_sort<PTform, PackSize, false>(data);
             // size_specific::template tform_sort<PTform, PackSize, false>(data, size(), m_sort);
             simd::size_specific::tform_sort<PTform, PackSize, false>(data, size(), m_sort);
-            apply_subtform<PackSize, PTform, false, false>(data, size());
+            apply_subtform<PackSize, PTform, true, Normalized>(data, size());
         }
     }
 
-    template<bool Normalized = true, uZ PackSize = 1>
-    void ifft_raw_s(T* data) {
+    template<bool Normalized = true, uZ PackSizeDest = 1, uZ PackSizeSrc = 1>
+    void ifft_raw(T* dest, const T* source) {
         if constexpr (!sorted) {
-            apply_unsorted<PackSize, PackSize, true, Normalized>(data);
+            // TODO:Add source size
+            apply_unsorted<PackSizeDest, PackSizeSrc, true, Normalized>(dest, source, size());
         } else {
-            constexpr auto PTform = std::max(PackSize, simd::reg<T>::size);
-            depth3_and_sort<PTform, PackSize, true>(data);
-            apply_subtform<PackSize, PTform, true, Normalized>(data, size());
+            simd::size_specific::tform_sort<PackSizeDest, PackSizeSrc, true>(dest, source, size(), m_sort);
+            apply_subtform<PackSizeDest, PackSizeSrc, true, Normalized>(dest, size());
         }
     }
 
