@@ -1536,30 +1536,7 @@ public:
         return m_size;
     }
 
-    template<typename Vect_>
-        requires complex_vector_of<T, Vect_>
-    void operator()(Vect_& vector) {
-        using v_traits = detail_::vector_traits<Vect_>;
-        if (v_traits::size(vector) != m_size) {
-            throw(std::invalid_argument(std::string("input size (which is ")
-                                            .append(std::to_string(v_traits::size(vector)))
-                                            .append(" is not equal to fft size (which is ")
-                                            .append(std::to_string(m_size))
-                                            .append(")")));
-        }
-        constexpr auto PData = v_traits::pack_size;
-        if constexpr (!sorted) {
-            fftu_internal<PData>(v_traits::data(vector));
-        } else {
-            constexpr auto PTform = std::max(PData, simd::reg<T>::size);
-            // depth3_and_sort<PTform, PData, false>(v_traits::data(vector));
-            // size_specific::template tform_sort<PTform, PData, false>(v_traits::data(vector), size(), m_sort);
-            simd::size_specific::tform_sort<PTform, PData, false>(v_traits::data(vector), size(), m_sort);
-            apply_subtform<PData, PTform, false, false>(v_traits::data(vector), size());
-        }
-    }
-
-    template<std::size_t PackSize = 1>
+    template<uZ PackSize = 1>
     void fft_raw(T* data) {
         if constexpr (!sorted) {
             fftu_internal<PackSize>(data);
@@ -1567,6 +1544,22 @@ public:
             constexpr auto PTform = std::max(PackSize, simd::reg<T>::size);
             depth3_and_sort<PTform, PackSize, false>(data);
             apply_subtform<PackSize, PTform, false, false>(data, size());
+        }
+    }
+
+    template<uZ PackSizeDest = 1, uZ PackSizeSrc = 1>
+    void fft_raw(T* dest, const T* source) {
+        if constexpr (!sorted) {
+            apply_unsorted<PackSizeDest, PackSizeSrc, false, false>(dest, source, size());
+        } else {
+            constexpr auto PTform = std::max(PackSizeDest, simd::reg<T>::size);
+            if (dest == source) {
+                simd::size_specific::tform_sort<PTform, PackSizeDest, false>(dest, size(), m_sort);
+                apply_subtform<PackSizeDest, PTform, false, false>(dest, size());
+            } else {
+                simd::size_specific::tform_sort<PTform, PackSizeSrc, false>(dest, source, size(), m_sort);
+                apply_subtform<PackSizeDest, PTform, false, false>(dest, size());
+            }
         }
     }
 
@@ -1582,6 +1575,7 @@ public:
             apply_subtform<PackSize, PTform, false, false>(data, size());
         }
     }
+
     template<bool Normalized = true, uZ PackSize = 1>
     void ifft_raw_s(T* data) {
         if constexpr (!sorted) {
@@ -1592,6 +1586,31 @@ public:
             apply_subtform<PackSize, PTform, true, Normalized>(data, size());
         }
     }
+
+    template<typename Vect_>
+        requires complex_vector_of<T, Vect_>
+    void operator()(Vect_& vector) {
+        using v_traits = detail_::vector_traits<Vect_>;
+        if (v_traits::size(vector) != m_size) {
+            throw(std::invalid_argument(std::string("input size (which is ")
+                                            .append(std::to_string(v_traits::size(vector)))
+                                            .append(") is not equal to fft size (which is ")
+                                            .append(std::to_string(m_size))
+                                            .append(")")));
+        }
+        constexpr auto PData = v_traits::pack_size;
+        if constexpr (!sorted) {
+            // fftu_internal<PData>(v_traits::data(vector));
+            apply_unsorted<PData, PData, false, false>(v_traits::data(vector));
+        } else {
+            constexpr auto PTform = std::max(PData, simd::reg<T>::size);
+            // depth3_and_sort<PTform, PData, false>(v_traits::data(vector));
+            // size_specific::template tform_sort<PTform, PData, false>(v_traits::data(vector), size(), m_sort);
+            simd::size_specific::tform_sort<PTform, PData, false>(v_traits::data(vector), size(), m_sort);
+            apply_subtform<PData, PTform, false, false>(v_traits::data(vector), size());
+        }
+    }
+
     template<typename DestVect_, typename SrcVect_>
         requires complex_vector_of<T, DestVect_> && complex_vector_of<T, SrcVect_>
     void operator()(DestVect_& dest, const SrcVect_& source) {
@@ -1680,6 +1699,60 @@ public:
             apply_subtform<PData, PTform, true, true>(v_traits::data(vector), size());
         }
     }
+
+    template<bool Normalized = true, typename DestVect_, typename SrcVect_>
+        requires complex_vector_of<T, DestVect_> && complex_vector_of<T, SrcVect_>
+    void ifft(DestVect_& dest, const SrcVect_& source) {
+        using src_traits = detail_::vector_traits<SrcVect_>;
+        using dst_traits = detail_::vector_traits<DestVect_>;
+        if (dst_traits::size(dest) != m_size) {
+            throw(std::invalid_argument(std::string("destination size (which is ")
+                                            .append(std::to_string(dst_traits::size(dest)))
+                                            .append(") is not equal to fft size (which is ")
+                                            .append(std::to_string(size()))
+                                            .append(")")));
+        }
+        if (src_traits::size(source) != m_size) {
+            throw(std::invalid_argument(std::string("source size (which is ")
+                                            .append(std::to_string(src_traits::size(source)))
+                                            .append(") is not equal to fft size (which is ")
+                                            .append(std::to_string(size()))
+                                            .append(")")));
+        }
+
+        constexpr auto PDest = dst_traits::pack_size;
+        constexpr auto PSrc  = src_traits::pack_size;
+
+        auto dst_ptr = dst_traits::data(dest);
+        auto src_ptr = src_traits::data(source);
+
+        if constexpr (PSrc != PDest && std::max(PSrc, PDest) > simd::reg<T>::size) {
+            if (dst_ptr == src_ptr) {
+                throw(std::invalid_argument(
+                    std::string("cannot perform in-place repack from source pack size (which is ")
+                        .append(std::to_string(PSrc))
+                        .append(") to destination pack size (which is ")
+                        .append(std::to_string(PDest))
+                        .append(")")));
+            }
+        }
+
+        if constexpr (!sorted) {
+            apply_unsorted<PDest, PSrc, true, Normalized>(dst_ptr, src_ptr, src_traits::size(source));
+        } else {
+            // TODO:  source upsize
+            constexpr auto PTform = std::max(PDest, simd::reg<T>::size);
+            if (dst_ptr == src_ptr) {
+                simd::size_specific::tform_sort<PTform, PDest, true>(dst_traits::data(dest), size(), m_sort);
+                apply_subtform<PDest, PTform, true, Normalized>(dst_traits::data(dest), size());
+            } else {
+                simd::size_specific::tform_sort<PTform, PSrc, true>(
+                    dst_traits::data(dest), src_traits::data(source), size(), m_sort);
+                apply_subtform<PDest, PTform, true, Normalized>(dst_traits::data(dest), size());
+            }
+        }
+    }
+
 
 private:
     const size_type                 m_size;
