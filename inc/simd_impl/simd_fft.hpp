@@ -8,11 +8,13 @@ template<typename T, typename... U>
 concept has_type = (std::same_as<T, U> || ...);
 
 namespace fft {
+
 constexpr auto log2i(u64 num) -> uZ;
 constexpr auto reverse_bit_order(u64 num, u64 depth) -> u64;
 constexpr auto n_reversals(uZ max) -> uZ;
 template<typename T>
 inline auto wnk(std::size_t n, std::size_t k) -> std::complex<T>;
+
 }    // namespace fft
 }    // namespace pcx::detail_
 

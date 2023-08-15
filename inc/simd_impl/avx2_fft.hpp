@@ -354,40 +354,30 @@ struct size_specific {
 
     template<typename T>
     static inline void insert_unsorted(auto& twiddles, uZ group_size, uZ l_size, uZ i_group) {
+        using pcx::detail_::fft::log2i;
+        using pcx::detail_::fft::reverse_bit_order;
+        using pcx::detail_::fft::wnk;
+
         for (uint i = 0; i < group_size; ++i) {
             std::size_t start = group_size * i_group + i;
 
-            auto tw0 =
-                wnk<T>(l_size,    //
-                       pcx::detail_::fft::reverse_bit_order(start, pcx::detail_::fft::log2i(l_size / 2)));
+            auto tw0 = wnk<T>(l_size, reverse_bit_order(start, log2i(l_size / 2)));
 
             twiddles.push_back(tw0.real());
             twiddles.push_back(tw0.imag());
 
-            auto tw1 =
-                wnk<T>(l_size * 2,    //
-                       pcx::detail_::fft::reverse_bit_order(start * 2, pcx::detail_::fft::log2i(l_size)));
-            auto tw2 =
-                wnk<T>(l_size * 2,    //
-                       pcx::detail_::fft::reverse_bit_order(start * 2 + 1, pcx::detail_::fft::log2i(l_size)));
+            auto tw1 = wnk<T>(l_size * 2, reverse_bit_order(start * 2, log2i(l_size)));
+            auto tw2 = wnk<T>(l_size * 2, reverse_bit_order(start * 2 + 1, log2i(l_size)));
 
             twiddles.push_back(tw1.real());
             twiddles.push_back(tw1.imag());
             twiddles.push_back(tw2.real());
             twiddles.push_back(tw2.imag());
 
-            auto tw3_1 =
-                wnk<T>(l_size * 4,    //
-                       pcx::detail_::fft::reverse_bit_order(start * 4, pcx::detail_::fft::log2i(l_size * 2)));
-            auto tw3_2 = wnk<T>(
-                l_size * 4,    //
-                pcx::detail_::fft::reverse_bit_order(start * 4 + 1, pcx::detail_::fft::log2i(l_size * 2)));
-            auto tw4_1 = wnk<T>(
-                l_size * 4,    //
-                pcx::detail_::fft::reverse_bit_order(start * 4 + 2, pcx::detail_::fft::log2i(l_size * 2)));
-            auto tw4_2 = wnk<T>(
-                l_size * 4,    //
-                pcx::detail_::fft::reverse_bit_order(start * 4 + 3, pcx::detail_::fft::log2i(l_size * 2)));
+            auto tw3_1 = wnk<T>(l_size * 4, reverse_bit_order(start * 4, log2i(l_size * 2)));
+            auto tw3_2 = wnk<T>(l_size * 4, reverse_bit_order(start * 4 + 1, log2i(l_size * 2)));
+            auto tw4_1 = wnk<T>(l_size * 4, reverse_bit_order(start * 4 + 2, log2i(l_size * 2)));
+            auto tw4_2 = wnk<T>(l_size * 4, reverse_bit_order(start * 4 + 3, log2i(l_size * 2)));
 
             auto ins4 = [&twiddles](float tw) {
                 for (uint i = 0; i < 4; ++i) {
@@ -404,30 +394,14 @@ struct size_specific {
             ins4(tw4_2.imag());
 
 
-            auto tw7 =
-                wnk<T>(l_size * 8,    //
-                       pcx::detail_::fft::reverse_bit_order(start * 8, pcx::detail_::fft::log2i(l_size * 4)));
-            auto tw8 = wnk<T>(
-                l_size * 8,    //
-                pcx::detail_::fft::reverse_bit_order(start * 8 + 1, pcx::detail_::fft::log2i(l_size * 4)));
-            auto tw9 = wnk<T>(
-                l_size * 8,    //
-                pcx::detail_::fft::reverse_bit_order(start * 8 + 2, pcx::detail_::fft::log2i(l_size * 4)));
-            auto tw10 = wnk<T>(
-                l_size * 8,    //
-                pcx::detail_::fft::reverse_bit_order(start * 8 + 3, pcx::detail_::fft::log2i(l_size * 4)));
-            auto tw11 = wnk<T>(
-                l_size * 8,    //
-                pcx::detail_::fft::reverse_bit_order(start * 8 + 4, pcx::detail_::fft::log2i(l_size * 4)));
-            auto tw12 = wnk<T>(
-                l_size * 8,    //
-                pcx::detail_::fft::reverse_bit_order(start * 8 + 5, pcx::detail_::fft::log2i(l_size * 4)));
-            auto tw13 = wnk<T>(
-                l_size * 8,    //
-                pcx::detail_::fft::reverse_bit_order(start * 8 + 6, pcx::detail_::fft::log2i(l_size * 4)));
-            auto tw14 = wnk<T>(
-                l_size * 8,    //
-                pcx::detail_::fft::reverse_bit_order(start * 8 + 7, pcx::detail_::fft::log2i(l_size * 4)));
+            auto tw7  = wnk<T>(l_size * 8, reverse_bit_order(start * 8, log2i(l_size * 4)));
+            auto tw8  = wnk<T>(l_size * 8, reverse_bit_order(start * 8 + 1, log2i(l_size * 4)));
+            auto tw9  = wnk<T>(l_size * 8, reverse_bit_order(start * 8 + 2, log2i(l_size * 4)));
+            auto tw10 = wnk<T>(l_size * 8, reverse_bit_order(start * 8 + 3, log2i(l_size * 4)));
+            auto tw11 = wnk<T>(l_size * 8, reverse_bit_order(start * 8 + 4, log2i(l_size * 4)));
+            auto tw12 = wnk<T>(l_size * 8, reverse_bit_order(start * 8 + 5, log2i(l_size * 4)));
+            auto tw13 = wnk<T>(l_size * 8, reverse_bit_order(start * 8 + 6, log2i(l_size * 4)));
+            auto tw14 = wnk<T>(l_size * 8, reverse_bit_order(start * 8 + 7, log2i(l_size * 4)));
 
             auto ins2 = [&twiddles](float tw) {
                 twiddles.push_back(tw);
@@ -455,28 +429,20 @@ struct size_specific {
 
             const std::array<uint, 8> switched_k = {0, 2, 1, 3, 4, 6, 5, 7};
             for (auto k: switched_k) {
-                auto tw = wnk<T>(l_size * 16,    //
-                                 pcx::detail_::fft::reverse_bit_order(start * 16 + k,
-                                                                      pcx::detail_::fft::log2i(l_size * 8)));
+                auto tw = wnk<T>(l_size * 16, reverse_bit_order(start * 16 + k, log2i(l_size * 8)));
                 twiddles.push_back(tw.real());
             }
             for (auto k: switched_k) {
-                auto tw = wnk<T>(l_size * 16,    //
-                                 pcx::detail_::fft::reverse_bit_order(start * 16 + k,
-                                                                      pcx::detail_::fft::log2i(l_size * 8)));
+                auto tw = wnk<T>(l_size * 16, reverse_bit_order(start * 16 + k, log2i(l_size * 8)));
                 twiddles.push_back(tw.imag());
             }
 
             for (auto k: switched_k) {
-                auto tw = wnk<T>(l_size * 16,    //
-                                 pcx::detail_::fft::reverse_bit_order(start * 16 + k + 8,
-                                                                      pcx::detail_::fft::log2i(l_size * 8)));
+                auto tw = wnk<T>(l_size * 16, reverse_bit_order(start * 16 + k + 8, log2i(l_size * 8)));
                 twiddles.push_back(tw.real());
             }
             for (auto k: switched_k) {
-                auto tw = wnk<T>(l_size * 16,    //
-                                 pcx::detail_::fft::reverse_bit_order(start * 16 + k + 8,
-                                                                      pcx::detail_::fft::log2i(l_size * 8)));
+                auto tw = wnk<T>(l_size * 16, reverse_bit_order(start * 16 + k + 8, log2i(l_size * 8)));
                 twiddles.push_back(tw.imag());
             }
         }
