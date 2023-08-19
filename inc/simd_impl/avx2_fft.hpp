@@ -393,7 +393,6 @@ struct size_specific {
             ins4(tw4_1.imag());
             ins4(tw4_2.imag());
 
-
             auto tw7  = wnk<T>(l_size * 8, reverse_bit_order(start * 8, log2i(l_size * 4)));
             auto tw8  = wnk<T>(l_size * 8, reverse_bit_order(start * 8 + 1, log2i(l_size * 4)));
             auto tw9  = wnk<T>(l_size * 8, reverse_bit_order(start * 8 + 2, log2i(l_size * 4)));
@@ -407,7 +406,6 @@ struct size_specific {
                 twiddles.push_back(tw);
                 twiddles.push_back(tw);
             };
-
 
             ins2(tw7.real());
             ins2(tw8.real());
