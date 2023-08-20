@@ -180,8 +180,8 @@ inline auto repack2(cx_reg<float, Conj, PackFrom>... args) {
         };
     constexpr auto swap_816 =
         []<bool Conj_, uZ PackSize>(cx_reg<float, Conj_, PackSize> reg) /* C++23 static */ {
-            auto real = unpacklo_256(reg.real, reg.imag);
-            auto imag = unpackhi_256(reg.real, reg.imag);
+            auto real = avx512::unpacklo_256(reg.real, reg.imag);
+            auto imag = avx512::unpackhi_256(reg.real, reg.imag);
             return cx_reg<float, Conj_, PackTo>({real, imag});
         };
     if constexpr (PackFrom == PackTo) {
@@ -222,8 +222,10 @@ inline auto repack2(cx_reg<float, Conj, PackFrom>... args) {
                 auto imag = avx512::unpackhi_64(reg.real, reg.imag);
                 return cx_reg<float, Conj_, PackTo>{real, imag};
             };
-            auto tmp = pcx::detail_::apply_for_each(pack_1, tup);
-            return pcx::detail_::apply_for_each(swap_24, tmp);
+            auto tmp1 = pcx::detail_::apply_for_each(pack_1, tup);
+            auto tmp2 = pcx::detail_::apply_for_each(swap_24, tmp1);
+            auto tmp3 = pcx::detail_::apply_for_each(swap_48, tmp2);
+            return pcx::detail_::apply_for_each(swap_816, tmp3);
         } else if constexpr (PackTo == 4) {
             return pcx::detail_::apply_for_each(swap_24, tup);
         } else if constexpr (PackTo == 1) {
@@ -254,7 +256,8 @@ inline auto repack2(cx_reg<float, Conj, PackFrom>... args) {
                 auto imag = avx512::unpackhi_128(reg.real, reg.imag);
                 return cx_reg<float, Conj_, PackTo>{real, imag};
             };
-            return pcx::detail_::apply_for_each(pack_1, tup);
+            auto tmp = pcx::detail_::apply_for_each(pack_1, tup);
+            return pcx::detail_::apply_for_each(swap_816, tmp);
         } else if constexpr (PackTo == 2) {
             auto tmp = pcx::detail_::apply_for_each(swap_48, tup);
             return pcx::detail_::apply_for_each(swap_24, tmp);
@@ -262,16 +265,19 @@ inline auto repack2(cx_reg<float, Conj, PackFrom>... args) {
             auto pack_0 = []<bool Conj_, uZ PackSize>(cx_reg<float, Conj_, PackSize> reg) {
                 auto real = simd::avx512::unpacklo_32(reg.real, reg.imag);
                 auto imag = simd::avx512::unpackhi_32(reg.real, reg.imag);
-                return cx_reg<float, Conj_, PackTo>({real, imag});
+                return cx_reg<float, Conj_, PackTo>{real, imag};
             };
-            auto tmp = pcx::detail_::apply_for_each(pack_0, tup);
-            return pcx::detail_::apply_for_each(swap_48, tmp);
+            auto tmp1 = pcx::detail_::apply_for_each(swap_816, tup);
+            auto tmp2 = pcx::detail_::apply_for_each(swap_48, tmp1);
+            auto tmp3 = pcx::detail_::apply_for_each(swap_24, tmp2);
+            return pcx::detail_::apply_for_each(pack_0, tmp3);
         }
     } else if constexpr (PackFrom == 16) {
         if constexpr (PackTo == 8) {
             return pcx::detail_::apply_for_each(swap_816, tup);
         } else if constexpr (PackTo == 4) {
-            return pcx::detail_::apply_for_each(swap_48, tup);
+            auto tmp = pcx::detail_::apply_for_each(swap_816, tup);
+            return pcx::detail_::apply_for_each(swap_48, tmp);
         } else if constexpr (PackTo == 2) {
             auto tmp1 = pcx::detail_::apply_for_each(swap_816, tup);
             auto tmp2 = pcx::detail_::apply_for_each(swap_48, tmp1);
@@ -280,7 +286,7 @@ inline auto repack2(cx_reg<float, Conj, PackFrom>... args) {
             auto pack_0 = []<bool Conj_, uZ PackSize>(cx_reg<float, Conj_, PackSize> reg) {
                 auto real = simd::avx512::unpacklo_32(reg.real, reg.imag);
                 auto imag = simd::avx512::unpackhi_32(reg.real, reg.imag);
-                return cx_reg<float, Conj_, PackTo>(real, imag);
+                return cx_reg<float, Conj_, PackTo>{real, imag};
             };
             auto tmp1 = pcx::detail_::apply_for_each(swap_48, tup);
             auto tmp2 = pcx::detail_::apply_for_each(swap_24, tmp1);
