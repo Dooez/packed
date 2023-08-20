@@ -450,12 +450,18 @@ template<uZ PackSize, bool Conj_>
 auto apply_conj(cx_reg<float, Conj_, PackSize> reg) -> cx_reg<float, false, PackSize> {
     if constexpr (!Conj_) {
         return reg;
-    } else if constexpr (PackSize >= 8) {
+    } else if constexpr (PackSize == 16) {
         return {reg.real, sub(zero<float>(), reg.imag)};
+    } else if constexpr (PackSize == 8) {
+        auto pos  = zero<float>();
+        auto neg  = broadcast(-0.F);
+        auto mask = avx512::unpacklo_256(pos, neg);
+        return {_mm512_xor_ps(reg.real, mask), _mm512_xor_ps(reg.imag, mask)};
     } else if constexpr (PackSize == 4) {
         auto pos  = zero<float>();
         auto neg  = broadcast(-0.F);
-        auto mask = avx512::unpacklo_128(pos, neg);
+        auto mask = avx512::unpacklo_256(pos, neg);
+        mask      = avx512::unpacklo_128(mask, mask);
         return {_mm512_xor_ps(reg.real, mask), _mm512_xor_ps(reg.imag, mask)};
     } else if constexpr (PackSize == 2) {
         auto pos  = zero<float>();
