@@ -1,8 +1,32 @@
 #include "fft.hpp"
 #include "fxcorr.hpp"
+#include "simd_fft.hpp"
 #include "vector_util.hpp"
 
 #include <memory>
+
+template<typename T>
+using svector = std::vector<std::complex<T>>;
+
+template<typename T>
+auto naive_fxcorr(const svector<T>& signal, const svector<T>& base) -> svector<T> {
+    auto len    = signal.size() + base.size() - 1;
+    auto l2     = 1U << (pcx::detail_::fft::log2i(len - 1) + 1);
+    auto tmp    = svector<T>(l2);
+    auto kernel = svector<T>(l2);
+
+    std::ranges::copy(signal, tmp.begin());
+    std::ranges::copy(base, kernel.begin());
+    auto fft = pcx::fft_unit<T>(l2);
+    fft(kernel);
+    fft(tmp);
+
+    std::ranges::transform(tmp, kernel, tmp.begin(), [](auto a, auto b) { return a * conj(b); });
+    fft.ifft(tmp);
+    auto ret = svector<T>(signal.size());
+    std::ranges::copy(tmp.begin(), tmp.begin() + signal.size(), ret.begin());
+    return ret;
+};
 
 void fill_bark(auto& vector, std::size_t offset) {
     vector[offset + 0]  = 1;
@@ -28,10 +52,7 @@ int main() {
     pcx::vector<float> f(size);
     fill_bark(f, 35);
 
-    using fft_t   = pcx::fft_unit<float,
-                                pcx::fft_order::unordered,
-                                pcx::aligned_allocator<float>,
-                                2048>;
+    using fft_t   = pcx::fft_unit<float, pcx::fft_order::unordered, pcx::aligned_allocator<float>, 2048>;
     auto fft_unit = std::make_shared<fft_t>(8192);
 
     auto pseudo_factory = pcx::detail_::pseudo_vector_factory<float, std::allocator<float>>(8192);
@@ -40,10 +61,17 @@ int main() {
 
 
     auto xcr = pcx::fxcorr_unit(g, size * 2);
-    xcr(f);
-    for (auto v: f) {
-        std::cout << std::to_string(abs(v.value())) << "\n";
+    // xcr(f);
+    // for (auto v: f) {
+    //     std::cout << std::to_string(abs(v.value())) << "\n";
+    // }
+    auto sg = svector<float>(13);
+    auto sf = svector<float>(31);
+    fill_bark(sg, 0);
+    fill_bark(sf, 10);
+    auto res = naive_fxcorr(sf, sg);
+    for (auto v: res) {
+        std::cout << std::to_string(abs(v)) << "\n";
     }
-
     return 0;
 }

@@ -135,7 +135,7 @@ template<uZ Size, bool DecInTime>
 struct order {
     static constexpr std::array<uZ, Size> data = [] {
         std::array<uZ, Size> order;
-        for (uint i = 0; i < Size; ++i) {
+        for (uZ i = 0; i < Size; ++i) {
             if constexpr (DecInTime) {
                 order[i] = reverse_bit_order(i, log2i(Size));
             } else {
@@ -649,8 +649,14 @@ public:
     [[nodiscard]] constexpr auto size() const -> size_type {
         return m_size;
     }
-
+    /**
+     * @brief Performs in place FFT.
+     *
+     * @tparam PackSize
+     * @param[in, out] data
+     */
     template<uZ PackSize = 1>
+        requires pack_size<PackSize>
     void fft_raw(T* data) {
         if constexpr (!sorted) {
             apply_unsorted<PackSize, PackSize, false, false>(data);
@@ -662,8 +668,16 @@ public:
             apply_subtform<PackSize, PTform, false, false>(data, size());
         }
     }
-
+    /**
+     * @brief Perfomrs out of place FFT.
+     *
+     * @tparam PackSizeDest
+     * @tparam PackSizeSrc
+     * @param[out] dest
+     * @param[in] source
+     */
     template<uZ PackSizeDest = 1, uZ PackSizeSrc = 1>
+        requires pack_size<PackSizeDest> && pack_size<PackSizeSrc>
     void fft_raw(T* dest, const T* source) {
         if constexpr (!sorted) {
             apply_unsorted<PackSizeDest, PackSizeSrc, false, false>(dest, source, size());
@@ -678,8 +692,36 @@ public:
             }
         }
     }
-
+    /**
+     * @brief Performs zero-extended out of place FFT.
+     *
+     * @tparam PackSizeDest
+     * @tparam PackSizeSrc
+     * @param[out] dest
+     * @param[in] source
+     * @param[in] source_size Source size, must be lower or equal to fft size.
+       Values after source_size are zero-extended.
+     */
+    template<uZ PackSizeDest = 1, uZ PackSizeSrc = 1>
+        requires pack_size<PackSizeDest> && pack_size<PackSizeSrc>
+    void fft_raw(T* dest, const T* source, uZ source_size) {
+        if constexpr (!sorted) {
+            apply_unsorted<PackSizeDest, PackSizeSrc, false, false>(dest, source, source_size);
+        } else {
+            constexpr auto PTform = std::max(PackSizeDest, simd::reg<T>::size);
+            simd::size_specific::tform_sort<PTform, PackSizeSrc, false>(dest, source, source_size, m_sort);
+            apply_subtform<PackSizeDest, PTform, false, false>(dest, size());
+        }
+    }
+    /**
+     * @brief Performs in place IFFT.
+     *
+     * @tparam Normalized If true output is normalized by 1/<fft size>.
+     * @tparam PackSize Data pack size.
+     * @param[in, out] data
+     */
     template<bool Normalized = true, uZ PackSize = 1>
+        requires pack_size<PackSize>
     void ifft_raw(T* data) {
         if constexpr (!sorted) {
             apply_unsorted<PackSize, PackSize, true, Normalized>(data);
@@ -691,8 +733,17 @@ public:
             apply_subtform<PackSize, PTform, true, Normalized>(data, size());
         }
     }
-
+    /**
+     * @brief Performs out of place IFFT.
+     *
+     * @tparam Normalized If true output is normilized by 1/<fft size>.
+     * @tparam PackSizeDest Destination pack size.
+     * @tparam PackSizeSrc Source paxk size.
+     * @param[out] dest
+     * @param[in] source
+     */
     template<bool Normalized = true, uZ PackSizeDest = 1, uZ PackSizeSrc = 1>
+        requires pack_size<PackSizeDest> && pack_size<PackSizeSrc>
     void ifft_raw(T* dest, const T* source) {
         if constexpr (!sorted) {
             // TODO:Add source size
@@ -702,7 +753,12 @@ public:
             apply_subtform<PackSizeDest, PackSizeSrc, true, Normalized>(dest, size());
         }
     }
-
+    /**
+     * @brief Performs in place FFT.
+     *
+     * @tparam Vect_ Must satisfy complex_vector_of<T>.
+     * @param[in, out] vector
+     */
     template<typename Vect_>
         requires complex_vector_of<T, Vect_>
     void operator()(Vect_& vector) {
@@ -726,7 +782,14 @@ public:
             apply_subtform<PData, PTform, false, false>(v_traits::data(vector), size());
         }
     }
-
+    /**
+     * @brief Performs out of place FFT.
+     Source values are potentially zero-extended.
+     * @tparam DestVect_
+     * @tparam SrcVect_
+     * @param[out] dest
+     * @param[in] source
+     */
     template<typename DestVect_, typename SrcVect_>
         requires complex_vector_of<T, DestVect_> && complex_vector_of<T, SrcVect_>
     void operator()(DestVect_& dest, const SrcVect_& source) {
@@ -788,7 +851,13 @@ public:
             }
         }
     }
-
+    /**
+     * @brief Performs in place IFFT.
+     *
+     * @tparam Normalized If true output is normalized by 1/<fft size>.
+     * @tparam Vect_
+     * @param[in, out] vector
+     */
     template<bool Normalized = true, typename Vect_>
         requires complex_vector_of<T, Vect_>
     void ifft(Vect_& vector) {
@@ -815,7 +884,15 @@ public:
             apply_subtform<PData, PTform, true, true>(v_traits::data(vector), size());
         }
     }
-
+    /**
+     * @brief Performs out of place IFFT.
+     *
+     * @tparam Normalized If true output is normalized by 1/<fft size>.
+     * @tparam DestVect_
+     * @tparam SrcVect_
+     * @param[out] dest
+     * @param[in] source
+     */
     template<bool Normalized = true, typename DestVect_, typename SrcVect_>
         requires complex_vector_of<T, DestVect_> && complex_vector_of<T, SrcVect_>
     void ifft(DestVect_& dest, const SrcVect_& source) {
@@ -926,7 +1003,7 @@ public:
                 l_size *= AlignSize;
                 n_groups *= AlignSize;
             }
-            uint i = Scale ? 1 : 0;
+            uZ i = Scale ? 1 : 0;
             for (; i < align_count; ++i) {
                 group_size /= AlignSize;
 
@@ -1022,7 +1099,7 @@ public:
         if constexpr (AlignSizeR > 1) {
             if (align_rec_count > 0) {
                 const T* twiddle_ptr;
-                for (uint i = 0; i < AlignSizeR; ++i) {
+                for (uZ i = 0; i < AlignSizeR; ++i) {
                     twiddle_ptr = subtform_recursive<PTform, PTform, Inverse, false, AlignSize, AlignSizeR>(
                         simd::ra_addr<PTform>(data, size * i / AlignSizeR),
                         size / AlignSizeR,
@@ -1051,7 +1128,7 @@ public:
         }
         constexpr auto node_size = StrategyRec::node_size;
         const T*       twiddle_ptr;
-        for (uint i = 0; i < node_size; ++i) {
+        for (uZ i = 0; i < node_size; ++i) {
             twiddle_ptr = subtform_recursive<PTform, PTform, Inverse, false, AlignSize, 0>(
                 simd::ra_addr<PTform>(data, size * i / node_size), size / node_size, align_count, 0);
         }
@@ -1677,7 +1754,7 @@ public:
 
         if constexpr (Reverse) {
             (this->*subtform_array[m_subtform_idx])(
-                data, size(), &*m_twiddles.end(), m_align_count, m_align_count_rec, src);
+                data, size(), &*m_twiddles.end(), m_align_count, m_align_count_rec, src, 0);
         } else {
             (this->*subtform_array[m_subtform_idx])(
                 data, size(), m_twiddles.data(), m_align_count, m_align_count_rec, src, src_size);
@@ -1734,7 +1811,7 @@ public:
                         return std::array<const T*, Size>{ptr + 0 * I...};
                     }(zeros.data(), Idxs);
 
-                    for (uint i = 0; i < NodeSize; ++i) {
+                    for (uZ i = 0; i < NodeSize; ++i) {
                         auto           l_offset = offset + l_size / NodeSize * i;
                         std::ptrdiff_t diff     = data_size - l_offset - 1;
                         if (diff >= static_cast<int>(simd::reg<T>::size)) {
@@ -1798,14 +1875,14 @@ private:
         auto       sort  = std::vector<uZ, sort_allocator_type>(allocator);
         sort.reserve(packed_sort_size);
 
-        for (uint i = 0; i < packed_sort_size; ++i) {
+        for (uZ i = 0; i < packed_sort_size; ++i) {
             if (i >= reverse_bit_order(i, order)) {
                 continue;
             }
             sort.push_back(i);
             sort.push_back(reverse_bit_order(i, order));
         }
-        for (uint i = 0; i < packed_sort_size; ++i) {
+        for (uZ i = 0; i < packed_sort_size; ++i) {
             if (i == reverse_bit_order(i, order)) {
                 sort.push_back(i);
             }
@@ -1953,10 +2030,10 @@ private:
 
         auto insert_tw = [](auto tw_it, auto size, auto n_groups, auto max_btfly_size) {
             using namespace detail_::fft;
-            for (uint i_group = 0; i_group < n_groups; ++i_group) {
-                for (uint i_btfly = 0; i_btfly < log2i(max_btfly_size); ++i_btfly) {
-                    for (uint i_subgroup = 0; i_subgroup < (1U << i_btfly); ++i_subgroup) {
-                        for (uint k = 0; k < simd::reg<T>::size; ++k) {
+            for (uZ i_group = 0; i_group < n_groups; ++i_group) {
+                for (uZ i_btfly = 0; i_btfly < log2i(max_btfly_size); ++i_btfly) {
+                    for (uZ i_subgroup = 0; i_subgroup < (1U << i_btfly); ++i_subgroup) {
+                        for (uZ k = 0; k < simd::reg<T>::size; ++k) {
                             *(tw_it++) = wnk<T>(size * (1U << i_btfly),
                                                 k + i_group * simd::reg<T>::size + i_subgroup * size / 2);
                         }
@@ -1985,7 +2062,7 @@ private:
             n_groups *= StrategyRec::node_size;
         };
 
-        for (uint i = 0; i < align_c_rec; ++i) {
+        for (uZ i = 0; i < align_c_rec; ++i) {
             tw_it = insert_tw(tw_it, l_size, n_groups, align_node_size);
             l_size *= align_node_size;
             n_groups *= align_node_size;
@@ -2195,11 +2272,11 @@ public:
         auto tw_it     = m_twiddles.begin();
         auto data_size = get_vector(dest, 0).size();
 
-        uint l_size = 1;
+        uZ l_size = 1;
         if constexpr (BigG && !BiggerG) {
             if (log2i(m_size) % 2 != 0) {
                 const auto grp_size = m_size / l_size / 8;
-                for (uint grp = 0; grp < grp_size; ++grp) {
+                for (uZ grp = 0; grp < grp_size; ++grp) {
                     std::array<T*, 8> dst{
                         get_vector(dest, grp).data(),
                         get_vector(dest, grp + grp_size * 1).data(),
@@ -2231,7 +2308,7 @@ public:
                 max_size /= 4;
             };
             const auto grp_size = m_size / l_size / 8;
-            for (uint grp = 0; grp < grp_size; ++grp) {
+            for (uZ grp = 0; grp < grp_size; ++grp) {
                 std::array<T*, 8> dst{
                     get_vector(dest, grp).data(),
                     get_vector(dest, grp + grp_size * 1).data(),
@@ -2258,7 +2335,7 @@ public:
 
             for (; l_size < max_size / 4; l_size *= 8) {
                 const auto grp_size = m_size / l_size / 8;
-                for (uint grp = 0; grp < grp_size; ++grp) {
+                for (uZ grp = 0; grp < grp_size; ++grp) {
                     std::array<T*, 8> dst{
                         get_vector(dest, grp).data(),
                         get_vector(dest, grp + grp_size * 1).data(),
@@ -2271,7 +2348,7 @@ public:
                     };
                     long_btfly8<PDest, PSrc>(dst, data_size);
                 }
-                for (uint idx = 1; idx < l_size; ++idx) {
+                for (uZ idx = 1; idx < l_size; ++idx) {
                     std::array<std::complex<T>, 7> tw = {
                         *(tw_it++),
                         *(tw_it++),
@@ -2281,7 +2358,7 @@ public:
                         *(tw_it++),
                         *(tw_it++),
                     };
-                    for (uint grp = 0; grp < grp_size; ++grp) {
+                    for (uZ grp = 0; grp < grp_size; ++grp) {
                         std::array<T*, 8> dst{
                             get_vector(dest, grp + idx * grp_size * 8).data(),
                             get_vector(dest, grp + idx * grp_size * 8 + grp_size * 1).data(),
@@ -2298,7 +2375,7 @@ public:
             }
         } else if constexpr (!BigG) {
             const auto grp_size = m_size / l_size / 4;
-            for (uint grp = 0; grp < grp_size; ++grp) {
+            for (uZ grp = 0; grp < grp_size; ++grp) {
                 std::array<T*, 4> dst{
                     get_vector(dest, grp).data(),
                     get_vector(dest, grp + grp_size * 1).data(),
@@ -2318,7 +2395,7 @@ public:
 
         for (; l_size < m_size / 2; l_size *= 4) {
             const auto grp_size = m_size / l_size / 4;
-            for (uint grp = 0; grp < grp_size; ++grp) {
+            for (uZ grp = 0; grp < grp_size; ++grp) {
                 std::array<T*, 4> dst{
                     get_vector(dest, grp).data(),
                     get_vector(dest, grp + grp_size * 1).data(),
@@ -2327,13 +2404,13 @@ public:
                 };
                 long_btfly4<PDest, PSrc>(dst, data_size);
             }
-            for (uint idx = 1; idx < l_size; ++idx) {
+            for (uZ idx = 1; idx < l_size; ++idx) {
                 std::array<std::complex<T>, 3> tw = {
                     *(tw_it++),
                     *(tw_it++),
                     *(tw_it++),
                 };
-                for (uint grp = 0; grp < grp_size; ++grp) {
+                for (uZ grp = 0; grp < grp_size; ++grp) {
                     std::array<T*, 4> dst{
                         get_vector(dest, grp + idx * grp_size * 4).data(),
                         get_vector(dest, grp + idx * grp_size * 4 + grp_size * 1).data(),
@@ -2352,7 +2429,7 @@ public:
                 };
                 long_btfly2<PDest, PSrc>(dst, data_size);
 
-                for (uint idx = 1; idx < l_size; ++idx) {
+                for (uZ idx = 1; idx < l_size; ++idx) {
                     auto tw = *(tw_it++);
 
                     std::array<T*, 2> dst{
@@ -2364,7 +2441,7 @@ public:
             }
         }
         if constexpr (sorted) {
-            for (uint i = 0; i < m_sort.size(); i += 2) {
+            for (uZ i = 0; i < m_sort.size(); i += 2) {
                 using std::swap;
                 swap(get_vector(dest, m_sort[i]), get_vector(dest, m_sort[i + 1]));
             }
@@ -2414,7 +2491,7 @@ private:
             }
         }(optional...);
 
-        for (uint i = 0; i < size; i += simd::reg<T>::size) {
+        for (uZ i = 0; i < size; i += simd::reg<T>::size) {
             std::array<T*, 8> dst{
                 simd::ra_addr<PDest>(dest[0], i),
                 simd::ra_addr<PDest>(dest[1], i),
@@ -2484,7 +2561,7 @@ private:
             }
         }(optional...);
 
-        for (uint i = 0; i < size; i += simd::reg<T>::size) {
+        for (uZ i = 0; i < size; i += simd::reg<T>::size) {
             std::array<T*, 4> dst{
                 simd::ra_addr<PDest>(dest[0], i),
                 simd::ra_addr<PDest>(dest[1], i),
@@ -2542,7 +2619,7 @@ private:
             }
         }(optional...);
 
-        for (uint i = 0; i < size; i += simd::reg<T>::size) {
+        for (uZ i = 0; i < size; i += simd::reg<T>::size) {
             std::array<T*, 2> dst{
                 simd::ra_addr<PDest>(dest[0], i),
                 simd::ra_addr<PDest>(dest[1], i),
@@ -2570,7 +2647,7 @@ private:
     auto get_twiddles(size_type size, allocator_type allocator) -> twiddle_t {
         auto twiddles = twiddle_t(static_cast<tw_allocator_type>(allocator));
         //twiddles.reserve(?);
-        uint l_size = 1;
+        uZ l_size = 1;
 
         using namespace detail_::fft;
         if constexpr (BigG) {
@@ -2586,7 +2663,7 @@ private:
             };
             for (; l_size < max_size / 4; l_size *= 8) {
                 const auto grp_size = std::max(m_size / l_size / 4, 0UL);
-                for (uint idx = 1; idx < l_size; ++idx) {
+                for (uZ idx = 1; idx < l_size; ++idx) {
                     twiddles.push_back(wnk<T>(l_size * 2, reverse_bit_order(idx, log2i(l_size))));
                     twiddles.push_back(wnk<T>(l_size * 4, reverse_bit_order(idx * 2 + 0, log2i(l_size * 2))));
                     twiddles.push_back(wnk<T>(l_size * 4, reverse_bit_order(idx * 2 + 1, log2i(l_size * 2))));
@@ -2599,7 +2676,7 @@ private:
         }
         for (; l_size < m_size / 2; l_size *= 4) {
             const auto grp_size = std::max(m_size / l_size / 4, 0UL);
-            for (uint idx = 1; idx < l_size; ++idx) {
+            for (uZ idx = 1; idx < l_size; ++idx) {
                 twiddles.push_back(wnk<T>(l_size * 2, reverse_bit_order(idx, log2i(l_size))));
                 twiddles.push_back(wnk<T>(l_size * 4, reverse_bit_order(idx * 2, log2i(l_size * 2))));
                 twiddles.push_back(wnk<T>(l_size * 4, reverse_bit_order(idx * 2 + 1, log2i(l_size * 2))));
@@ -2608,7 +2685,7 @@ private:
 
         if constexpr (!BiggerG) {
             if (l_size == m_size / 2) {
-                for (uint idx = 1; idx < l_size; ++idx) {
+                for (uZ idx = 1; idx < l_size; ++idx) {
                     twiddles.push_back(wnk<T>(l_size * 2, reverse_bit_order(idx, log2i(l_size))));
                 }
             }
@@ -2622,7 +2699,7 @@ private:
         } else {
             auto sort = sort_t(static_cast<sort_allocator_type>(allocator));
             //sort.reserve(?);
-            for (uint i = 0; i < size; ++i) {
+            for (uZ i = 0; i < size; ++i) {
                 auto rev = detail_::fft::reverse_bit_order(i, log2i(size));
                 if (rev > i) {
                     sort.push_back(i);

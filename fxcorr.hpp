@@ -11,7 +11,7 @@ namespace detail_ {
 template<typename T, typename Allocator = pcx::aligned_allocator<T>>
 class pseudo_vector_factory {
 public:
-    explicit pseudo_vector_factory(std::size_t size, const Allocator& allocator = Allocator{})
+    explicit pseudo_vector_factory(uZ size, const Allocator& allocator = Allocator{})
     : m_vector(size, allocator){};
 
     pseudo_vector_factory(const pseudo_vector_factory& other)     = delete;
@@ -37,8 +37,8 @@ private:
  *
  * @tparam T
  * @tparam Allocator
- * @tparam FFTUnit
- * @tparam TMPFactory A type with operator() returning a pointer_t. Dereferencing pointer_t must return pcx::vector<T, ...>&.
+ * @tparam FFT_
+ * @tparam TMPFactory_ A type with operator() returning a pointer_t. Dereferencing pointer_t must return pcx::vector<T, ...>&.
    Size of the returned vector must be equal to fft size;
  */
 template<typename T,
@@ -52,7 +52,14 @@ public:
     using allocator_type = Allocator;
 
     fxcorr_unit() = delete;
-    fxcorr_unit(pcx::vector<T> g, std::size_t fft_size, allocator_type allocator = allocator_type{})
+    /**
+     * @brief Construct a new fxcorr unit object that performs cross-correlation with g function.
+     *
+     * @param[in] g Base function to perform correlation with.
+     * @param[in] fft_size
+     * @param[in] allocator
+     */
+    fxcorr_unit(pcx::vector<T> g, uZ fft_size, allocator_type allocator = allocator_type{})
     : m_fft(std::make_shared<FFT_>(fft_size, 2048, allocator))
     , m_kernel(m_fft->size(), allocator)
     , m_tmp_factory(m_fft->size(), allocator)
@@ -90,32 +97,51 @@ public:
     fxcorr_unit& operator=(const fxcorr_unit& other)     = delete;
     fxcorr_unit& operator=(fxcorr_unit&& other) noexcept = delete;
 
-    template<typename Alloc_, std::size_t PackSize_>
-    void operator()(pcx::vector<T, PackSize_, Alloc_>& vec) {
-        uint offset = 0;
-        auto step   = (m_fft->size() - m_overlap) / PackSize_ * PackSize_;
-        for (; offset + m_fft->size() < vec.size(); offset += step) {
-            auto tmp = *m_tmp_factory();
-            (*m_fft)(tmp, subrange(vec.begin() + offset, m_fft->size()));
-            tmp = tmp * conj(m_kernel);
-            (*m_fft).template ifft<false>(tmp);
-            subrange(vec.begin() + offset, step).assign(tmp);
+    template<typename Vect_>
+        requires complex_vector_of<T, Vect_>
+    void operator()(Vect_& vector) {
+        constexpr auto src_pack_size = detail_::vector_traits<Vect_>::pack_size;
+        auto           tmp           = m_tmp_factory();
+        constexpr auto tmp_pack_size =
+            detail_::vector_traits<std::remove_reference_t<decltype(*tmp)>>::pack_size;
+
+        uZ   offset = 0;
+        auto step   = (m_fft->size() - m_overlap) / src_pack_size * src_pack_size;
+        for (; offset + m_fft->size() < vector.size(); offset += step) {
+            m_fft->template fft_raw<tmp_pack_size, src_pack_size>(tmp->data(), vector.data() + offset);
+            *tmp = *tmp * conj(m_kernel);
+            if constexpr (tmp_pack_size >= src_pack_size) {
+                m_fft->template ifft_raw<false, src_pack_size, tmp_pack_size>(tmp->data(), tmp->data());
+                std::memcpy(vector.data() + offset, tmp->data(), sizeof(T) * step);
+            } else {
+                m_fft->template ifft_raw<false, tmp_pack_size>(tmp->data());
+                std::ranges::copy(pcx::subrange(tmp->begin(), step), vector.begin() + offset);
+            }
         }
-        while (offset < vec.size()) {
-            auto tmp = *m_tmp_factory();
-            (*m_fft)(tmp, subrange(vec.begin() + offset, vec.end()));
-            tmp = tmp * conj(m_kernel);
-            (*m_fft).template ifft<false>(tmp);
-            auto l_step = std::min(step, vec.size() - offset);
-            subrange(vec.begin() + offset, l_step).assign(subrange(tmp.begin(), l_step));
+        while (offset < vector.size()) {
+            m_fft->template fft_raw<tmp_pack_size, src_pack_size>(
+                tmp->data(), vector.data() + offset, vector.size() - offset);
+            *tmp        = *tmp * conj(m_kernel);
+            auto l_step = std::min(step, vector.size() - offset);
+            if constexpr (tmp_pack_size >= src_pack_size) {
+                m_fft->template ifft_raw<false, src_pack_size, tmp_pack_size>(tmp->data(), tmp->data());
+                std::memcpy(vector.data() + offset, tmp->data(), sizeof(T) * l_step);
+            } else {
+                m_fft->template ifft_raw<false, tmp_pack_size>(tmp->data());
+                std::ranges::copy(pcx::subrange(tmp->begin(), l_step), vector.begin() + offset);
+            }
             offset += step;
         }
-    }
+    };
+
+    template<typename DestVect_, typename SrcVect_>
+        requires complex_vector_of<T, DestVect_> && complex_vector_of<T, SrcVect_>
+    void operator()(DestVect_& dest, const SrcVect_& source) {}
 
 private:
     std::shared_ptr<FFT_>                                m_fft;
     pcx::vector<T, default_pack_size<T>, allocator_type> m_kernel;
     TmpFactory_                                          m_tmp_factory;
-    std::size_t                                          m_overlap;
+    uZ                                                   m_overlap;
 };
 }    // namespace pcx

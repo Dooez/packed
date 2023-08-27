@@ -120,39 +120,6 @@ inline auto unpackhi_256(reg_t<double> a, reg_t<double> b) -> reg_t<double> {
     return _mm512_shuffle_f64x2(a, b, 0b11101110);
 };
 
-// template<bool Conj, uZ PackSize>
-// inline auto unpack_ps(cx_reg<float, Conj, PackSize> a, cx_reg<float, Conj, PackSize> b) {
-//     auto real_lo = unpacklo_32(a.real, b.real);
-//     auto real_hi = unpackhi_32(a.real, b.real);
-//     auto imag_lo = unpacklo_32(a.imag, b.imag);
-//     auto imag_hi = unpackhi_32(a.imag, b.imag);
-//
-//     return std::make_tuple(cx_reg<float, Conj, PackSize>({real_lo, imag_lo}),
-//                            cx_reg<float, Conj, PackSize>({real_hi, imag_hi}));
-// };
-//
-// template<typename T, bool Conj, uZ PackSize>
-// inline auto unpack_pd(cx_reg<T, Conj, PackSize> a, cx_reg<T, Conj, PackSize> b) {
-//     auto real_lo = unpacklo_64(a.real, b.real);
-//     auto real_hi = unpackhi_64(a.real, b.real);
-//     auto imag_lo = unpacklo_64(a.imag, b.imag);
-//     auto imag_hi = unpackhi_64(a.imag, b.imag);
-//
-//     return std::make_tuple(cx_reg<T, Conj, PackSize>({real_lo, imag_lo}),
-//                            cx_reg<T, Conj, PackSize>({real_hi, imag_hi}));
-// };
-//
-// template<typename T, bool Conj, uZ PackSize>
-// inline auto unpack_128(cx_reg<T, Conj, PackSize> a, cx_reg<T, Conj, PackSize> b) {
-//     auto real_hi = unpackhi_128(a.real, b.real);
-//     auto real_lo = unpacklo_128(a.real, b.real);
-//     auto imag_hi = unpackhi_128(a.imag, b.imag);
-//     auto imag_lo = unpacklo_128(a.imag, b.imag);
-//
-//     return std::make_tuple(cx_reg<T, Conj, PackSize>({real_lo, imag_lo}),
-//                            cx_reg<T, Conj, PackSize>({real_hi, imag_hi}));
-// };
-
 }    // namespace avx512
 
 template<uZ PackTo, uZ PackFrom, bool... Conj>
