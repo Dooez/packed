@@ -1,6 +1,7 @@
 #include "fft.hpp"
 #include "fxcorr.hpp"
 #include "simd_fft.hpp"
+#include "tests/test_pcx.hpp"
 #include "vector_util.hpp"
 
 #include <memory>
@@ -59,19 +60,33 @@ int main() {
 
     auto fxcorr = pcx::fxcorr_unit(g, fft_unit, [&] { return pseudo_factory(); });
 
-
-    auto xcr = pcx::fxcorr_unit(g, size * 2);
-    // xcr(f);
     // for (auto v: f) {
     //     std::cout << std::to_string(abs(v.value())) << "\n";
     // }
-    auto sg = svector<float>(13);
-    auto sf = svector<float>(31);
+    auto sg = svector<float>(size);
+    auto sf = svector<float>(size);
     fill_bark(sg, 0);
-    fill_bark(sf, 10);
-    auto res = naive_fxcorr(sf, sg);
-    for (auto v: res) {
-        std::cout << std::to_string(abs(v)) << "\n";
+    fill_bark(sf, 35);
+    fill_bark(sf, 48);
+
+    for (uint i = 0; i < sf.size(); ++i) {
+        sf[i] *= std::complex<float>(0,1);
+        f[i] = sf[i];
     }
+
+    auto xcr = pcx::fxcorr_unit(g, size * 2);
+    xcr(f);
+
+
+    auto res = naive_fxcorr(sf, sg);
+    for (uint i = 0; i < size; ++i) {
+        if (!equal_eps(f[i].value(), res[i], 100)) {
+            std::cout << i << " " << abs(f[i].value() - res[i]) << " " << res[i] << f[i].value() << "\n";
+        }
+    }
+
+    // for (auto v: res) {
+    //     std::cout << std::to_string(abs(v)) << "\n";
+    // }
     return 0;
 }
