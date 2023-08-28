@@ -3,6 +3,8 @@
 
 #include "simd_fft.hpp"
 
+#include <array>
+
 namespace pcx::simd {
 
 constexpr auto swap_48 = [](cx_reg<float, false> reg) {
