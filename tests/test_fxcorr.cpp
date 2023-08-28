@@ -66,8 +66,8 @@ int main() {
     auto sg = svector<float>(size);
     auto sf = svector<float>(size);
     fill_bark(sg, 0);
-    fill_bark(sf, 35);
-    fill_bark(sf, 48);
+    fill_bark(sf, 0);
+    fill_bark(sf, 109);
 
     for (uint i = 0; i < sf.size(); ++i) {
         sf[i] *= std::complex<float>(0,1);
