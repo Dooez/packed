@@ -45,7 +45,7 @@ template<typename T,
          typename Allocator   = pcx::aligned_allocator<T>,
          typename FFT_        = pcx::fft_unit<T, pcx::fft_order::unordered, Allocator>,
          typename TmpFactory_ = detail_::pseudo_vector_factory<T, Allocator>>
-    requires std::floating_point<T> && std::same_as<typename Allocator::value_type, T>
+    requires (std::floating_point<T> && std::same_as<typename Allocator::value_type, T>)
 class fxcorr_unit {
 public:
     using real_type      = T;
@@ -112,7 +112,7 @@ public:
             *tmp = *tmp * conj(m_kernel);
             if constexpr (tmp_pack_size >= src_pack_size) {
                 m_fft->template ifft_raw<false, src_pack_size, tmp_pack_size>(tmp->data(), tmp->data());
-                std::memcpy(vector.data() + offset, tmp->data(), sizeof(T) * step);
+                std::memcpy(vector.data() + offset, tmp->data(), sizeof(T) * 2 * step);
             } else {
                 m_fft->template ifft_raw<false, tmp_pack_size>(tmp->data());
                 std::ranges::copy(pcx::subrange(tmp->begin(), step), vector.begin() + offset);
@@ -125,12 +125,12 @@ public:
             auto l_step = std::min(step, vector.size() - offset);
             if constexpr (tmp_pack_size >= src_pack_size) {
                 m_fft->template ifft_raw<false, src_pack_size, tmp_pack_size>(tmp->data(), tmp->data());
-                std::memcpy(vector.data() + offset, tmp->data(), sizeof(T) * l_step);
+                std::memcpy(vector.data() + offset, tmp->data(), sizeof(T) * 2 * l_step);
             } else {
                 m_fft->template ifft_raw<false, tmp_pack_size>(tmp->data());
                 std::ranges::copy(pcx::subrange(tmp->begin(), l_step), vector.begin() + offset);
             }
-            offset += step;
+            offset += l_step;
         }
     };
 

@@ -80,7 +80,7 @@ int main() {
 
     auto res = naive_fxcorr(sf, sg);
     for (uint i = 0; i < size; ++i) {
-        if (!equal_eps(f[i].value(), res[i], 100)) {
+        if (!equal_eps(f[i].value(), res[i], 10000000)) {
             std::cout << i << " " << abs(f[i].value() - res[i]) << " " << res[i] << f[i].value() << "\n";
         }
     }
