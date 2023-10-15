@@ -30,6 +30,9 @@ using namespace rv::views;
 template<uZ N>
 concept pack_size = N > 0 && (N & (N - 1)) == 0;
 
+template<typename T>
+concept floating_point = std::same_as<T, float> || std::same_as<T, double>;
+
 namespace simd {
 
 /**

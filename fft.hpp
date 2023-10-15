@@ -515,7 +515,7 @@ struct node<8> {
 }    // namespace fft
 }    // namespace detail_
 
-template<typename V_>
+template<typename V>
 struct cx_vector_traits {
     using real_type               = decltype([] {});
     static constexpr uZ pack_size = 0;
@@ -688,8 +688,8 @@ public:
      *
      * @tparam PackSizeDest
      * @tparam PackSizeSrc
-     * @param[out] dest
-     * @param[in] source
+     * @param[out]  dest
+     * @param[in]   source
      */
     template<uZ PackSizeDest = 1, uZ PackSizeSrc = 1>
         requires pack_size<PackSizeDest> && pack_size<PackSizeSrc>
@@ -712,9 +712,9 @@ public:
      *
      * @tparam PackSizeDest
      * @tparam PackSizeSrc
-     * @param[out] dest
-     * @param[in] source
-     * @param[in] source_size Source size, must be lower or equal to fft size.
+     * @param[out]  dest
+     * @param[in]   source
+     * @param[in]   source_size Source size, must be lower or equal to fft size.
        Values after source_size are zero-extended.
      */
     template<uZ PackSizeDest = 1, uZ PackSizeSrc = 1>
@@ -802,8 +802,8 @@ public:
      Source values are potentially zero-extended.
      * @tparam DestVect_
      * @tparam SrcVect_
-     * @param[out] dest
-     * @param[in] source
+     * @param[out]  dest
+     * @param[in]   source
      */
     template<typename DestVect_, typename SrcVect_>
         requires complex_vector_of<T, DestVect_> && complex_vector_of<T, SrcVect_>
@@ -905,8 +905,8 @@ public:
      * @tparam Normalized If true output is normalized by 1/<fft size>.
      * @tparam DestVect_
      * @tparam SrcVect_
-     * @param[out] dest
-     * @param[in] source
+     * @param[out]  dest
+     * @param[in]   source
      */
     template<bool Normalized = true, typename DestVect_, typename SrcVect_>
         requires complex_vector_of<T, DestVect_> && complex_vector_of<T, SrcVect_>
