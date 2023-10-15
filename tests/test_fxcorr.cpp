@@ -1,8 +1,11 @@
 #include "fft.hpp"
 #include "fxcorr.hpp"
 #include "simd_fft.hpp"
+#include "tests/test_pcx.hpp"
 #include "vector_util.hpp"
 
+#include <cstddef>
+#include <cstdlib>
 #include <memory>
 
 template<typename T>
@@ -43,6 +46,57 @@ void fill_bark(auto& vector, std::size_t offset) {
     vector[offset + 11] = -1.;
     vector[offset + 12] = 1;
 }
+auto next_pow_2(uint64_t v){
+    v--;
+    v |= v >> 1;
+    v |= v >> 2;
+    v |= v >> 4;
+    v |= v >> 8;
+    v |= v >> 16;
+    v |= v >> 32;
+    v++;
+    return v;
+
+}
+
+template<typename T>
+int test_xcorr(std::size_t g_size) {
+    auto g_pcx    = pcx::vector<T>(g_size);
+    auto g_std    = std::vector<std::complex<T>>(g_size);
+
+    for(uint i = 0; i < g_size; ++i){
+        g_pcx[i] = std::exp(std::complex<T>(0, std::rand() % 6 - 3));
+        g_std[i] = g_pcx[i];
+    }
+    using fft_t   = pcx::fft_unit<T, pcx::fft_order::unordered, pcx::aligned_allocator<T>, 2048>;
+
+    auto fft_size = next_pow_2(g_size * 2);
+
+    auto pseudo_factory = pcx::detail_::pseudo_vector_factory<T, std::allocator<T>>(fft_size);
+    auto fxcorr = pcx::fxcorr_unit<T>(g_pcx, fft_size);
+
+    auto f_size = fft_size - g_size;
+    auto f_pcx = pcx::vector<T>(f_size);
+    auto f_std = std::vector<std::complex<T>>(f_size);
+
+    for(uint i = 0; i < f_size; ++i){
+        f_pcx[i] = std::exp(std::complex<T>(0, std::rand() % 6 - 3));
+        f_std[i] = f_pcx[i];
+    }
+
+    fxcorr(f_pcx);
+    auto res = naive_fxcorr(f_std, g_std);
+
+    int ret = 0;
+    for (uint i = 0; i < f_size; ++i) {
+        if (!equal_eps(f_pcx[i].value(), res[i], 10000000)) {
+            std::cout << i << " " << abs(f_pcx[i].value() - res[i]) << " " << res[i] << f_pcx[i].value() << "\n";
+            ++ret;
+        }
+    }
+    return ret;
+
+}
 
 int main() {
     auto               size = 128;
@@ -59,19 +113,34 @@ int main() {
 
     auto fxcorr = pcx::fxcorr_unit(g, fft_unit, [&] { return pseudo_factory(); });
 
-
-    auto xcr = pcx::fxcorr_unit(g, size * 2);
-    // xcr(f);
     // for (auto v: f) {
     //     std::cout << std::to_string(abs(v.value())) << "\n";
     // }
-    auto sg = svector<float>(13);
-    auto sf = svector<float>(31);
+    auto sg = svector<float>(size);
+    auto sf = svector<float>(size);
     fill_bark(sg, 0);
-    fill_bark(sf, 10);
-    auto res = naive_fxcorr(sf, sg);
-    for (auto v: res) {
-        std::cout << std::to_string(abs(v)) << "\n";
+    fill_bark(sf, 0);
+    fill_bark(sf, 109);
+
+    for (uint i = 0; i < sf.size(); ++i) {
+        sf[i] *= std::complex<float>(0, 1);
+        sf[i] += std::rand() % 7 - 3;
+        f[i] = sf[i];
     }
+
+    auto xcr = pcx::fxcorr_unit(g, size * 2);
+    xcr(f);
+
+
+    auto res = naive_fxcorr(sf, sg);
+    for (uint i = 0; i < size; ++i) {
+        if (!equal_eps(f[i].value(), res[i], 10000000)) {
+            std::cout << i << " " << abs(f[i].value() - res[i]) << " " << res[i] << f[i].value() << "\n";
+        }
+    }
+    return test_xcorr<float>(512);
+    // for (auto v: res) {
+    //     std::cout << std::to_string(abs(v)) << "\n";
+    // }
     return 0;
 }
