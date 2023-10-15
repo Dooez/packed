@@ -170,11 +170,11 @@ struct expression_traits {
 template<typename E>
 concept vector_expression =    //
     requires(E expression, std::size_t idx) {
-        requires std::ranges::view<E>;
+        requires rv::view<E>;
 
-        requires std::ranges::random_access_range<E>;
+        requires rv::random_access_range<E>;
 
-        requires std::ranges::sized_range<E>;
+        requires rv::sized_range<E>;
 
         typename E::real_type;
 
@@ -261,7 +261,7 @@ namespace detail_ {
 
 template<typename E1, typename E2>
     requires compatible_expression<E1, E2>
-class add : public std::ranges::view_base {
+class add : public rv::view_base {
     friend auto operator+<E1, E2>(const E1& lhs, const E2& rhs);
     using lhs_iterator = decltype(std::declval<const E1>().begin());
     using rhs_iterator = decltype(std::declval<const E2>().begin());
@@ -424,7 +424,7 @@ private:
 
 template<typename E1, typename E2>
     requires compatible_expression<E1, E2>
-class sub : public std::ranges::view_base {
+class sub : public rv::view_base {
     friend auto operator-<E1, E2>(const E1& lhs, const E2& rhs);
     using lhs_iterator = decltype(std::declval<const E1>().begin());
     using rhs_iterator = decltype(std::declval<const E2>().begin());
@@ -587,7 +587,7 @@ private:
 
 template<typename E1, typename E2>
     requires compatible_expression<E1, E2>
-class mul : public std::ranges::view_base {
+class mul : public rv::view_base {
     friend auto operator*<E1, E2>(const E1& lhs, const E2& rhs);
     using lhs_iterator = decltype(std::declval<const E1>().begin());
     using rhs_iterator = decltype(std::declval<const E2>().begin());
@@ -745,7 +745,7 @@ private:
 
 template<typename E1, typename E2>
     requires compatible_expression<E1, E2>
-class div : public std::ranges::view_base {
+class div : public rv::view_base {
     friend auto operator/<E1, E2>(const E1& lhs, const E2& rhs);
     using lhs_iterator = decltype(std::declval<const E1>().begin());
     using rhs_iterator = decltype(std::declval<const E2>().begin());
@@ -903,7 +903,7 @@ private:
 
 template<typename E, typename S>
     requires compatible_scalar<E, S>
-class scalar_add : public std::ranges::view_base {
+class scalar_add : public rv::view_base {
     friend auto operator+<E, S>(const E& vector, S scalar);
     friend auto operator+<E, S>(S scalar, const E& vector);
     friend auto operator-<E, S>(const E& vector, S scalar);
@@ -1055,7 +1055,7 @@ private:
 
 template<typename E, typename S>
     requires compatible_scalar<E, S>
-class scalar_sub : public std::ranges::view_base {
+class scalar_sub : public rv::view_base {
     friend auto operator-<E, S>(S scalar, const E& vector);
 
 public:
@@ -1205,7 +1205,7 @@ private:
 
 template<typename E, typename S>
     requires compatible_scalar<E, S>
-class scalar_mul : public std::ranges::view_base {
+class scalar_mul : public rv::view_base {
     friend auto operator*<E, S>(const E& vector, S scalar);
     friend auto operator*<E, S>(S scalar, const E& vector);
     friend auto operator/<E, S>(const E& vector, S scalar);
@@ -1359,7 +1359,7 @@ private:
 
 template<typename E, typename S>
     requires compatible_scalar<E, S>
-class scalar_div : public std::ranges::view_base {
+class scalar_div : public rv::view_base {
     friend auto operator/<E, S>(S scalar, const E& vector);
 
 public:
@@ -1510,7 +1510,7 @@ private:
 
 template<typename E>
     requires vector_expression<E>
-class conjugate : public std::ranges::view_base {
+class conjugate : public rv::view_base {
     friend auto pcx::conj<>(const E& vector);
 
 public:

@@ -100,10 +100,10 @@ public:
     template<typename Vect_>
         requires complex_vector_of<T, Vect_>
     void operator()(Vect_& vector) {
-        constexpr auto src_pack_size = detail_::vector_traits<Vect_>::pack_size;
+        constexpr auto src_pack_size = cx_vector_traits<Vect_>::pack_size;
         auto           tmp           = m_tmp_factory();
         constexpr auto tmp_pack_size =
-            detail_::vector_traits<std::remove_reference_t<decltype(*tmp)>>::pack_size;
+            cx_vector_traits<std::remove_reference_t<decltype(*tmp)>>::pack_size;
 
         uZ   offset = 0;
         auto step   = (m_fft->size() - m_overlap) / src_pack_size * src_pack_size;
@@ -115,7 +115,7 @@ public:
                 std::memcpy(vector.data() + offset, tmp->data(), sizeof(T) * step);
             } else {
                 m_fft->template ifft_raw<false, tmp_pack_size>(tmp->data());
-                std::ranges::copy(pcx::subrange(tmp->begin(), step), vector.begin() + offset);
+                rv::copy(pcx::subrange(tmp->begin(), step), vector.begin() + offset);
             }
         }
         while (offset < vector.size()) {
@@ -128,7 +128,7 @@ public:
                 std::memcpy(vector.data() + offset, tmp->data(), sizeof(T) * l_step);
             } else {
                 m_fft->template ifft_raw<false, tmp_pack_size>(tmp->data());
-                std::ranges::copy(pcx::subrange(tmp->begin(), l_step), vector.begin() + offset);
+                rv::copy(pcx::subrange(tmp->begin(), l_step), vector.begin() + offset);
             }
             offset += step;
         }

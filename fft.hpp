@@ -27,58 +27,17 @@
 namespace pcx {
 namespace detail_ {
 
-template<typename V_>
-struct vector_traits {
-    using real_type               = decltype([] {});
-    static constexpr uZ pack_size = 0;
-};
-template<typename T_, typename Alloc_>
-struct vector_traits<std::vector<std::complex<T_>, Alloc_>> {
-    using real_type               = T_;
-    static constexpr uZ pack_size = 1;
-
-    static auto data(std::vector<std::complex<T_>, Alloc_>& vector) {
-        return reinterpret_cast<real_type*>(vector.data());
-    }
-    static auto data(const std::vector<std::complex<T_>, Alloc_>& vector) {
-        return reinterpret_cast<const real_type*>(vector.data());
-    }
-    static auto size(const std::vector<std::complex<T_>, Alloc_>& vector) {
-        return vector.size();
-    }
-};
-template<typename T_, uZ PackSize_, typename Alloc_>
-struct vector_traits<pcx::vector<T_, PackSize_, Alloc_>> {
-    using real_type               = T_;
-    static constexpr uZ pack_size = PackSize_;
-
-    static auto data(pcx::vector<T_, PackSize_, Alloc_>& vector) {
-        return vector.data();
-    }
-    static auto data(const pcx::vector<T_, PackSize_, Alloc_>& vector) {
-        return vector.data();
-    }
-    static auto size(const pcx::vector<T_, PackSize_, Alloc_>& vector) {
-        return vector.size();
-    }
+template<typename T>
+struct is_std_complex_floating_point {
+    static constexpr bool value = false;
 };
 
-template<typename T_, bool Const_, uZ PackSize_>
-struct vector_traits<pcx::subrange<T_, Const_, PackSize_>> {
-    using real_type               = T_;
-    static constexpr uZ pack_size = PackSize_;
-
-    static auto data(pcx::subrange<T_, false, PackSize_> subrange) {
-        if (!subrange.aligned()) {
-            throw(std::invalid_argument(std::string(
-                "subrange is not aligned. pcx::subrange must be aligned to be accessed as a vector")));
-        }
-        return &(*subrange.begin());
-    }
-    static auto size(pcx::subrange<T_, Const_, PackSize_> subrange) {
-        return subrange.size();
-    }
+template<std::floating_point F>
+struct is_std_complex_floating_point<std::complex<F>> {
+    using real_type             = F;
+    static constexpr bool value = true;
 };
+
 
 namespace fft {
 //TODO: Replace with tables.
@@ -556,12 +515,68 @@ struct node<8> {
 }    // namespace fft
 }    // namespace detail_
 
+template<typename V_>
+struct cx_vector_traits {
+    using real_type               = decltype([] {});
+    static constexpr uZ pack_size = 0;
+};
+
+template<typename R>
+    requires rv::contiguous_range<R> && detail_::is_std_complex_floating_point<rv::range_value_t<R>>::value
+struct cx_vector_traits<R> {
+    using real_type               = detail_::is_std_complex_floating_point<rv::range_value_t<R>>::real_type;
+    static constexpr uZ pack_size = 1;
+
+    static auto re_data(R& vector) {
+        return reinterpret_cast<real_type*>(rv::data(vector));
+    }
+    static auto re_data(const R& vector) {
+        return reinterpret_cast<const real_type*>(rv::data(vector));
+    }
+    static auto size(const R& vector) {
+        return rv::size(vector);
+    }
+};
+
+template<typename T_, uZ PackSize_, typename Alloc_>
+struct cx_vector_traits<pcx::vector<T_, PackSize_, Alloc_>> {
+    using real_type               = T_;
+    static constexpr uZ pack_size = PackSize_;
+
+    static auto re_data(pcx::vector<T_, PackSize_, Alloc_>& vector) {
+        return vector.data();
+    }
+    static auto re_data(const pcx::vector<T_, PackSize_, Alloc_>& vector) {
+        return vector.data();
+    }
+    static auto size(const pcx::vector<T_, PackSize_, Alloc_>& vector) {
+        return vector.size();
+    }
+};
+
+template<typename T_, bool Const_, uZ PackSize_>
+struct cx_vector_traits<pcx::subrange<T_, Const_, PackSize_>> {
+    using real_type               = T_;
+    static constexpr uZ pack_size = PackSize_;
+
+    static auto re_data(pcx::subrange<T_, false, PackSize_> subrange) {
+        if (!subrange.aligned()) {
+            throw(std::invalid_argument(std::string(
+                "subrange is not aligned. pcx::subrange must be aligned to be accessed as a vector")));
+        }
+        return &(*subrange.begin());
+    }
+    static auto size(pcx::subrange<T_, Const_, PackSize_> subrange) {
+        return subrange.size();
+    }
+};
+
 template<typename T, typename V>
-concept complex_vector_of = std::same_as<T, typename detail_::vector_traits<V>::real_type>;
+concept complex_vector_of = std::same_as<T, typename cx_vector_traits<V>::real_type>;
 
 template<typename T, typename R>
-concept range_complex_vector_of = std::ranges::random_access_range<R> &&    //
-                                  complex_vector_of<T, std::remove_pointer_t<std::ranges::range_value_t<R>>>;
+concept range_complex_vector_of = rv::random_access_range<R> &&    //
+                                  complex_vector_of<T, std::remove_pointer_t<rv::range_value_t<R>>>;
 
 /**
  * @brief Controls how fft output and ifft input is ordered;
@@ -762,7 +777,7 @@ public:
     template<typename Vect_>
         requires complex_vector_of<T, Vect_>
     void operator()(Vect_& vector) {
-        using v_traits = detail_::vector_traits<Vect_>;
+        using v_traits = cx_vector_traits<Vect_>;
         if (v_traits::size(vector) != m_size) {
             throw(std::invalid_argument(std::string("input size (which is ")
                                             .append(std::to_string(v_traits::size(vector)))
@@ -772,14 +787,14 @@ public:
         }
         constexpr auto PData = v_traits::pack_size;
         if constexpr (!sorted) {
-            // fftu_internal<PData>(v_traits::data(vector));
-            apply_unsorted<PData, PData, false, false>(v_traits::data(vector));
+            // fftu_internal<PData>(v_traits::re_data(vector));
+            apply_unsorted<PData, PData, false, false>(v_traits::re_data(vector));
         } else {
             constexpr auto PTform = std::max(PData, simd::reg<T>::size);
-            // depth3_and_sort<PTform, PData, false>(v_traits::data(vector));
-            // size_specific::template tform_sort<PTform, PData, false>(v_traits::data(vector), size(), m_sort);
-            simd::size_specific::tform_sort<PTform, PData, false>(v_traits::data(vector), size(), m_sort);
-            apply_subtform<PData, PTform, false, false>(v_traits::data(vector), size());
+            // depth3_and_sort<PTform, PData, false>(v_traits::re_data(vector));
+            // size_specific::template tform_sort<PTform, PData, false>(v_traits::re_data(vector), size(), m_sort);
+            simd::size_specific::tform_sort<PTform, PData, false>(v_traits::re_data(vector), size(), m_sort);
+            apply_subtform<PData, PTform, false, false>(v_traits::re_data(vector), size());
         }
     }
     /**
@@ -793,8 +808,8 @@ public:
     template<typename DestVect_, typename SrcVect_>
         requires complex_vector_of<T, DestVect_> && complex_vector_of<T, SrcVect_>
     void operator()(DestVect_& dest, const SrcVect_& source) {
-        using src_traits = detail_::vector_traits<SrcVect_>;
-        using dst_traits = detail_::vector_traits<DestVect_>;
+        using src_traits = cx_vector_traits<SrcVect_>;
+        using dst_traits = cx_vector_traits<DestVect_>;
         if (dst_traits::size(dest) != m_size) {
             throw(std::invalid_argument(std::string("destination size (which is ")
                                             .append(std::to_string(dst_traits::size(dest)))
@@ -812,8 +827,8 @@ public:
         constexpr auto PDest = dst_traits::pack_size;
         constexpr auto PSrc  = src_traits::pack_size;
 
-        auto dst_ptr = dst_traits::data(dest);
-        auto src_ptr = src_traits::data(source);
+        auto dst_ptr = dst_traits::re_data(dest);
+        auto src_ptr = src_traits::re_data(source);
         if constexpr (PSrc != PDest && std::max(PSrc, PDest) > simd::reg<T>::size) {
             if (dst_ptr == src_ptr) {
                 throw(std::invalid_argument(
@@ -836,18 +851,18 @@ public:
             constexpr auto PTform = std::max(PDest, simd::reg<T>::size);
             if (dst_ptr == src_ptr) {
                 // size_specific::template tform_sort<PTform, PDest, false>(
-                //     dst_traits::data(dest), size(), m_sort);
+                //     dst_traits::re_data(dest), size(), m_sort);
 
-                simd::size_specific::tform_sort<PTform, PDest, false>(dst_traits::data(dest), size(), m_sort);
-                // depth3_and_sort<PTform, PDest, false>(dst_traits::data(dest));
-                apply_subtform<PDest, PTform, false, false>(dst_traits::data(dest), size());
+                simd::size_specific::tform_sort<PTform, PDest, false>(dst_traits::re_data(dest), size(), m_sort);
+                // depth3_and_sort<PTform, PDest, false>(dst_traits::re_data(dest));
+                apply_subtform<PDest, PTform, false, false>(dst_traits::re_data(dest), size());
             } else {
                 // size_specific::template tform_sort<PTform, PDest, false>(
-                //     dst_traits::data(dest), src_traits::data(source), size(), m_sort);
+                //     dst_traits::re_data(dest), src_traits::re_data(source), size(), m_sort);
                 simd::size_specific::tform_sort<PTform, PSrc, false>(
-                    dst_traits::data(dest), src_traits::data(source), size(), m_sort);
-                // depth3_and_sort<PTform, PSrc, false>(dst_traits::data(dest));
-                apply_subtform<PDest, PTform, false, false>(dst_traits::data(dest), size());
+                    dst_traits::re_data(dest), src_traits::re_data(source), size(), m_sort);
+                // depth3_and_sort<PTform, PSrc, false>(dst_traits::re_data(dest));
+                apply_subtform<PDest, PTform, false, false>(dst_traits::re_data(dest), size());
             }
         }
     }
@@ -861,7 +876,7 @@ public:
     template<bool Normalized = true, typename Vect_>
         requires complex_vector_of<T, Vect_>
     void ifft(Vect_& vector) {
-        using v_traits = detail_::vector_traits<Vect_>;
+        using v_traits = cx_vector_traits<Vect_>;
         if (v_traits::size(vector) != m_size) {
             throw(std::invalid_argument(std::string("input size (which is ")
                                             .append(std::to_string(v_traits::size(vector)))
@@ -871,17 +886,17 @@ public:
         }
         constexpr auto PData = v_traits::pack_size;
         if constexpr (!sorted) {
-            // ifftu_internal<PData>(v_traits::data(vector));
+            // ifftu_internal<PData>(v_traits::re_data(vector));
 
-            apply_unsorted<PData, PData, true, Normalized>(v_traits::data(vector));
+            apply_unsorted<PData, PData, true, Normalized>(v_traits::re_data(vector));
         } else {
             constexpr auto PTform = std::max(PData, simd::reg<T>::size);
 
-            // size_specific::template tform_sort<PTform, PData, true>(v_traits::data(vector), size(), m_sort);
-            simd::size_specific::tform_sort<PTform, PData, true>(v_traits::data(vector), size(), m_sort);
+            // size_specific::template tform_sort<PTform, PData, true>(v_traits::re_data(vector), size(), m_sort);
+            simd::size_specific::tform_sort<PTform, PData, true>(v_traits::re_data(vector), size(), m_sort);
 
-            // depth3_and_sort<PTform, PData, true>(v_traits::data(vector));
-            apply_subtform<PData, PTform, true, true>(v_traits::data(vector), size());
+            // depth3_and_sort<PTform, PData, true>(v_traits::re_data(vector));
+            apply_subtform<PData, PTform, true, true>(v_traits::re_data(vector), size());
         }
     }
     /**
@@ -896,8 +911,8 @@ public:
     template<bool Normalized = true, typename DestVect_, typename SrcVect_>
         requires complex_vector_of<T, DestVect_> && complex_vector_of<T, SrcVect_>
     void ifft(DestVect_& dest, const SrcVect_& source) {
-        using src_traits = detail_::vector_traits<SrcVect_>;
-        using dst_traits = detail_::vector_traits<DestVect_>;
+        using src_traits = cx_vector_traits<SrcVect_>;
+        using dst_traits = cx_vector_traits<DestVect_>;
         if (dst_traits::size(dest) != m_size) {
             throw(std::invalid_argument(std::string("destination size (which is ")
                                             .append(std::to_string(dst_traits::size(dest)))
@@ -916,8 +931,8 @@ public:
         constexpr auto PDest = dst_traits::pack_size;
         constexpr auto PSrc  = src_traits::pack_size;
 
-        auto dst_ptr = dst_traits::data(dest);
-        auto src_ptr = src_traits::data(source);
+        auto dst_ptr = dst_traits::re_data(dest);
+        auto src_ptr = src_traits::re_data(source);
 
         if constexpr (PSrc != PDest && std::max(PSrc, PDest) > simd::reg<T>::size) {
             if (dst_ptr == src_ptr) {
@@ -936,12 +951,12 @@ public:
             // TODO:  source upsize
             constexpr auto PTform = std::max(PDest, simd::reg<T>::size);
             if (dst_ptr == src_ptr) {
-                simd::size_specific::tform_sort<PTform, PDest, true>(dst_traits::data(dest), size(), m_sort);
-                apply_subtform<PDest, PTform, true, Normalized>(dst_traits::data(dest), size());
+                simd::size_specific::tform_sort<PTform, PDest, true>(dst_traits::re_data(dest), size(), m_sort);
+                apply_subtform<PDest, PTform, true, Normalized>(dst_traits::re_data(dest), size());
             } else {
                 simd::size_specific::tform_sort<PTform, PSrc, true>(
-                    dst_traits::data(dest), src_traits::data(source), size(), m_sort);
-                apply_subtform<PDest, PTform, true, Normalized>(dst_traits::data(dest), size());
+                    dst_traits::re_data(dest), src_traits::re_data(source), size(), m_sort);
+                apply_subtform<PDest, PTform, true, Normalized>(dst_traits::re_data(dest), size());
             }
         }
     }
@@ -1159,8 +1174,8 @@ public:
             auto add_first_zero = []<uZ... I>(std::array<uZ, sizeof...(I)> sizes, std::index_sequence<I...>) {
                 return std::array<uZ, sizeof...(I) + 1>{0, sizes[I]...};
             };
-            using subtform_t     = const T* (fft_unit::*)(T*, uZ, uZ, uZ);
-            constexpr auto align = add_first_zero(
+            using subtform_t                  = const T* (fft_unit::*)(T*, uZ, uZ, uZ);
+            constexpr auto              align = add_first_zero(
                 Strategy::align_node_size, std::make_index_sequence<Strategy::align_node_size.size()>{});
             constexpr auto align_rec =
                 add_first_zero(StrategyRec::align_node_size,
@@ -1661,8 +1676,8 @@ public:
             auto add_first_zero = []<uZ... I>(std::array<uZ, sizeof...(I)> sizes, std::index_sequence<I...>) {
                 return std::array<uZ, sizeof...(I) + 1>{0, sizes[I]...};
             };
-            using subtform_t     = const T* (fft_unit::*)(T*, uZ, const T*, uZ, uZ);
-            constexpr auto align = add_first_zero(
+            using subtform_t                  = const T* (fft_unit::*)(T*, uZ, const T*, uZ, uZ);
+            constexpr auto              align = add_first_zero(
                 Strategy::align_node_size, std::make_index_sequence<Strategy::align_node_size.size()>{});
             constexpr auto align_rec =
                 add_first_zero(StrategyRec::align_node_size,
@@ -1714,8 +1729,8 @@ public:
             auto add_first_zero = []<uZ... I>(std::array<uZ, sizeof...(I)> sizes, std::index_sequence<I...>) {
                 return std::array<uZ, sizeof...(I) + 1>{0, sizes[I]...};
             };
-            using subtform_t     = const T* (fft_unit::*)(T*, uZ, const T*, uZ, uZ, const T*, uZ);
-            constexpr auto align = add_first_zero(
+            using subtform_t = const T* (fft_unit::*)(T*, uZ, const T*, uZ, uZ, const T*, uZ);
+            constexpr auto              align = add_first_zero(
                 Strategy::align_node_size, std::make_index_sequence<Strategy::align_node_size.size()>{});
             constexpr auto align_rec =
                 add_first_zero(StrategyRec::align_node_size,
@@ -2254,14 +2269,14 @@ public:
                                             .append(")")));
         }
 
-        using dest_vector_t = std::remove_pointer_t<std::ranges::range_value_t<DestR_>>;
-        using src_vector_t  = std::remove_pointer_t<std::ranges::range_value_t<SrcR_>>;
+        using dest_vector_t = std::remove_pointer_t<rv::range_value_t<DestR_>>;
+        using src_vector_t  = std::remove_pointer_t<rv::range_value_t<SrcR_>>;
 
-        constexpr auto PDest = detail_::vector_traits<dest_vector_t>::pack_size;
-        constexpr auto PSrc  = detail_::vector_traits<src_vector_t>::pack_size;
+        constexpr auto PDest = cx_vector_traits<dest_vector_t>::pack_size;
+        constexpr auto PSrc  = cx_vector_traits<src_vector_t>::pack_size;
 
         auto get_vector = [](auto&& R, uZ i) -> auto& {
-            using vector_t = std::ranges::range_value_t<std::remove_cvref_t<decltype(R)>>;
+            using vector_t = rv::range_value_t<std::remove_cvref_t<decltype(R)>>;
             if constexpr (std::is_pointer_v<vector_t>) {
                 return *R[i];
             } else {

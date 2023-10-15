@@ -25,7 +25,7 @@ namespace pcx::simd {
   *
   * @tparam RhsRotI number of multiplications by imaginary unity
   */
-template<uint RhsRotI = 0, uZ PackSize, typename T>
+template<uZ RhsRotI = 0, uZ PackSize, typename T>
     requires(RhsRotI < 4)
 inline auto ibtfly(cx_reg<T, false, PackSize> lhs, cx_reg<T, false, PackSize> rhs) {
     cx_reg<T, false, PackSize> s;

@@ -645,7 +645,7 @@ private:
 };
 
 template<typename T, bool Const = false, std::size_t PackSize = pcx::default_pack_size<T>>
-class subrange : public std::ranges::view_base {
+class subrange : public rv::view_base {
     template<typename VT, std::size_t VPackSize, typename>
         requires packed_floating_point<VT, VPackSize>
     friend class vector;
@@ -740,8 +740,8 @@ public:
     };
 
     template<typename R>
-        requires(!Const) && (!detail_::vector_expression<R>) && std::ranges::input_range<R> &&
-                std::indirectly_copyable<std::ranges::iterator_t<R>, iterator>
+        requires(!Const) && (!detail_::vector_expression<R>) && rv::input_range<R> &&
+                std::indirectly_copyable<rv::iterator_t<R>, iterator>
     void assign(const R& range) {
         if (range.size() != size()) {
             throw(std::invalid_argument(std::string("source size (which is ")
@@ -750,7 +750,7 @@ public:
                                             .append(std::to_string(size()))
                                             .append(")")));
         }
-        std::ranges::copy(range, begin());
+        rv::copy(range, begin());
     };
 
     template<typename E>

@@ -3,6 +3,7 @@
 
 #include <concepts>
 #include <cstdint>
+#include <ranges>
 
 namespace pcx {
 
@@ -20,6 +21,11 @@ using i64 = int64_t;
 using i32 = int32_t;
 using i16 = int16_t;
 using i8  = int8_t;
+
+namespace rv {
+using namespace std::ranges;
+using namespace rv::views;
+}    // namespace rv
 
 template<uZ N>
 concept pack_size = N > 0 && (N & (N - 1)) == 0;

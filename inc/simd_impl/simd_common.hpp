@@ -35,6 +35,7 @@ template<uZ PackSize, typename T>
 inline auto broadcast(std::complex<T> source) -> cx_reg<T, false, PackSize>;
 template<typename T>
 inline auto broadcast(std::complex<T> source) -> cx_reg<T, false, reg<T>::size>;
+
 /**
  * @brief Loads packed complex data starting at ptr.
  * Repacks data to min(PackSize, reg<T>::size).
@@ -47,8 +48,8 @@ inline void cxstore(T* ptr, cx_reg<T, false, PackSize_> data);
 /**
 * @brief Register aligned adress
 *
-* @param data Base address. Must be aligned by simd register size.
-* @param offset New address offset. Must be a multiple of simd register size.
+* @param[in] data   Base address. Must be aligned by simd register size.
+* @param[in] offset New address offset. Must be a multiple of simd register size.
 * If data in-pack index I is non-zero, offset must be less then PackSize - I;
 */
 template<uZ PackSize, typename T>
@@ -75,7 +76,7 @@ auto apply_conj(cx_reg<T, Conj_, PackSize> reg) -> cx_reg<T, false, PackSize>;
 /**
  * @param args Variable number of complex simd vectors.
  * @return Tuple of repacked complex simd vectors in the order of passing.
- * For some pack sized grouped repack can be more performative.
+ * For some pack sizes grouped repack can be more performative.
  */
 template<uZ PackTo, uZ PackFrom, typename T, bool... Conj>
     requires((PackFrom > 0) && (PackTo > 0))
@@ -83,9 +84,10 @@ inline auto repack(cx_reg<T, Conj, PackFrom>... args);
 
 /**
  * @brief Conditionaly swaps real and imaginary parts of complex simd vectors.
- *
+ 
  * @tparam Inverse If true performs swap.
- * @param args Variable number of complex simd vectors.
+ * @param[in] args Variable number of complex simd vectors.
+
  * @return Tuple of invrsed simd complex vectors.
  */
 template<bool Inverse = true, uZ PackSize, typename... T>
