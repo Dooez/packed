@@ -853,7 +853,8 @@ public:
                 // size_specific::template tform_sort<PTform, PDest, false>(
                 //     dst_traits::re_data(dest), size(), m_sort);
 
-                simd::size_specific::tform_sort<PTform, PDest, false>(dst_traits::re_data(dest), size(), m_sort);
+                simd::size_specific::tform_sort<PTform, PDest, false>(
+                    dst_traits::re_data(dest), size(), m_sort);
                 // depth3_and_sort<PTform, PDest, false>(dst_traits::re_data(dest));
                 apply_subtform<PDest, PTform, false, false>(dst_traits::re_data(dest), size());
             } else {
@@ -951,7 +952,8 @@ public:
             // TODO:  source upsize
             constexpr auto PTform = std::max(PDest, simd::reg<T>::size);
             if (dst_ptr == src_ptr) {
-                simd::size_specific::tform_sort<PTform, PDest, true>(dst_traits::re_data(dest), size(), m_sort);
+                simd::size_specific::tform_sort<PTform, PDest, true>(
+                    dst_traits::re_data(dest), size(), m_sort);
                 apply_subtform<PDest, PTform, true, Normalized>(dst_traits::re_data(dest), size());
             } else {
                 simd::size_specific::tform_sort<PTform, PSrc, true>(
@@ -1791,9 +1793,9 @@ public:
         constexpr bool Src    = detail_::has_type<source_type, Optional...>;
         constexpr bool Upsize = Src && detail_::has_type<uZ, Optional...>;
 
-        constexpr auto perform = [](auto... args) {
+        constexpr auto perform = [](auto&&... args) {
             detail_::fft::node<NodeSize>::template perform<T, PDest, PSrc, ConjTw, Reverse, DecInTime>(
-                args...);
+                std::forward<decltype(args)>(args)...);
         };
 
         constexpr auto Idxs           = std::make_index_sequence<NodeSize>{};
@@ -2651,6 +2653,62 @@ private:
             }(source, i);
 
             detail_::fft::node<2>::template perform<T, PDest, PSrc, false, false>(dst, src, tw, scaling);
+        }
+    }
+
+    template<uZ   NodeSize,
+             uZ   PDest,
+             uZ   PSrc,
+             bool DecInTime,
+             bool ConjTw  = false,
+             bool Reverse = false,
+             typename... Optional>
+    inline static void long_node(std::array<T*, NodeSize> dest, uZ size, Optional... optional) {
+        using src_type     = std::array<const T*, NodeSize>;
+        constexpr bool Src = detail_::has_type<src_type, Optional...>;
+
+        const auto& source = [](auto... optional) {
+            if constexpr (Src) {
+                return std::get<src_type&>(std::tie(optional...));
+            } else {
+                return [] {};
+            }
+        }(optional...);
+
+        constexpr auto get_data_array = []<uZ PackSize, uZ... I>(auto data,
+                                                                 auto offset,
+                                                                 std::integral_constant<uZ, PackSize>,
+                                                                 std::index_sequence<I...>) {
+            constexpr auto Size = sizeof...(I);
+            return std::array<decltype(data[0]), Size>{simd::ra_addr<PackSize>(data[I], offset)...};
+        };
+        constexpr auto Idxs = std::make_index_sequence<NodeSize>{};
+
+        for (uZ i = 0; i < size; i += simd::reg<T>::size) {
+            auto dst = get_data_array(dest,    //
+                                      i,
+                                      std::integral_constant<uZ, PDest>{},
+                                      Idxs);
+            // std::array<t*, 2> dst{
+            //     simd::ra_addr<pdest>(dest[0], i),
+            //     simd::ra_addr<pdest>(dest[1], i),
+            // };
+            auto src = [](auto source, auto i) {
+                if constexpr (Src) {
+                    return get_data_array(source,    //
+                                          i,
+                                          std::integral_constant<uZ, PSrc>{},
+                                          Idxs);
+                    // return std::array<const T*, 2>{
+                    //     simd::ra_addr<PSrc>(source[0], i),
+                    //     simd::ra_addr<PSrc>(source[1], i),
+                    // };
+                } else {
+                    return [] {};
+                }
+            }(source, i);
+
+            detail_::fft::node<2>::template perform<T, PDest, PSrc, false, false>(dst, src, optional...);
         }
     }
 

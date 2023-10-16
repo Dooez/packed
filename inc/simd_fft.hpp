@@ -25,7 +25,7 @@ namespace pcx::simd {
 /**
   * @brief Performs butterfly operation, then multiplies diff by imaginary unit RhsRotI times;
   *
-  * @tparam RhsRotI number of multiplications by imaginary unity
+  * @tparam RhsRotI Number of multiplications by imaginary unity
   */
 template<uZ RhsRotI = 0, uZ PackSize, typename T>
     requires(RhsRotI < 4)
@@ -68,7 +68,7 @@ inline auto ibtfly(cx_reg<T, false, PackSize> lhs, cx_reg<T, false, PackSize> rh
 /**
   * @brief Multiplies rhs by imaginary unit RhsRotI times, then performs butterfly operation;
   *
-  * @tparam RhsRotI number of multiplications by imaginary unity
+  * @tparam RhsRotI Number of multiplications by imaginary unity
   */
 template<uint RhsRotI = 0, uZ PackSize, typename T>
     requires(RhsRotI < 4)
@@ -137,7 +137,7 @@ inline auto unsorted(double* dest, const double* twiddle_ptr, uZ size) -> const 
 
 /**
  * @brief Performes DIF IFFT over a segment of data.
-    IFFT is performed in blocks of `usnorted_size` length.
+    IFFT is performed in blocks of `unsorted_size` length.
     Each block is loaded a single time.
     If not bit-reversed the order is arbitrary, but equal to output order of `unsorted()`
 
