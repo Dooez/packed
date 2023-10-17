@@ -2,6 +2,7 @@
 #define FFT_HPP
 
 #include "avx2_fft.hpp"
+#include "simd_common.hpp"
 #include "types.hpp"
 #include "vector.hpp"
 #include "vector_arithm.hpp"
@@ -10,6 +11,7 @@
 #include <array>
 #include <bits/ranges_base.h>
 // #include <bits/utility.h>
+#include <bits/utility.h>
 #include <cmath>
 #include <complex>
 #include <concepts>
@@ -524,7 +526,7 @@ struct cx_vector_traits {
 template<typename R>
     requires rv::contiguous_range<R> && detail_::is_std_complex_floating_point<rv::range_value_t<R>>::value
 struct cx_vector_traits<R> {
-    using real_type               = detail_::is_std_complex_floating_point<rv::range_value_t<R>>::real_type;
+    using real_type = typename detail_::is_std_complex_floating_point<rv::range_value_t<R>>::real_type;
     static constexpr uZ pack_size = 1;
 
     static auto re_data(R& vector) {
@@ -1176,8 +1178,8 @@ public:
             auto add_first_zero = []<uZ... I>(std::array<uZ, sizeof...(I)> sizes, std::index_sequence<I...>) {
                 return std::array<uZ, sizeof...(I) + 1>{0, sizes[I]...};
             };
-            using subtform_t                  = const T* (fft_unit::*)(T*, uZ, uZ, uZ);
-            constexpr auto              align = add_first_zero(
+            using subtform_t     = const T* (fft_unit::*)(T*, uZ, uZ, uZ);
+            constexpr auto align = add_first_zero(
                 Strategy::align_node_size, std::make_index_sequence<Strategy::align_node_size.size()>{});
             constexpr auto align_rec =
                 add_first_zero(StrategyRec::align_node_size,
@@ -1678,8 +1680,8 @@ public:
             auto add_first_zero = []<uZ... I>(std::array<uZ, sizeof...(I)> sizes, std::index_sequence<I...>) {
                 return std::array<uZ, sizeof...(I) + 1>{0, sizes[I]...};
             };
-            using subtform_t                  = const T* (fft_unit::*)(T*, uZ, const T*, uZ, uZ);
-            constexpr auto              align = add_first_zero(
+            using subtform_t     = const T* (fft_unit::*)(T*, uZ, const T*, uZ, uZ);
+            constexpr auto align = add_first_zero(
                 Strategy::align_node_size, std::make_index_sequence<Strategy::align_node_size.size()>{});
             constexpr auto align_rec =
                 add_first_zero(StrategyRec::align_node_size,
@@ -1731,8 +1733,8 @@ public:
             auto add_first_zero = []<uZ... I>(std::array<uZ, sizeof...(I)> sizes, std::index_sequence<I...>) {
                 return std::array<uZ, sizeof...(I) + 1>{0, sizes[I]...};
             };
-            using subtform_t = const T* (fft_unit::*)(T*, uZ, const T*, uZ, uZ, const T*, uZ);
-            constexpr auto              align = add_first_zero(
+            using subtform_t     = const T* (fft_unit::*)(T*, uZ, const T*, uZ, uZ, const T*, uZ);
+            constexpr auto align = add_first_zero(
                 Strategy::align_node_size, std::make_index_sequence<Strategy::align_node_size.size()>{});
             constexpr auto align_rec =
                 add_first_zero(StrategyRec::align_node_size,
@@ -2225,10 +2227,11 @@ private:
 };
 
 template<typename T,
-         fft_order Order    = fft_order::normal,
-         bool      BigG     = false,
-         bool      BiggerG  = false,
-         typename Allocator = pcx::aligned_allocator<T, std::align_val_t(64)>>
+         fft_order Order     = fft_order::normal,
+         bool      BigG      = false,
+         bool      BiggerG   = false,
+         typename Allocator  = pcx::aligned_allocator<T, std::align_val_t(64)>,
+         uZ NodeSizeStrategy = 4>
     requires(std::same_as<T, float> || std::same_as<T, double>)
 class fft_unit_par {
 public:
@@ -2465,6 +2468,115 @@ public:
         }
     };
 
+    template<typename DestR_, typename SrcR_>
+        requires range_complex_vector_of<T, DestR_> && range_complex_vector_of<T, SrcR_>
+    void new_tform(DestR_& dest, const SrcR_& source) {
+        if (dest.size() != m_size) {
+            throw(std::invalid_argument(std::string("destination size (which is ")
+                                            .append(std::to_string(dest.size()))
+                                            .append(" is not equal to fft size (which is ")
+                                            .append(std::to_string(m_size))
+                                            .append(")")));
+        }
+        if (source.size() != m_size) {
+            throw(std::invalid_argument(std::string("source size (which is ")
+                                            .append(std::to_string(source.size()))
+                                            .append(" is not equal to fft size (which is ")
+                                            .append(std::to_string(m_size))
+                                            .append(")")));
+        }
+
+        using dest_vector_t = std::remove_pointer_t<rv::range_value_t<DestR_>>;
+        using src_vector_t  = std::remove_pointer_t<rv::range_value_t<SrcR_>>;
+
+        constexpr auto PDest = cx_vector_traits<dest_vector_t>::pack_size;
+        constexpr auto PSrc  = cx_vector_traits<src_vector_t>::pack_size;
+
+        constexpr auto get_vector = [](auto&& R, uZ i) -> auto& {
+            using vector_t = rv::range_value_t<std::remove_cvref_t<decltype(R)>>;
+            if constexpr (std::is_pointer_v<vector_t>) {
+                return *R[i];
+            } else {
+                return R[i];
+            }
+        };
+
+        auto tw_it     = m_twiddles.begin();
+        auto data_size = get_vector(dest, 0).size();
+
+        uZ l_size = 1;
+
+        constexpr auto get_data_ptr =
+            []<uZ... I>(auto& data, uZ grp, uZ grp_size, std::index_sequence<I...>) {
+                using traits = cx_vector_traits<decltype(data)>;
+                // using data_ptr_t      = typename traits::real_type*;
+                constexpr uZ NodeSize = sizeof...(I);
+                return std::array{traits::re_data(get_vector(data, grp + grp_size * I))...};
+            };
+        auto misalign = log2i(m_size) % log2i(NodeSizeStrategy);
+        if (misalign != 0) {
+            const auto grp_size = m_size / l_size / 2;
+            for (uZ grp = 0; grp < grp_size; ++grp) {
+                auto dst = get_data_ptr(dest, grp, grp_size);
+                auto src = get_data_ptr(source, grp, grp_size);
+                long_node<2, PDest, PSrc>(dst, data_size, src);
+            }
+            l_size *= 2;
+            for (uZ i = 1; i < misalign; ++i) {
+                const auto grp_size = m_size / l_size / 2;
+                for (uZ grp = 0; grp < grp_size; ++grp) {
+                    auto dst = get_data_ptr(dest, grp, grp_size);
+                    long_node<2, PDest, PSrc>(dst, data_size);
+                }
+                for (uZ idx = 1; idx < l_size; ++idx) {
+                    auto tw = []<uZ... I>(auto& tw_it, std::index_sequence<I...>) {
+                        return std::array{simd::broadcast(*(tw_it + I))...};
+                    }(tw_it, std::make_index_sequence<1>{});
+                    tw_it += 1;
+                    for (uZ grp = 0; grp < grp_size; ++grp) {
+                        auto dst = get_data_ptr(dest, grp, grp_size);
+                        long_node<2, PDest, PSrc>(dst, data_size, tw);
+                    }
+                }
+                l_size *= 2;
+            }
+        } else {
+            const auto grp_size = m_size / l_size / NodeSizeStrategy;
+            for (uZ grp = 0; grp < grp_size; ++grp) {
+                auto dst = get_data_ptr(dest, grp, grp_size);
+                auto src = get_data_ptr(source, grp, grp_size);
+                long_node<NodeSizeStrategy, PDest, PSrc>(dst, data_size, src);
+            }
+            l_size *= NodeSizeStrategy;
+        }
+
+        while (l_size <= m_size) {
+            const auto grp_size = m_size / l_size / NodeSizeStrategy;
+            for (uZ grp = 0; grp < grp_size; ++grp) {
+                auto dst = get_data_ptr(dest, grp, grp_size);
+                long_node<NodeSizeStrategy, PDest, PSrc>(dst, data_size);
+            }
+            for (uZ idx = 1; idx < l_size; ++idx) {
+                auto tw = []<uZ... I>(auto& tw_it, std::index_sequence<I...>) {
+                    return std::array{simd::broadcast(*(tw_it + I))...};
+                }(tw_it, std::make_index_sequence<NodeSizeStrategy - 1>{});
+                tw_it += NodeSizeStrategy - 1;
+                for (uZ grp = 0; grp < grp_size; ++grp) {
+                    auto dst = get_data_ptr(dest, grp, grp_size);
+                    long_node<NodeSizeStrategy, PDest, PSrc>(dst, data_size, tw);
+                }
+            }
+            l_size *= NodeSizeStrategy;
+        }
+
+        if constexpr (sorted) {
+            for (uZ i = 0; i < m_sort.size(); i += 2) {
+                using std::swap;
+                swap(get_vector(dest, m_sort[i]), get_vector(dest, m_sort[i + 1]));
+            }
+        }
+    };
+
 private:
     template<uZ PDest, uZ PSrc, typename... Optional>
     inline void long_btfly8(std::array<T*, 8> dest, uZ size, Optional... optional) {
@@ -2663,11 +2775,11 @@ private:
              bool ConjTw  = false,
              bool Reverse = false,
              typename... Optional>
-    inline static void long_node(std::array<T*, NodeSize> dest, uZ size, Optional... optional) {
+    inline static void long_node(const std::array<T*, NodeSize>& dest, uZ size, const Optional&... optional) {
         using src_type     = std::array<const T*, NodeSize>;
         constexpr bool Src = detail_::has_type<src_type, Optional...>;
 
-        const auto& source = [](auto... optional) {
+        const auto& source = [](const auto&... optional) {
             if constexpr (Src) {
                 return std::get<src_type&>(std::tie(optional...));
             } else {
@@ -2675,8 +2787,8 @@ private:
             }
         }(optional...);
 
-        constexpr auto get_data_array = []<uZ PackSize, uZ... I>(auto data,
-                                                                 auto offset,
+        constexpr auto get_data_array = []<uZ PackSize, uZ... I>(auto& data,
+                                                                 uZ    offset,
                                                                  std::integral_constant<uZ, PackSize>,
                                                                  std::index_sequence<I...>) {
             constexpr auto Size = sizeof...(I);
@@ -2685,30 +2797,17 @@ private:
         constexpr auto Idxs = std::make_index_sequence<NodeSize>{};
 
         for (uZ i = 0; i < size; i += simd::reg<T>::size) {
-            auto dst = get_data_array(dest,    //
-                                      i,
-                                      std::integral_constant<uZ, PDest>{},
-                                      Idxs);
-            // std::array<t*, 2> dst{
-            //     simd::ra_addr<pdest>(dest[0], i),
-            //     simd::ra_addr<pdest>(dest[1], i),
-            // };
-            auto src = [](auto source, auto i) {
+            auto dst = get_data_array(dest, i, std::integral_constant<uZ, PDest>{}, Idxs);
+            auto src = [](auto& source, auto i) {
                 if constexpr (Src) {
-                    return get_data_array(source,    //
-                                          i,
-                                          std::integral_constant<uZ, PSrc>{},
-                                          Idxs);
-                    // return std::array<const T*, 2>{
-                    //     simd::ra_addr<PSrc>(source[0], i),
-                    //     simd::ra_addr<PSrc>(source[1], i),
-                    // };
+                    return get_data_array(source, i, std::integral_constant<uZ, PSrc>{}, Idxs);
                 } else {
                     return [] {};
                 }
             }(source, i);
 
-            detail_::fft::node<2>::template perform<T, PDest, PSrc, false, false>(dst, src, optional...);
+            detail_::fft::node<NodeSize>::template perform<T, PDest, PSrc, false, false>(
+                dst, src, optional...);
         }
     }
 
