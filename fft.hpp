@@ -2514,32 +2514,88 @@ public:
                 return std::array{traits::re_data(get_vector(data, grp + grp_size * I))...};
             };
         auto misalign = log2i(m_size) % log2i(NodeSizeStrategy);
-        if (misalign != 0) {
-            const auto grp_size = m_size / l_size / 2;
-            for (uZ grp = 0; grp < grp_size; ++grp) {
-                auto dst = get_data_ptr(dest, grp, grp_size);
-                auto src = get_data_ptr(source, grp, grp_size);
-                long_node<2, PDest, PSrc>(dst, data_size, src);
-            }
-            l_size *= 2;
-            for (uZ i = 1; i < misalign; ++i) {
-                const auto grp_size = m_size / l_size / 2;
-                for (uZ grp = 0; grp < grp_size; ++grp) {
-                    auto dst = get_data_ptr(dest, grp, grp_size);
-                    long_node<2, PDest, PSrc>(dst, data_size);
-                }
-                for (uZ idx = 1; idx < l_size; ++idx) {
-                    auto tw = []<uZ... I>(auto& tw_it, std::index_sequence<I...>) {
-                        return std::array{simd::broadcast(*(tw_it + I))...};
-                    }(tw_it, std::make_index_sequence<1>{});
-                    tw_it += 1;
+
+        constexpr auto realign =
+            []<uZ... Pow>(
+                uZ size, uZ misalign, auto& dest, auto& source, auto& tw_it, std::index_sequence<Pow...>) {
+                constexpr auto realign_impl = []<uZ PowImpl>(uZ    size,
+                                                             uZ    misalign,
+                                                             auto& dest,
+                                                             auto& source,
+                                                             auto& tw_it,
+                                                             std::integral_constant<uZ, PowImpl>) {
+                    static_assert(NodeSizeStrategy > PowImpl);
+                    constexpr uZ align_size  = 1U << PowImpl;
+                    uZ           align_count = 1;
+                    while ((PowImpl * align_count) % log2i(NodeSizeStrategy) != 0) {
+                        ++align_count;
+                    }
+                    if (size < (1U << align_count))
+                        return false;
+
+                    uZ         l_size   = 1;
+                    const auto grp_size = size / l_size / align_size;
                     for (uZ grp = 0; grp < grp_size; ++grp) {
                         auto dst = get_data_ptr(dest, grp, grp_size);
-                        long_node<2, PDest, PSrc>(dst, data_size, tw);
+                        auto src = get_data_ptr(source, grp, grp_size);
+                        long_node<align_size, PDest, PSrc>(dst, data_size, src);
                     }
-                }
-                l_size *= 2;
-            }
+                    l_size *= align_size;
+                    for (uZ i_align = 1; i_align < align_count; ++i_align) {
+                        const auto grp_size = size / l_size / align_size;
+                        for (uZ grp = 0; grp < grp_size; ++grp) {
+                            auto dst = get_data_ptr(dest, grp, grp_size);
+                            long_node<align_size, PDest, PSrc>(dst, data_size);
+                        }
+                        for (uZ idx = 1; idx < l_size; ++idx) {
+                            auto tw = []<uZ... I>(auto& tw_it, std::index_sequence<I...>) {
+                                return std::array{simd::broadcast(*(tw_it + I))...};
+                            }(tw_it, std::make_index_sequence<align_size - 1>{});
+                            tw_it += align_size - 1;
+                            for (uZ grp = 0; grp < grp_size; ++grp) {
+                                auto dst = get_data_ptr(dest, grp, grp_size);
+                                long_node<align_size, PDest, PSrc>(dst, data_size, tw);
+                            }
+                        }
+                        l_size *= align_size;
+                    }
+                    return true;
+                };
+                (realign_impl(size,
+                              misalign,
+                              dest,
+                              source,
+                              tw_it,
+                              std::integral_constant<uZ, NodeSizeStrategy - Pow - 1>{}) ||
+                 ...);
+            };
+        if (misalign != 0) {
+            realign(m_size, misalign, dest, source, tw_it, std::make_index_sequence<NodeSizeStrategy - 1>{});
+            // const auto grp_size = m_size / l_size / 2;
+            // for (uZ grp = 0; grp < grp_size; ++grp) {
+            //     auto dst = get_data_ptr(dest, grp, grp_size);
+            //     auto src = get_data_ptr(source, grp, grp_size);
+            //     long_node<2, PDest, PSrc>(dst, data_size, src);
+            // }
+            // l_size *= 2;
+            // for (uZ i = 1; i < misalign; ++i) {
+            //     const auto grp_size = m_size / l_size / 2;
+            //     for (uZ grp = 0; grp < grp_size; ++grp) {
+            //         auto dst = get_data_ptr(dest, grp, grp_size);
+            //         long_node<2, PDest, PSrc>(dst, data_size);
+            //     }
+            //     for (uZ idx = 1; idx < l_size; ++idx) {
+            //         auto tw = []<uZ... I>(auto& tw_it, std::index_sequence<I...>) {
+            //             return std::array{simd::broadcast(*(tw_it + I))...};
+            //         }(tw_it, std::make_index_sequence<1>{});
+            //         tw_it += 1;
+            //         for (uZ grp = 0; grp < grp_size; ++grp) {
+            //             auto dst = get_data_ptr(dest, grp, grp_size);
+            //             long_node<2, PDest, PSrc>(dst, data_size, tw);
+            //         }
+            //     }
+            //     l_size *= 2;
+            // }
         } else {
             const auto grp_size = m_size / l_size / NodeSizeStrategy;
             for (uZ grp = 0; grp < grp_size; ++grp) {
