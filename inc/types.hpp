@@ -4,6 +4,7 @@
 #include <concepts>
 #include <cstdint>
 #include <ranges>
+#include <type_traits>
 
 namespace pcx {
 
@@ -21,6 +22,9 @@ using i64 = int64_t;
 using i32 = int32_t;
 using i16 = int16_t;
 using i8  = int8_t;
+
+template<uZ Value>
+using uZ_constant = std::integral_constant<uZ, Value>;
 
 namespace rv {
 using namespace std::ranges;
