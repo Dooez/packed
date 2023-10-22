@@ -2583,13 +2583,22 @@ public:
             std::tie(l_size, tw_it) =
                 realign(dest, source, tw_it, std::make_index_sequence<NodeSizeStrategy - 1>{});
         } else {
-            const auto grp_size = m_size / l_size / NodeSizeStrategy;
-            for (uZ grp = 0; grp < grp_size; ++grp) {
-                auto dst = get_data_ptr(dest, grp, grp_size);
-                auto src = get_data_ptr(source, grp, grp_size);
-                long_node<NodeSizeStrategy, PTform, PSrc>(dst, data_size, src);
+            if (PTform != PDest && m_size == NodeSizeStrategy) {
+                const auto grp_size = m_size / l_size / NodeSizeStrategy;
+                for (uZ grp = 0; grp < grp_size; ++grp) {
+                    auto dst = get_data_ptr(dest, grp, grp_size);
+                    auto src = get_data_ptr(source, grp, grp_size);
+                    long_node<NodeSizeStrategy, PDest, PSrc>(dst, data_size, src);
+                }
+                l_size *= NodeSizeStrategy;
+            } else {
+                const auto grp_size = m_size / l_size / NodeSizeStrategy;
+                for (uZ grp = 0; grp < grp_size; ++grp) {
+                    auto dst = get_data_ptr(dest, grp, grp_size);
+                    auto src = get_data_ptr(source, grp, grp_size);
+                    long_node<NodeSizeStrategy, PTform, PSrc>(dst, data_size, src);
+                }
             }
-            l_size *= NodeSizeStrategy;
         }
         uZ max_size = m_size;
         if constexpr (PTform != PDest) {
@@ -2639,29 +2648,7 @@ public:
         }
     }
 
-
 private:
-    template<uZ NodeSize, uZ PDest, uZ PSrc>
-    static inline auto step(uZ size, uZ l_size, uZ data_size, auto& dest, auto& source, auto tw_it) {
-        const auto grp_size = size / l_size / NodeSize;
-        for (uZ grp = 0; grp < grp_size; ++grp) {
-            auto dst = get_data_ptr(dest, grp, grp_size);
-            long_node<NodeSize, PDest, PSrc>(dst, data_size);
-        }
-        for (uZ idx = 1; idx < l_size; ++idx) {
-            auto tw = []<uZ... I>(auto& tw_it, std::index_sequence<I...>) {
-                return std::array{simd::broadcast(*(tw_it + I))...};
-            }(tw_it, std::make_index_sequence<NodeSize - 1>{});
-            tw_it += NodeSize - 1;
-            for (uZ grp = 0; grp < grp_size; ++grp) {
-                auto dst = get_data_ptr(dest, grp, grp_size);
-                long_node<NodeSize, PDest, PSrc>(dst, data_size, tw);
-            }
-        }
-        l_size *= NodeSize;
-        return std::make_tuple(l_size, tw_it);
-    };
-
     template<uZ PDest, uZ PSrc, typename... Optional>
     inline void long_btfly8(std::array<T*, 8> dest, uZ size, Optional... optional) {
         using src_type       = std::array<const T*, 8>;
@@ -2898,9 +2885,9 @@ private:
 private:
     const uZ                           m_size;
     [[no_unique_address]] const sort_t m_sort;
+    uZ                                 m_align_size  = 0;
+    uZ                                 m_align_count = 0;
     const twiddle_t                    m_twiddles;
-    const uZ                           m_align_size;
-    const uZ                           m_align_count;
 
     auto get_twiddles(size_type size, allocator_type allocator) -> twiddle_t {
         auto twiddles = twiddle_t(static_cast<tw_allocator_type>(allocator));
@@ -2949,6 +2936,65 @@ private:
             }
         }
         return twiddles;
+    };
+
+    auto get_twiddles_new(uZ size, allocator_type allocator) -> twiddle_t {
+        auto twiddles = twiddle_t(static_cast<tw_allocator_type>(allocator));
+        //twiddles.reserve(?);
+        uZ l_size = 1;
+
+        using namespace detail_::fft;
+
+        if (log2i(size) % log2i(NodeSizeStrategy) != 0) {
+            for (uZ pow = 0; pow < log2i(NodeSizeStrategy); ++pow) {
+                uZ align_size  = powi(2, log2i(NodeSizeStrategy) - pow);
+                uZ align_count = 1;
+                while ((align_size * align_count) % NodeSizeStrategy != 0)
+                    ++align_count;
+                if (powi(align_size, align_count) <= size) {
+                    m_align_count = align_count;
+                    m_align_size  = align_size;
+                    break;
+                }
+            }
+        }
+
+        uZ n_twiddles = (m_align_size - 1) * m_align_count +    //
+                        (NodeSizeStrategy - 1) * (log2i(size) - log2i(m_align_size) * m_align_count);
+        twiddles.reserve(n_twiddles);
+
+        constexpr auto insert = [](uZ size, auto& twiddles, uZ node_size) {
+            for (uZ idx = 1; idx < size; ++idx) {
+                for (uZ i_node = 1; i_node <= log2i(node_size); ++i_node) {
+                    uZ l_node_size = powi(2, i_node);
+                    uZ l_size      = size * l_node_size;
+                    for (uZ i = 0; i < l_node_size; ++i) {
+                        twiddles.push_back(wnk<T>(l_size,                                         //
+                                                  reverse_bit_order(idx * l_node_size / 2 + i,    //
+                                                                    log2i(l_size / 2))));
+                    }
+                }
+            }
+        };
+        // for (uZ idx = 1; idx < l_size; ++idx) {
+        //     twiddles.push_back(wnk<T>(l_size * 2, reverse_bit_order(idx, log2i(l_size))));
+        //     twiddles.push_back(wnk<T>(l_size * 4, reverse_bit_order(idx * 2 + 0, log2i(l_size * 2))));
+        //     twiddles.push_back(wnk<T>(l_size * 4, reverse_bit_order(idx * 2 + 1, log2i(l_size * 2))));
+        //     twiddles.push_back(wnk<T>(l_size * 8, reverse_bit_order(idx * 4 + 0, log2i(l_size * 4))));
+        //     twiddles.push_back(wnk<T>(l_size * 8, reverse_bit_order(idx * 4 + 1, log2i(l_size * 4))));
+        //     twiddles.push_back(wnk<T>(l_size * 8, reverse_bit_order(idx * 4 + 2, log2i(l_size * 4))));
+        //     twiddles.push_back(wnk<T>(l_size * 8, reverse_bit_order(idx * 4 + 3, log2i(l_size * 4))));
+        // }
+        if (m_align_size != 0) {
+            for (uZ i = 1; i < m_align_count; ++i) {
+                insert(l_size, twiddles, m_align_size);
+                l_size *= m_align_size;
+            }
+        }
+        while (l_size <= size) {
+            insert(l_size, twiddles, NodeSizeStrategy);
+            l_size *= NodeSizeStrategy;
+        }
     };
 
     static auto get_sort(size_type size, allocator_type allocator) -> sort_t {
