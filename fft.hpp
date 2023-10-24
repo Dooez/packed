@@ -1178,8 +1178,8 @@ public:
             auto add_first_zero = []<uZ... I>(std::array<uZ, sizeof...(I)> sizes, std::index_sequence<I...>) {
                 return std::array<uZ, sizeof...(I) + 1>{0, sizes[I]...};
             };
-            using subtform_t                  = const T* (fft_unit::*)(T*, uZ, uZ, uZ);
-            constexpr auto              align = add_first_zero(
+            using subtform_t     = const T* (fft_unit::*)(T*, uZ, uZ, uZ);
+            constexpr auto align = add_first_zero(
                 Strategy::align_node_size, std::make_index_sequence<Strategy::align_node_size.size()>{});
             constexpr auto align_rec =
                 add_first_zero(StrategyRec::align_node_size,
@@ -1679,8 +1679,8 @@ public:
             auto add_first_zero = []<uZ... I>(std::array<uZ, sizeof...(I)> sizes, std::index_sequence<I...>) {
                 return std::array<uZ, sizeof...(I) + 1>{0, sizes[I]...};
             };
-            using subtform_t                  = const T* (fft_unit::*)(T*, uZ, const T*, uZ, uZ);
-            constexpr auto              align = add_first_zero(
+            using subtform_t     = const T* (fft_unit::*)(T*, uZ, const T*, uZ, uZ);
+            constexpr auto align = add_first_zero(
                 Strategy::align_node_size, std::make_index_sequence<Strategy::align_node_size.size()>{});
             constexpr auto align_rec =
                 add_first_zero(StrategyRec::align_node_size,
@@ -1731,8 +1731,8 @@ public:
             auto add_first_zero = []<uZ... I>(std::array<uZ, sizeof...(I)> sizes, std::index_sequence<I...>) {
                 return std::array<uZ, sizeof...(I) + 1>{0, sizes[I]...};
             };
-            using subtform_t = const T* (fft_unit::*)(T*, uZ, const T*, uZ, uZ, const T*, uZ);
-            constexpr auto              align = add_first_zero(
+            using subtform_t     = const T* (fft_unit::*)(T*, uZ, const T*, uZ, uZ, const T*, uZ);
+            constexpr auto align = add_first_zero(
                 Strategy::align_node_size, std::make_index_sequence<Strategy::align_node_size.size()>{});
             constexpr auto align_rec =
                 add_first_zero(StrategyRec::align_node_size,
@@ -2248,7 +2248,8 @@ public:
     fft_unit_par(uZ size, allocator_type allocator = allocator_type{})
     : m_size(size)
     , m_sort(get_sort(size, allocator))
-    , m_twiddles(get_twiddles(size, allocator)){};
+    , m_twiddles(get_twiddles(size, allocator))
+    , m_twiddles_new(get_twiddles_new(size, allocator)){};
 
     template<typename DestR_, typename SrcR_>
         requires range_complex_vector_of<T, DestR_> && range_complex_vector_of<T, SrcR_>
@@ -2888,6 +2889,7 @@ private:
     uZ                                 m_align_size  = 0;
     uZ                                 m_align_count = 0;
     const twiddle_t                    m_twiddles;
+    const twiddle_t                    m_twiddles_new;
 
     auto get_twiddles(size_type size, allocator_type allocator) -> twiddle_t {
         auto twiddles = twiddle_t(static_cast<tw_allocator_type>(allocator));
@@ -2935,21 +2937,22 @@ private:
                 }
             }
         }
+        std::cout << "<get twiddles> real: " << twiddles.size() << "\n";
         return twiddles;
     };
 
     auto get_twiddles_new(uZ size, allocator_type allocator) -> twiddle_t {
         auto twiddles = twiddle_t(static_cast<tw_allocator_type>(allocator));
         //twiddles.reserve(?);
-        uZ l_size = 1;
 
         using namespace detail_::fft;
 
-        if (log2i(size) % log2i(NodeSizeStrategy) != 0) {
+        auto misalign = log2i(size) % log2i(NodeSizeStrategy);
+        if (misalign != 0) {
             for (uZ pow = 0; pow < log2i(NodeSizeStrategy); ++pow) {
-                uZ align_size  = powi(2, log2i(NodeSizeStrategy) - pow);
+                uZ align_size  = powi(2, log2i(NodeSizeStrategy) - pow - 1);
                 uZ align_count = 1;
-                while ((align_size * align_count) % NodeSizeStrategy != 0)
+                while ((log2i(align_size) * align_count) % log2i(NodeSizeStrategy) != misalign)
                     ++align_count;
                 if (powi(align_size, align_count) <= size) {
                     m_align_count = align_count;
@@ -2959,19 +2962,30 @@ private:
             }
         }
 
-        uZ n_twiddles = (m_align_size - 1) * m_align_count +    //
-                        (NodeSizeStrategy - 1) * (log2i(size) - log2i(m_align_size) * m_align_count);
-        twiddles.reserve(n_twiddles);
+        // uZ n_twiddles = (m_align_size - 1) * m_align_count +    //
+        //                 (NodeSizeStrategy - 1) * (log2i(size) - log2i(m_align_size) * m_align_count);
+
+        constexpr auto get_num_twiddles = [](uZ btfly_size, uZ count, uZ start_size) -> uZ {
+            return (btfly_size - 1)                                            //
+                   * (start_size                                               //
+                          * ((1 - static_cast<iZ>(powi(btfly_size, count)))    //
+                             / (1 - static_cast<iZ>(btfly_size)))              //
+                      - count);
+        };
+        uZ aligned_size = powi(m_align_size, m_align_count);
+        uZ n_twiddles   = get_num_twiddles(m_align_size, m_align_count, 1) +
+                        get_num_twiddles(NodeSizeStrategy,
+                                         log2i(size / aligned_size) / log2i(NodeSizeStrategy),
+                                         aligned_size);
+        // twiddles.reserve(n_twiddles);
 
         constexpr auto insert = [](uZ size, auto& twiddles, uZ node_size) {
             for (uZ idx = 1; idx < size; ++idx) {
-                for (uZ i_node = 1; i_node <= log2i(node_size); ++i_node) {
-                    uZ l_node_size = powi(2, i_node);
-                    uZ l_size      = size * l_node_size;
-                    for (uZ i = 0; i < l_node_size; ++i) {
-                        twiddles.push_back(wnk<T>(l_size,                                         //
-                                                  reverse_bit_order(idx * l_node_size / 2 + i,    //
-                                                                    log2i(l_size / 2))));
+                for (uZ i_node = 2; i_node <= node_size; i_node *= 2) {
+                    for (uZ i = 0; i < i_node / 2; ++i) {
+                        twiddles.push_back(wnk<T>(size * i_node,                             //
+                                                  reverse_bit_order(idx * i_node / 2 + i,    //
+                                                                    log2i(size * i_node / 2))));
                     }
                 }
             }
@@ -2985,16 +2999,18 @@ private:
         //     twiddles.push_back(wnk<T>(l_size * 8, reverse_bit_order(idx * 4 + 2, log2i(l_size * 4))));
         //     twiddles.push_back(wnk<T>(l_size * 8, reverse_bit_order(idx * 4 + 3, log2i(l_size * 4))));
         // }
-        if (m_align_size != 0) {
-            for (uZ i = 1; i < m_align_count; ++i) {
-                insert(l_size, twiddles, m_align_size);
-                l_size *= m_align_size;
-            }
+
+        uZ l_size = 1;
+        for (uZ i = 0; i < m_align_count; ++i) {
+            insert(l_size, twiddles, m_align_size);
+            l_size *= m_align_size;
         }
-        while (l_size <= size) {
+        while (l_size < size) {
             insert(l_size, twiddles, NodeSizeStrategy);
             l_size *= NodeSizeStrategy;
         }
+        std::cout << "<get twiddles new> equation: " << n_twiddles << " real: " << twiddles.size() << "\n";
+        return twiddles;
     };
 
     static auto get_sort(size_type size, allocator_type allocator) -> sort_t {
