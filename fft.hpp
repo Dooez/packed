@@ -1,6 +1,7 @@
 #ifndef FFT_HPP
 #define FFT_HPP
 
+#include "avx2_common.hpp"
 #include "avx2_fft.hpp"
 #include "simd_common.hpp"
 #include "types.hpp"
@@ -119,7 +120,174 @@ struct order {
 };
 
 template<uZ NodeSize>
-struct node {};
+struct node {
+    template<uZ... I, uZ... J>
+    static inline auto combine(std::index_sequence<I...>, std::index_sequence<J...>) {
+        return std::index_sequence<I..., J...>{};
+    }
+    template<uZ I, uZ... L>
+    static inline auto offset_seqence(std::index_sequence<I>, std::index_sequence<L...>) {
+        return std::index_sequence<I + L...>{};
+    }
+    template<uZ I, uZ... K, uZ... L>
+    static inline auto offset_sequence(std::index_sequence<I, K...>, std::index_sequence<L...> s) {
+        return combine(std::index_sequence<I + L...>{}, foo(std::index_sequence<K...>{}, s));
+    }
+    template<uZ M, uZ... I>
+    static inline auto mul_sequence(std::index_sequence<I...>) {
+        return std::index_sequence<M * I...>{};
+    }
+
+    //     template<typename T, uZ PDest, uZ PSrc, bool ConjTw, bool Reverse, bool DIT = false, typename... Args>
+    //     static inline void perform123(std::array<T*, 4> dest, Args... args) {
+    //         constexpr auto reg_size = simd::reg<T>::size;
+    //         using cx_reg            = simd::cx_reg<T, false, reg_size>;
+    //
+    //         using src_type = std::array<const T*, NodeSize>;
+    //         using tw_type  = std::array<simd::cx_reg<T>, NodeSize - 1>;
+    //
+    //         constexpr bool Inverse = ConjTw || Reverse;
+    //
+    //         constexpr bool Src   = has_type<src_type, Args...>;
+    //         constexpr bool Tw    = has_type<tw_type, Args...>;
+    //         constexpr bool Scale = has_type<simd::reg_t<T>, Args...>;
+    //
+    //         constexpr auto& data_idx = order<NodeSize, DIT>::data;
+    //         constexpr auto& tw_idx   = order<NodeSize, DIT>::tw;
+    //
+    //         constexpr auto load = [](auto&& dest, auto&&... args) {
+    //             constexpr auto load_impl = []<uZ... I>(auto&& src, std::index_sequence<I...>) {
+    //                 constexpr auto& data_idx = order<NodeSize, DIT>::data;
+    //                 return std::make_tuple(src[data_idx[I]]...);
+    //             };
+    //
+    //             if constexpr (Src) {
+    //                 auto& src = std::get<src_type&>(std::tie(args...));
+    //                 return load_impl(std::forward(src), std::make_index_sequence<NodeSize>{});
+    //             } else {
+    //                 return load_impl(std::forward(dest), std::make_index_sequence<NodeSize>{});
+    //             }
+    //         };
+    //         constexpr auto repack_lmbd  = [](auto&&... regs) { return simd::repack2<reg_size>(regs...); };
+    //         constexpr auto inverse_lmbd = [](auto&&... regs) { return simd::inverse<Inverse>(regs...); };
+    //
+    //         auto dat = load(std::forward(dest, args...));
+    //         dat      = std::apply(repack_lmbd, dat);
+    //         dat      = std::apply(inverse_lmbd, dat);
+    //
+    //         constexpr auto btfly = []<uZ Stride>(auto arg_tuple) {
+    //             constexpr auto extract = []<uZ... I>(auto tuple) {
+    //                 return std::make_tuple(std::get<I>(tuple)...);
+    //             };
+    //             constexpr auto n_g = NodeSize / Stride / 2;
+    //             constexpr auto l   = offset_seqence(mul_sequence<Stride * 2>(std::make_index_sequence<n_g>{}),
+    //                                               std::make_index_sequence<Stride>{});
+    //         };
+    //
+    //         cx_reg b1, b3, b5, b7;
+    //         if constexpr (Tw) {
+    //             auto& tw          = std::get<tw_type&>(std::tie(args...));
+    //             auto [p5tw, p7tw] = simd::mul({p5, tw[tw_idx[0]]}, {p7, tw[tw_idx[0]]});
+    //             auto [a1, a5]     = simd::btfly(p1, p5tw);
+    //             auto [a3, a7]     = simd::btfly(p3, p7tw);
+    //
+    //             auto [a3tw, a7tw] = simd::mul({a3, tw[tw_idx[1]]}, {a7, tw[tw_idx[2]]});
+    //             std::tie(b1, b3)  = simd::btfly(a1, a3tw);
+    //             std::tie(b5, b7)  = simd::btfly(a5, a7tw);
+    //
+    //             std::tie(b1, b3, b5, b7) =
+    //                 simd::mul({b1, tw[tw_idx[3]]}, {b3, tw[tw_idx[4]]}, {b5, tw[tw_idx[5]]}, {b7, tw[tw_idx[6]]});
+    //         } else {
+    //             const T sq2   = std::sqrt(double{2}) / 2;
+    //             auto [a1, a5] = simd::btfly(p1, p5);
+    //             auto [a3, a7] = simd::btfly(p3, p7);
+    //
+    //             std::tie(b1, b3) = simd::btfly(a1, a3);
+    //             std::tie(b5, b7) = simd::btfly<3>(a5, a7);
+    //             auto b5_tw       = simd::cx_reg<T>{simd::add(b5.real, b5.imag), simd::sub(b5.imag, b5.real)};
+    //             auto b7_tw       = simd::cx_reg<T>{simd::sub(b7.real, b7.imag), simd::add(b7.real, b7.imag)};
+    //             auto twsq2       = simd::broadcast(sq2);
+    //             b5               = simd::mul(b5_tw, twsq2);
+    //             b7               = simd::mul(b7_tw, twsq2);
+    //         }
+    //         simd::cx_reg<T, false, PSrc> p0_, p2_, p4_, p6_;
+    //         if constexpr (Src) {
+    //             auto& src = std::get<src_type&>(std::tie(args...));
+    //             p4_       = simd::cxload<PSrc>(src[data_idx[4]]);
+    //             p0_       = simd::cxload<PSrc>(src[data_idx[0]]);
+    //             p6_       = simd::cxload<PSrc>(src[data_idx[6]]);
+    //             p2_       = simd::cxload<PSrc>(src[data_idx[2]]);
+    //         } else {
+    //             p4_ = simd::cxload<PSrc>(dest[data_idx[4]]);
+    //             p0_ = simd::cxload<PSrc>(dest[data_idx[0]]);
+    //             p6_ = simd::cxload<PSrc>(dest[data_idx[6]]);
+    //             p2_ = simd::cxload<PSrc>(dest[data_idx[2]]);
+    //         }
+    //         auto [p4, p0, p6, p2]    = simd::repack2<reg_size>(p4_, p0_, p6_, p2_);
+    //         std::tie(p4, p0, p6, p2) = simd::inverse<Inverse>(p4, p0, p6, p2);
+    //
+    //         simd::cx_reg<T> c0, c1, c2, c3, b4, b6;
+    //         if constexpr (Tw) {
+    //             auto& tw          = std::get<tw_type&>(std::tie(args...));
+    //             auto [p4tw, p6tw] = simd::mul({p4, tw[tw_idx[0]]}, {p6, tw[tw_idx[0]]});
+    //             auto [a0, a4]     = simd::btfly(p0, p4tw);
+    //             auto [a2, a6]     = simd::btfly(p2, p6tw);
+    //
+    //             auto [a2tw, a6tw] = simd::mul({a2, tw[tw_idx[1]]}, {a6, tw[tw_idx[2]]});
+    //             auto [b0, b2]     = simd::btfly(a0, a2tw);
+    //             std::tie(b4, b6)  = simd::btfly(a4, a6tw);
+    //
+    //             std::tie(c0, c1) = simd::btfly(b0, b1);
+    //             std::tie(c2, c3) = simd::btfly(b2, b3);
+    //         } else {
+    //             auto [a0, a4] = simd::btfly(p0, p4);
+    //             auto [a2, a6] = simd::btfly(p2, p6);
+    //
+    //             auto [b0, b2]    = simd::btfly(a0, a2);
+    //             std::tie(b4, b6) = simd::btfly<3>(a4, a6);
+    //
+    //             std::tie(c0, c1) = simd::btfly(b0, b1);
+    //             std::tie(c2, c3) = simd::btfly<3>(b2, b3);
+    //         }
+    //         if constexpr (Scale) {
+    //             auto& scaling = std::get<simd::reg_t<T>&>(std::tie(args...));
+    //             c0            = simd::mul(c0, scaling);
+    //             c1            = simd::mul(c1, scaling);
+    //             c2            = simd::mul(c2, scaling);
+    //             c3            = simd::mul(c3, scaling);
+    //         }
+    //         std::tie(c0, c1, c2, c3)  = simd::inverse<Inverse>(c0, c1, c2, c3);
+    //         auto [c0_, c1_, c2_, c3_] = simd::repack2<PDest>(c0, c1, c2, c3);
+    //
+    //         cxstore<PDest>(dest[data_idx[0]], c0_);
+    //         cxstore<PDest>(dest[data_idx[1]], c1_);
+    //         cxstore<PDest>(dest[data_idx[2]], c2_);
+    //         cxstore<PDest>(dest[data_idx[3]], c3_);
+    //
+    //         simd::cx_reg<T> c4, c5, c6, c7;
+    //         if constexpr (Tw) {
+    //             std::tie(c4, c5) = simd::btfly(b4, b5);
+    //             std::tie(c6, c7) = simd::btfly(b6, b7);
+    //         } else {
+    //             std::tie(c4, c5) = simd::btfly(b4, b5);
+    //             std::tie(c6, c7) = simd::btfly<2>(b6, b7);
+    //         }
+    //         if constexpr (Scale) {
+    //             auto& scaling = std::get<simd::reg_t<T>&>(std::tie(args...));
+    //             c4            = simd::mul(c4, scaling);
+    //             c5            = simd::mul(c5, scaling);
+    //             c6            = simd::mul(c6, scaling);
+    //             c7            = simd::mul(c7, scaling);
+    //         }
+    //         std::tie(c4, c5, c6, c7)  = simd::inverse<Inverse>(c4, c5, c6, c7);
+    //         auto [c4_, c5_, c6_, c7_] = simd::repack2<PDest>(c4, c5, c6, c7);
+    //
+    //         cxstore<PDest>(dest[data_idx[4]], c4_);
+    //         cxstore<PDest>(dest[data_idx[5]], c5_);
+    //         cxstore<PDest>(dest[data_idx[6]], c6_);
+    //         cxstore<PDest>(dest[data_idx[7]], c7_);
+    //     }
+};
 template<>
 struct node<2> {
     template<typename T, uZ PDest, uZ PSrc, bool ConjTw, bool Reverse, bool DIT = false, typename... Args>
@@ -2488,7 +2656,7 @@ public:
         constexpr auto PSrc   = cx_vector_traits<src_vector_t>::pack_size;
         constexpr auto PTform = std::max(PDest, simd::reg<T>::size);
 
-        constexpr auto get_vector = [](auto&& R, uZ i) -> auto& {
+        constexpr auto get_vector = [](auto& R, uZ i) -> auto& {
             using vector_t = rv::range_value_t<std::remove_cvref_t<decltype(R)>>;
             if constexpr (std::is_pointer_v<vector_t>) {
                 return *R[i];
@@ -2503,8 +2671,9 @@ public:
         uZ l_size = 1;
 
         constexpr auto get_data_ptr =
-            []<uZ... I>(auto& data, uZ grp, uZ grp_size, std::index_sequence<I...>) {
-                using traits = cx_vector_traits<decltype(data)>;
+            [get_vector]<uZ... I>(auto& data, uZ grp, uZ grp_size, std::index_sequence<I...>) {
+                using vector_t = rv::range_value_t<std::remove_cvref_t<decltype(data)>>;
+                using traits   = cx_vector_traits<vector_t>;
                 // using data_ptr_t      = typename traits::real_type*;
                 constexpr uZ NodeSize = sizeof...(I);
                 return std::array{traits::re_data(get_vector(data, grp + grp_size * I))...};
@@ -2512,91 +2681,110 @@ public:
         auto misalign = log2i(m_size) % log2i(NodeSizeStrategy);
         using detail_::fft::powi;
 
-        constexpr auto realign =
-            [this]<uZ... Pow>(auto& dest, auto& source, auto& tw_it, std::index_sequence<Pow...>) {
-                constexpr auto multi_step = []<uZ NodeSize>(uZ_constant<NodeSize>,    //
-                                                            uZ    align_count,
-                                                            uZ    size,
-                                                            auto& dest,
-                                                            auto& source,
-                                                            auto  tw_it) {
-                    const auto grp_size = size / NodeSize;
+        constexpr auto realign = [get_data_ptr]<uZ... Pow>(auto& dest,
+                                                           auto& source,
+                                                           auto& tw_it,
+                                                           uZ    size,
+                                                           uZ    data_size,
+                                                           uZ    align_size,
+                                                           uZ    align_count,
+                                                           std::index_sequence<Pow...>) {
+            constexpr auto multi_step = [get_data_ptr]<uZ NodeSize>(uZ_constant<NodeSize>,    //
+                                                                    uZ    align_count,
+                                                                    uZ    size,
+                                                                    uZ    data_size,
+                                                                    auto& dest,
+                                                                    auto& source,
+                                                                    auto  tw_it) {
+                const auto     grp_size = size / NodeSize;
+                constexpr auto idxs     = std::make_index_sequence<NodeSize>{};
+                for (uZ grp = 0; grp < grp_size; ++grp) {
+                    auto dst = get_data_ptr(dest, grp, grp_size, idxs);
+                    auto src = get_data_ptr(source, grp, grp_size, idxs);
+                    long_node<NodeSize, PTform, PSrc, false>(dst, data_size, src);
+                }
+                if (PTform != PDest && powi(NodeSize, align_count) == size) {
+                    --align_count;
+                }
+                uZ l_size = NodeSize;
+                for (uZ i = 1; i < align_count; ++i) {
+                    const auto grp_size = size / l_size / NodeSize;
                     for (uZ grp = 0; grp < grp_size; ++grp) {
-                        auto dst = get_data_ptr(dest, grp, grp_size);
-                        auto src = get_data_ptr(source, grp, grp_size);
-                        long_node<NodeSize, PTform, PSrc>(dst, data_size, src);
+                        auto dst = get_data_ptr(dest, grp, grp_size, idxs);
+                        long_node<NodeSize, PTform, PTform, false>(dst, data_size);
                     }
-                    if (PTform != PDest && powi(NodeSize, align_count) == size) {
-                        --align_count;
-                    }
-                    uZ l_size = NodeSize;
-                    for (uZ i = 1; i < align_count; ++i) {
-                        const auto grp_size = size / l_size / NodeSize;
+                    for (uZ idx = 1; idx < l_size; ++idx) {
+                        auto tw = []<uZ... I>(auto& tw_it, std::index_sequence<I...>) {
+                            return std::array<simd::cx_reg<T>, sizeof...(I)>{simd::broadcast(*(tw_it + I))...};
+                        }(tw_it, std::make_index_sequence<NodeSize - 1>{});
+                        tw_it += NodeSize - 1;
                         for (uZ grp = 0; grp < grp_size; ++grp) {
-                            auto dst = get_data_ptr(dest, grp, grp_size);
-                            long_node<NodeSize, PTform, PTform>(dst, data_size);
+                            auto dst = get_data_ptr(dest, grp, grp_size, idxs);
+                            long_node<NodeSize, PTform, PTform, false>(dst, data_size, tw);
                         }
-                        for (uZ idx = 1; idx < l_size; ++idx) {
-                            auto tw = []<uZ... I>(auto& tw_it, std::index_sequence<I...>) {
-                                return std::array{simd::broadcast(*(tw_it + I))...};
-                            }(tw_it, std::make_index_sequence<NodeSize - 1>{});
-                            tw_it += NodeSize - 1;
-                            for (uZ grp = 0; grp < grp_size; ++grp) {
-                                auto dst = get_data_ptr(dest, grp, grp_size);
-                                long_node<NodeSize, PTform, PTform>(dst, data_size, tw);
-                            }
-                        }
-                        l_size *= NodeSize;
                     }
-                    if (PTform != PDest && powi(NodeSize, align_count) == size) {
-                        const auto grp_size = size / l_size / NodeSize;
+                    l_size *= NodeSize;
+                }
+                if (PTform != PDest && powi(NodeSize, align_count) == size) {
+                    const auto grp_size = size / l_size / NodeSize;
+                    for (uZ grp = 0; grp < grp_size; ++grp) {
+                        auto dst = get_data_ptr(dest, grp, grp_size, idxs);
+                        long_node<NodeSize, PDest, PTform, false>(dst, data_size);
+                    }
+                    for (uZ idx = 1; idx < l_size; ++idx) {
+                        auto tw = []<uZ... I>(auto& tw_it, std::index_sequence<I...>) {
+                            return std::array<simd::cx_reg<T>, sizeof...(I)>{simd::broadcast(*(tw_it + I))...};
+                            // return std::array{simd::broadcast(*(tw_it + I))...};
+                        }(tw_it, std::make_index_sequence<NodeSize - 1>{});
+                        tw_it += NodeSize - 1;
                         for (uZ grp = 0; grp < grp_size; ++grp) {
-                            auto dst = get_data_ptr(dest, grp, grp_size);
-                            long_node<NodeSize, PDest, PTform>(dst, data_size);
+                            auto dst = get_data_ptr(dest, grp, grp_size, idxs);
+                            long_node<NodeSize, PDest, PTform, false>(dst, data_size, tw);
                         }
-                        for (uZ idx = 1; idx < l_size; ++idx) {
-                            auto tw = []<uZ... I>(auto& tw_it, std::index_sequence<I...>) {
-                                return std::array{simd::broadcast(*(tw_it + I))...};
-                            }(tw_it, std::make_index_sequence<NodeSize - 1>{});
-                            tw_it += NodeSize - 1;
-                            for (uZ grp = 0; grp < grp_size; ++grp) {
-                                auto dst = get_data_ptr(dest, grp, grp_size);
-                                long_node<NodeSize, PDest, PTform>(dst, data_size, tw);
-                            }
-                        }
-                        l_size *= NodeSize;
                     }
-                    return std::make_tuple(l_size, tw_it);
-                };
-                uZ l_size;
-                ((m_align_size == powi(2, NodeSizeStrategy - Pow) &&
-                  (std::tie(l_size, tw_it) = multi_step(uZ_constant<powi(2, NodeSizeStrategy - Pow)>{},
-                                                        m_align_count,
-                                                        m_size,
-                                                        dest,
-                                                        source,
-                                                        tw_it),
-                   true)) ||
-                 ...);
+                    l_size *= NodeSize;
+                }
                 return std::make_tuple(l_size, tw_it);
             };
+            uZ l_size;
+            (void)((align_size == powi(2, log2i(NodeSizeStrategy) - Pow) &&
+                    (std::tie(l_size, tw_it) =
+                         multi_step(uZ_constant<powi(2, log2i(NodeSizeStrategy) - Pow)>{},
+                                    align_count,
+                                    size,
+                                    data_size,
+                                    dest,
+                                    source,
+                                    tw_it),
+                     true)) ||
+                   ...);
+            return std::make_tuple(l_size, tw_it);
+        };
+
+        auto idxs = std::make_index_sequence<NodeSizeStrategy>{};
         if (m_align_count != 0) {
-            std::tie(l_size, tw_it) =
-                realign(dest, source, tw_it, std::make_index_sequence<NodeSizeStrategy - 1>{});
+            std::tie(l_size, tw_it) = realign(dest,
+                                              source,
+                                              tw_it,
+                                              m_size,
+                                              data_size,
+                                              m_align_size,
+                                              m_align_count,
+                                              std::make_index_sequence<log2i(NodeSizeStrategy) - 1>{});
         } else {
             if (PTform != PDest && m_size == NodeSizeStrategy) {
                 const auto grp_size = m_size / l_size / NodeSizeStrategy;
                 for (uZ grp = 0; grp < grp_size; ++grp) {
-                    auto dst = get_data_ptr(dest, grp, grp_size);
-                    auto src = get_data_ptr(source, grp, grp_size);
+                    auto dst = get_data_ptr(dest, grp, grp_size, idxs);
+                    auto src = get_data_ptr(source, grp, grp_size, idxs);
                     long_node<NodeSizeStrategy, PDest, PSrc>(dst, data_size, src);
                 }
                 l_size *= NodeSizeStrategy;
             } else {
                 const auto grp_size = m_size / l_size / NodeSizeStrategy;
                 for (uZ grp = 0; grp < grp_size; ++grp) {
-                    auto dst = get_data_ptr(dest, grp, grp_size);
-                    auto src = get_data_ptr(source, grp, grp_size);
+                    auto dst = get_data_ptr(dest, grp, grp_size, idxs);
+                    auto src = get_data_ptr(source, grp, grp_size, idxs);
                     long_node<NodeSizeStrategy, PTform, PSrc>(dst, data_size, src);
                 }
             }
@@ -2608,7 +2796,7 @@ public:
         while (l_size <= max_size) {
             const auto grp_size = m_size / l_size / NodeSizeStrategy;
             for (uZ grp = 0; grp < grp_size; ++grp) {
-                auto dst = get_data_ptr(dest, grp, grp_size);
+                auto dst = get_data_ptr(dest, grp, grp_size, idxs);
                 long_node<NodeSizeStrategy, PTform, PTform>(dst, data_size);
             }
             for (uZ idx = 1; idx < l_size; ++idx) {
@@ -2617,7 +2805,7 @@ public:
                 }(tw_it, std::make_index_sequence<NodeSizeStrategy - 1>{});
                 tw_it += NodeSizeStrategy - 1;
                 for (uZ grp = 0; grp < grp_size; ++grp) {
-                    auto dst = get_data_ptr(dest, grp, grp_size);
+                    auto dst = get_data_ptr(dest, grp, grp_size, idxs);
                     long_node<NodeSizeStrategy, PTform, PTform>(dst, data_size, tw);
                 }
             }
@@ -2627,7 +2815,7 @@ public:
         if (PTform != PDest && l_size <= m_size) {
             const auto grp_size = m_size / l_size / NodeSizeStrategy;
             for (uZ grp = 0; grp < grp_size; ++grp) {
-                auto dst = get_data_ptr(dest, grp, grp_size);
+                auto dst = get_data_ptr(dest, grp, grp_size, idxs);
                 long_node<NodeSizeStrategy, PDest, PTform>(dst, data_size);
             }
             for (uZ idx = 1; idx < l_size; ++idx) {
@@ -2636,7 +2824,7 @@ public:
                 }(tw_it, std::make_index_sequence<NodeSizeStrategy - 1>{});
                 tw_it += NodeSizeStrategy - 1;
                 for (uZ grp = 0; grp < grp_size; ++grp) {
-                    auto dst = get_data_ptr(dest, grp, grp_size);
+                    auto dst = get_data_ptr(dest, grp, grp_size, idxs);
                     long_node<NodeSizeStrategy, PDest, PTform>(dst, data_size, tw);
                 }
             }
@@ -2843,9 +3031,9 @@ private:
     template<uZ   NodeSize,
              uZ   PDest,
              uZ   PSrc,
-             bool DecInTime,
-             bool ConjTw  = false,
-             bool Reverse = false,
+             bool DecInTime = false,
+             bool ConjTw    = false,
+             bool Reverse   = false,
              typename... Optional>
     inline static void long_node(const std::array<T*, NodeSize>& dest, uZ size, const Optional&... optional) {
         using src_type     = std::array<const T*, NodeSize>;
@@ -2864,7 +3052,9 @@ private:
                                                                  uZ_constant<PackSize>,
                                                                  std::index_sequence<I...>) {
             constexpr auto Size = sizeof...(I);
-            return std::array<decltype(data[0]), Size>{simd::ra_addr<PackSize>(data[I], offset)...};
+            static_assert(std::same_as<T*, std::remove_cvref_t<decltype(data[0])>>);
+            return std::array<std::remove_cvref_t<decltype(data[0])>, Size>{
+                simd::ra_addr<PackSize>(data[I], offset)...};
         };
         constexpr auto Idxs = std::make_index_sequence<NodeSize>{};
 
@@ -2965,12 +3155,19 @@ private:
         // uZ n_twiddles = (m_align_size - 1) * m_align_count +    //
         //                 (NodeSizeStrategy - 1) * (log2i(size) - log2i(m_align_size) * m_align_count);
 
+        /**
+         * @brief calculates number of twiddles
+
+         * @param btfly_size    butterfly size
+         * @param count         number of butterflies to perform
+         * @param start_size    starting trandform size
+         */
         constexpr auto get_num_twiddles = [](uZ btfly_size, uZ count, uZ start_size) -> uZ {
-            return (btfly_size - 1)                                            //
-                   * (start_size                                               //
+            return (btfly_size - 1)                                            // twiddles per butterfly
+                   * (start_size                                               // geometric progression sum
                           * ((1 - static_cast<iZ>(powi(btfly_size, count)))    //
                              / (1 - static_cast<iZ>(btfly_size)))              //
-                      - count);
+                      - count);    // first butterfly on each level is performed with fixed twiddles
         };
         uZ aligned_size = powi(m_align_size, m_align_count);
         uZ n_twiddles   = get_num_twiddles(m_align_size, m_align_count, 1) +

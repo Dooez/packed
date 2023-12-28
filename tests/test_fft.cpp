@@ -596,22 +596,22 @@ int test_par_fft_float(std::size_t size) {
         pcx::fft_unit<float, order>     check_unit(size);
 
 
-//         par_unit(st_par, st_par);
-//         check_unit(vec_check);
-//         uint q = 0;
-//         for (uint i = 0; i < size; ++i) {
-//             auto val       = (st_par[i])[0].value();
-//             auto val_check = vec_check[i].value();
-// 
-//             if (!equal_eps(val, val_check, size)) {
-//                 std::cout << "par_fft " << size << " #" << i << ": " << abs(val - val_check) << "  " << val
-//                           << val_check << "\n";
-//                 ++q;
-//                 if (q > 32U) {
-//                     return 1;
-//                 }
-//             }
-//         }
+        par_unit.new_tform(st_par, st_par);
+        check_unit(vec_check);
+        uint q = 0;
+        for (uint i = 0; i < size; ++i) {
+            auto val       = (st_par[i])[0].value();
+            auto val_check = vec_check[i].value();
+
+            if (!equal_eps(val, val_check, size)) {
+                std::cout << "par_fft " << size << " #" << i << ": " << abs(val - val_check) << "  " << val
+                          << val_check << "\n";
+                ++q;
+                if (q > 32U) {
+                    return 1;
+                }
+            }
+        }
         return 0;
     };
 
