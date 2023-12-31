@@ -2665,7 +2665,7 @@ public:
             }
         };
 
-        auto tw_it     = m_twiddles.begin();
+        auto tw_it     = m_twiddles_new.begin();
         auto data_size = get_vector(dest, 0).size();
 
         uZ l_size = 1;
@@ -2715,7 +2715,7 @@ public:
                     }
                     for (uZ idx = 1; idx < l_size; ++idx) {
                         auto tw = []<uZ... I>(auto& tw_it, std::index_sequence<I...>) {
-                            return std::array<simd::cx_reg<T>, sizeof...(I)>{simd::broadcast(*(tw_it + I))...};
+                            return std::array{simd::broadcast(*(tw_it + I))...};
                         }(tw_it, std::make_index_sequence<NodeSize - 1>{});
                         tw_it += NodeSize - 1;
                         for (uZ grp = 0; grp < grp_size; ++grp) {
@@ -2733,8 +2733,7 @@ public:
                     }
                     for (uZ idx = 1; idx < l_size; ++idx) {
                         auto tw = []<uZ... I>(auto& tw_it, std::index_sequence<I...>) {
-                            return std::array<simd::cx_reg<T>, sizeof...(I)>{simd::broadcast(*(tw_it + I))...};
-                            // return std::array{simd::broadcast(*(tw_it + I))...};
+                            return std::array{simd::broadcast(*(tw_it + I))...};
                         }(tw_it, std::make_index_sequence<NodeSize - 1>{});
                         tw_it += NodeSize - 1;
                         for (uZ grp = 0; grp < grp_size; ++grp) {
@@ -2789,6 +2788,7 @@ public:
                 }
             }
         }
+        
         uZ max_size = m_size;
         if constexpr (PTform != PDest) {
             max_size /= NodeSizeStrategy;

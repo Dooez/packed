@@ -628,9 +628,9 @@ int main() {
         std::cout << (1U << i) << "\n";
 
         // ret += test_fft_float<1024>(1U << i);
-        // ret += test_fft_float(1U << i);
-        // ret += test_fftu_float(1U << i);
-        ret += test_par_fft_float(1U << i);
+        ret += test_fft_float(1U << i);
+        ret += test_fftu_float(1U << i);
+        // ret += test_par_fft_float(1U << i);
 
         if (ret > 0) {
             return ret;
