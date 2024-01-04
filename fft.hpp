@@ -2393,7 +2393,7 @@ template<typename T,
          bool      BigG      = false,
          bool      BiggerG   = false,
          typename Allocator  = pcx::aligned_allocator<T, std::align_val_t(64)>,
-         uZ NodeSizeStrategy = 4>
+         uZ NodeSizeStrategy = 2>
     requires(std::same_as<T, float> || std::same_as<T, double>)
 class fft_unit_par {
 public:
@@ -2788,7 +2788,8 @@ public:
                 }
             }
         }
-        
+        return;
+
         uZ max_size = m_size;
         if constexpr (PTform != PDest) {
             max_size /= NodeSizeStrategy;

@@ -1,9 +1,13 @@
 #include "fft.hpp"
 #include "test_pcx.hpp"
+#include "types.hpp"
 #include "vector.hpp"
 #include "vector_util.hpp"
 
+#include <array>
+#include <complex>
 #include <iostream>
+#include <memory>
 #include <utility>
 
 // NOLINTBEGIN
@@ -160,6 +164,123 @@ auto ifftu(const pcx::vector<T, PackSize, Allocator>& vector) {
     }
     return u;
 }
+
+template<pcx::uZ NodeSize>
+auto fft_dif(auto& vector) {
+    using namespace pcx;
+    using T = cx_vector_traits<std::remove_cvref_t<decltype(vector)>>::real_type;
+
+    constexpr auto load = []<uZ Node>(auto&& vec, uZ i, uZ grp_size, uZ_constant<Node>) {
+        return []<uZ... I>(auto&& vec, uZ i, uZ grp_size, std::index_sequence<I...>) {
+            return std::array<std::complex<T>, Node>{vec[i + I * grp_size]...};
+        }(vec, i, grp_size, std::make_index_sequence<Node>{});
+    };
+    constexpr auto store = []<uZ Node>(auto& vec, auto values, uZ i, uZ grp_size, uZ_constant<Node>) {
+        []<uZ... I>(auto& vec, auto values, uZ i, uZ grp_size, std::index_sequence<I...>) {
+            ((vec[i + grp_size * I] = values[I]), ...);
+        }(vec, values, i, grp_size, std::make_index_sequence<Node>{});
+    };
+    constexpr auto node0 = []<uZ Node>(auto values, uZ_constant<Node>) {
+        if constexpr (Node == 2) {
+            decltype(values) tmp;
+            tmp[0] = values[0] + values[1];
+            tmp[1] = values[0] - values[1];
+            return tmp;
+        } else if constexpr (Node == 4) {
+            decltype(values) tmp;
+            tmp[0]    = values[0] + values[2];
+            tmp[2]    = values[0] - values[2];
+            tmp[1]    = values[1] + values[3];
+            tmp[3]    = values[1] - values[3];
+            auto r3   = std::complex<T>(tmp[3].imag(), -tmp[3].real());
+            values[0] = tmp[0] + tmp[1];
+            values[1] = tmp[0] - tmp[1];
+            values[2] = tmp[2] + r3;
+            values[3] = tmp[2] - r3;
+            return values;
+        }
+    };
+    constexpr auto node = []<uZ Node>(auto values, auto tw, uZ_constant<Node>) {
+        if constexpr (Node == 2) {
+            decltype(values) tmp;
+            tmp[0] = values[0] + fmul(tw[0], values[1]);
+            tmp[1] = values[0] - fmul(tw[0], values[1]);
+            return tmp;
+        } else if constexpr (Node == 4) {
+            decltype(values) tmp;
+            tmp[0]    = values[0] + fmul(tw[0], values[2]);
+            tmp[2]    = values[0] - fmul(tw[0], values[2]);
+            tmp[1]    = values[1] + fmul(tw[0], values[3]);
+            tmp[3]    = values[1] - fmul(tw[0], values[3]);
+            values[0] = tmp[0] + fmul(tw[1], tmp[1]);
+            values[1] = tmp[0] - fmul(tw[1], tmp[1]);
+            values[2] = tmp[2] + fmul(tw[2], tmp[3]);
+            values[3] = tmp[2] - fmul(tw[2], tmp[3]);
+            return values;
+        }
+    };
+    constexpr auto get_tw = [](uZ idx, uZ size) {
+        std::array<std::complex<T>, NodeSize - 1> twiddles;
+
+        uZ i_tw = 0;
+        for (uZ i_node = 2; i_node <= NodeSize; i_node *= 2) {
+            for (uZ i = 0; i < i_node / 2; ++i) {
+                twiddles.at(i_tw) = wnk<T>(size * i_node,                             //
+                                           reverse_bit_order(idx * i_node / 2 + i,    //
+                                                             log2i(size * i_node / 2)));
+                ++i_tw;
+            }
+        }
+        return twiddles;
+    };
+    const uZ size     = vector.size();
+    uZ       l_size   = 1;
+    uZ       n_groups = 1;
+    uZ       grp_size = size / l_size;
+
+    if constexpr (NodeSize == 4) {
+        if (log2i(size) % log2i(NodeSize) != 0) {
+            grp_size /= 2;
+            for (uZ i = 0; i < grp_size; ++i) {
+                auto data = load(vector, i, grp_size, uZ_constant<2>{});
+                data      = node0(data, uZ_constant<2>{});
+                store(vector, data, i, grp_size, uZ_constant<2>{});
+            }
+            l_size *= 2;
+            n_groups *= 2;
+        }
+    }
+
+    constexpr auto ns = uZ_constant<NodeSize>{};
+    while (l_size <= size) {
+        grp_size /= NodeSize;
+        for (uZ i = 0; i < grp_size; ++i) {
+            auto data = load(vector, i, grp_size, ns);
+            data      = node0(data, ns);
+            store(vector, data, i, grp_size, ns);
+        }
+        for (uZ i_grp = 1; i_grp < n_groups; ++i_grp) {
+            for (uZ i = 0; i < grp_size; ++i) {
+                uZ   start = grp_size * i_grp * NodeSize + i;
+                auto data  = load(vector, start, grp_size, ns);
+                auto tw    = get_tw(i_grp, l_size);
+                data       = node(data, tw, ns);
+                store(vector, data, start, grp_size, ns);
+            }
+        }
+        l_size *= NodeSize;
+        n_groups *= NodeSize;
+    }
+
+    for (uZ i = 0; i < size; ++i) {
+        auto rev = reverse_bit_order(i, log2i(size));
+        if (i < rev) {
+            auto v      = std::complex<T>(vector[i]);
+            vector[i]   = vector[rev];
+            vector[rev] = v;
+        }
+    }
+};
 
 template<std::size_t PackSize = 8>
 int test_fft_float(std::size_t size) {
@@ -592,12 +713,36 @@ int test_par_fft_float(std::size_t size) {
             ++i;
         }
 
-        pcx::fft_unit_par<float, order, false, false, pcx::aligned_allocator<float>, 4> par_unit(size);
-        pcx::fft_unit<float, order>     check_unit(size);
+        pcx::fft_unit_par<float, order, false, false, pcx::aligned_allocator<float>, 2> par_unit(size);
+        pcx::fft_unit<float, order>                                                     check_unit(size);
+
+        constexpr auto dbg = []<pcx::uZ Node>(auto& vec, pcx::uZ_constant<Node>) {
+            using namespace pcx;
+            const uZ size     = vec.size();
+            uZ       l_size   = 1;
+            uZ       grp_size = size / l_size / Node;
+
+            auto node = [](auto& values) {
+                std::complex<float> v_tw = values[1];
+                std::complex<float> v    = values[0];
+                values[0]                = v + v_tw;
+                values[1]                = v - v_tw;
+            };
+
+            auto node_tw = [](auto& values, auto& tw) {
+                uZ i_tw = 0;
+                for (uZ i = 0; i < log2i(Node); ++i) {}
+            };
+            for (uZ grp = 0; grp < grp_size; ++grp) {
+                auto v = std::array{vec[grp], vec[grp + grp_size]};
+                node(v);
+            }
+        };
 
 
         par_unit.new_tform(st_par, st_par);
-        check_unit(vec_check);
+        // check_unit(vec_check);
+        dbg(vec_check, pcx::uZ_constant<2>{});
         uint q = 0;
         for (uint i = 0; i < size; ++i) {
             auto val       = (st_par[i])[0].value();
@@ -615,8 +760,34 @@ int test_par_fft_float(std::size_t size) {
         return 0;
     };
 
-    return test_1.template operator()<pcx::fft_order::normal>(size);// +
+    return test_1.template operator()<pcx::fft_order::normal>(size);    // +
         //    test_1.template operator()<pcx::fft_order::bit_reversed>(size);
+}
+
+int test_fft_dif(pcx::uZ size) {
+    using namespace pcx;
+    constexpr float pi  = 3.14159265358979323846;
+    auto            vec = pcx::vector<float>(size);
+    for (uint i = 0; i < size; ++i) {
+        vec[i] = std::exp(std::complex(0.F, 2 * pi * i / size * 13.37F));
+    }
+    auto vec2 = vec;
+    fft_dif<4>(vec2);
+    auto unit = pcx::fft_unit<float, pcx::fft_order::normal>(size, 2048);
+    unit(vec);
+    iZ ret = 0;
+    for (uint i = 0; i < size; ++i) {
+        auto val = std::complex<float>(vec2[i].value());
+        auto ctl = std::complex<float>(vec[i].value());
+        if (!equal_eps(val, ctl, 1U << log2i(size * 2))) {
+            std::cout << "vec  " << size << " #" << i << ": " << abs(ctl - val) << "  " << ctl << val << "\n";
+            ++ret;
+        }
+        if (ret > 31) {
+            return ret;
+        }
+    }
+    return ret;
 }
 
 constexpr float pi = 3.14159265358979323846;
@@ -629,8 +800,9 @@ int main() {
 
         // ret += test_fft_float<1024>(1U << i);
         ret += test_fft_float(1U << i);
-        ret += test_fftu_float(1U << i);
-        // ret += test_par_fft_float(1U << i);
+        ret += test_fft_dif(1U << i);
+        // ret += test_fftu_float(1U << i);
+        ret += test_par_fft_float(1U << i);
 
         if (ret > 0) {
             return ret;
