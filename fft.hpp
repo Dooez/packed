@@ -19,6 +19,7 @@
 #include <cstddef>
 #include <iostream>
 #include <memory>
+#include <ranges>
 #include <stdexcept>
 #include <string>
 #include <tuple>
@@ -2671,12 +2672,12 @@ public:
         uZ l_size = 1;
 
         constexpr auto get_data_ptr =
-            [get_vector]<uZ... I>(auto& data, uZ grp, uZ grp_size, std::index_sequence<I...>) {
+            [get_vector]<uZ... I>(auto& data, uZ i, uZ grp_size, std::index_sequence<I...>) {
                 using vector_t = rv::range_value_t<std::remove_cvref_t<decltype(data)>>;
                 using traits   = cx_vector_traits<vector_t>;
                 // using data_ptr_t      = typename traits::real_type*;
                 constexpr uZ NodeSize = sizeof...(I);
-                return std::array{traits::re_data(get_vector(data, grp + grp_size * I))...};
+                return std::array{traits::re_data(get_vector(data, i + grp_size * I))...};
             };
         auto misalign = log2i(m_size) % log2i(NodeSizeStrategy);
         using detail_::fft::powi;
@@ -2786,32 +2787,42 @@ public:
                     auto src = get_data_ptr(source, grp, grp_size, idxs);
                     long_node<NodeSizeStrategy, PTform, PSrc>(dst, data_size, src);
                 }
+                l_size *= NodeSizeStrategy;
             }
         }
-        return;
+        // return;
 
         uZ max_size = m_size;
         if constexpr (PTform != PDest) {
             max_size /= NodeSizeStrategy;
         }
         while (l_size <= max_size) {
+            // if (l_size >= 4)
+            //     return;
             const auto grp_size = m_size / l_size / NodeSizeStrategy;
-            for (uZ grp = 0; grp < grp_size; ++grp) {
-                auto dst = get_data_ptr(dest, grp, grp_size, idxs);
+            for (uZ i = 0; i < grp_size; ++i) {
+                auto dst = get_data_ptr(dest, i, grp_size, idxs);
                 long_node<NodeSizeStrategy, PTform, PTform>(dst, data_size);
             }
-            for (uZ idx = 1; idx < l_size; ++idx) {
+            for (uZ i_grp = 1; i_grp < l_size; ++i_grp) {
                 auto tw = []<uZ... I>(auto& tw_it, std::index_sequence<I...>) {
                     return std::array{simd::broadcast(*(tw_it + I))...};
                 }(tw_it, std::make_index_sequence<NodeSizeStrategy - 1>{});
                 tw_it += NodeSizeStrategy - 1;
-                for (uZ grp = 0; grp < grp_size; ++grp) {
-                    auto dst = get_data_ptr(dest, grp, grp_size, idxs);
+                for (uZ i = 0; i < grp_size; ++i) {
+                    uZ   start = grp_size * i_grp * NodeSizeStrategy + i;
+                    auto dst   = get_data_ptr(dest, start, grp_size, idxs);
                     long_node<NodeSizeStrategy, PTform, PTform>(dst, data_size, tw);
+                    // for (uZ i: rv::iota(0U, NodeSizeStrategy - 1)) {
+                    //     auto* cxptr       = dst[i];
+                    //     *cxptr            = (tw_it + i)->real();
+                    //     *(cxptr + PTform) = (tw_it + i)->imag();
+                    // }
                 }
             }
             l_size *= NodeSizeStrategy;
         }
+        return;
 
         if (PTform != PDest && l_size <= m_size) {
             const auto grp_size = m_size / l_size / NodeSizeStrategy;

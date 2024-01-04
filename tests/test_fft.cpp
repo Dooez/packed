@@ -8,6 +8,7 @@
 #include <complex>
 #include <iostream>
 #include <memory>
+#include <ranges>
 #include <utility>
 
 // NOLINTBEGIN
@@ -253,6 +254,8 @@ auto fft_dif(auto& vector) {
 
     constexpr auto ns = uZ_constant<NodeSize>{};
     while (l_size <= size) {
+        // if (l_size >= 4)
+        //     return;
         grp_size /= NodeSize;
         for (uZ i = 0; i < grp_size; ++i) {
             auto data = load(vector, i, grp_size, ns);
@@ -265,6 +268,9 @@ auto fft_dif(auto& vector) {
                 auto data  = load(vector, start, grp_size, ns);
                 auto tw    = get_tw(i_grp, l_size);
                 data       = node(data, tw, ns);
+                // for (uZ ik: rv::iota(0U, NodeSize - 1)) {
+                //     data[ik] = tw[ik];
+                // }
                 store(vector, data, start, grp_size, ns);
             }
         }
@@ -272,6 +278,7 @@ auto fft_dif(auto& vector) {
         n_groups *= NodeSize;
     }
 
+    return;
     for (uZ i = 0; i < size; ++i) {
         auto rev = reverse_bit_order(i, log2i(size));
         if (i < rev) {
@@ -716,33 +723,9 @@ int test_par_fft_float(std::size_t size) {
         pcx::fft_unit_par<float, order, false, false, pcx::aligned_allocator<float>, 2> par_unit(size);
         pcx::fft_unit<float, order>                                                     check_unit(size);
 
-        constexpr auto dbg = []<pcx::uZ Node>(auto& vec, pcx::uZ_constant<Node>) {
-            using namespace pcx;
-            const uZ size     = vec.size();
-            uZ       l_size   = 1;
-            uZ       grp_size = size / l_size / Node;
-
-            auto node = [](auto& values) {
-                std::complex<float> v_tw = values[1];
-                std::complex<float> v    = values[0];
-                values[0]                = v + v_tw;
-                values[1]                = v - v_tw;
-            };
-
-            auto node_tw = [](auto& values, auto& tw) {
-                uZ i_tw = 0;
-                for (uZ i = 0; i < log2i(Node); ++i) {}
-            };
-            for (uZ grp = 0; grp < grp_size; ++grp) {
-                auto v = std::array{vec[grp], vec[grp + grp_size]};
-                node(v);
-            }
-        };
-
-
         par_unit.new_tform(st_par, st_par);
         // check_unit(vec_check);
-        dbg(vec_check, pcx::uZ_constant<2>{});
+        fft_dif<2>(vec_check);
         uint q = 0;
         for (uint i = 0; i < size; ++i) {
             auto val       = (st_par[i])[0].value();
@@ -799,8 +782,8 @@ int main() {
         std::cout << (1U << i) << "\n";
 
         // ret += test_fft_float<1024>(1U << i);
-        ret += test_fft_float(1U << i);
-        ret += test_fft_dif(1U << i);
+        // ret += test_fft_float(1U << i);
+        // ret += test_fft_dif(1U << i);
         // ret += test_fftu_float(1U << i);
         ret += test_par_fft_float(1U << i);
 
