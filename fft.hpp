@@ -2816,7 +2816,6 @@ public:
             }
             l_size *= NodeSizeStrategy;
         }
-
         if (PTform != PDest && l_size <= m_size) {
             const auto grp_size = m_size / l_size / NodeSizeStrategy;
             for (uZ grp = 0; grp < grp_size; ++grp) {
@@ -2836,11 +2835,15 @@ public:
             }
             l_size *= NodeSizeStrategy;
         }
-        return;
 
-        for (uZ i = 0; i < m_sort.size(); i += 2) {
-            using std::swap;
-            swap(get_vector(dest, m_sort[i]), get_vector(dest, m_sort[i + 1]));
+        if constexpr (Order == fft_order::normal) {
+            for (uZ i = 0; i < m_sort.size(); i += 2) {
+                if constexpr (std::is_pointer_v<rv::range_value_t<DestR_>>) {
+                    std::swap(dest[m_sort[i]], dest[m_sort[i + 1]]);
+                } else {
+                    rv::swap(dest[m_sort[i]], dest[m_sort[i + 1]]);
+                }
+            }
         }
     }
 
@@ -3140,8 +3143,6 @@ private:
 
     auto get_twiddles_new(uZ size, allocator_type allocator) -> twiddle_t {
         auto twiddles = twiddle_t(static_cast<tw_allocator_type>(allocator));
-        //twiddles.reserve(?);
-
         using namespace detail_::fft;
 
         auto misalign = log2i(size) % log2i(NodeSizeStrategy);
@@ -3159,31 +3160,34 @@ private:
             }
         }
 
-        // uZ n_twiddles = (m_align_size - 1) * m_align_count +    //
-        //                 (NodeSizeStrategy - 1) * (log2i(size) - log2i(m_align_size) * m_align_count);
-
         /**
-         * @brief calculates number of twiddles
+         * @brief Calculates number of twiddles required to perform `count` transform levels of `btfly_size`.
 
-         * @param btfly_size    butterfly size
-         * @param count         number of butterflies to perform
-         * @param start_size    starting trandform size
+         * @param btfly_size    Butterfly size.
+         * @param count         Number of butterflies to perform.
+         * @param start_size    Starting trandform size.
          */
-        constexpr auto get_num_twiddles = [](uZ btfly_size, uZ count, uZ start_size) -> uZ {
-            return (btfly_size - 1)                                            // twiddles per butterfly
-                   * (start_size                                               // geometric progression sum
-                          * ((1 - static_cast<iZ>(powi(btfly_size, count)))    //
-                             / (1 - static_cast<iZ>(btfly_size)))              //
+        constexpr auto num_twiddles = [](uZ btfly_size, uZ count, uZ start_size) -> uZ {
+            return (btfly_size - 1)    // twiddles per butterfly
+                                       // geometric progression sum
+                   * (start_size * ((powi(btfly_size, count) - 1) / (btfly_size - 1))    //
                       - count);    // first butterfly on each level is performed with fixed twiddles
         };
         uZ aligned_size = powi(m_align_size, m_align_count);
-        uZ n_twiddles   = get_num_twiddles(m_align_size, m_align_count, 1) +
-                        get_num_twiddles(NodeSizeStrategy,
-                                         log2i(size / aligned_size) / log2i(NodeSizeStrategy),
-                                         aligned_size);
-        // twiddles.reserve(n_twiddles);
+        uZ n_twiddles   = num_twiddles(m_align_size, m_align_count, 1) +
+                        num_twiddles(NodeSizeStrategy,
+                                     log2i(size / aligned_size) / log2i(NodeSizeStrategy),
+                                     aligned_size);
+        twiddles.reserve(n_twiddles);
 
-        constexpr auto insert = [](uZ size, auto& twiddles, uZ node_size) {
+        /**
+         * @brief Pushes back twiddles for one level of butterflies.
+         *
+         * @param[out] twiddles Twiddle vector to push back into.
+         * @param size          Transform size.
+         * @param node_size     Butterfly node size.
+         */
+        constexpr auto insert = [](auto& twiddles, uZ size, uZ node_size) {
             for (uZ idx = 1; idx < size; ++idx) {
                 for (uZ i_node = 2; i_node <= node_size; i_node *= 2) {
                     for (uZ i = 0; i < i_node / 2; ++i) {
@@ -3194,26 +3198,16 @@ private:
                 }
             }
         };
-        // for (uZ idx = 1; idx < l_size; ++idx) {
-        //     twiddles.push_back(wnk<T>(l_size * 2, reverse_bit_order(idx, log2i(l_size))));
-        //     twiddles.push_back(wnk<T>(l_size * 4, reverse_bit_order(idx * 2 + 0, log2i(l_size * 2))));
-        //     twiddles.push_back(wnk<T>(l_size * 4, reverse_bit_order(idx * 2 + 1, log2i(l_size * 2))));
-        //     twiddles.push_back(wnk<T>(l_size * 8, reverse_bit_order(idx * 4 + 0, log2i(l_size * 4))));
-        //     twiddles.push_back(wnk<T>(l_size * 8, reverse_bit_order(idx * 4 + 1, log2i(l_size * 4))));
-        //     twiddles.push_back(wnk<T>(l_size * 8, reverse_bit_order(idx * 4 + 2, log2i(l_size * 4))));
-        //     twiddles.push_back(wnk<T>(l_size * 8, reverse_bit_order(idx * 4 + 3, log2i(l_size * 4))));
-        // }
 
         uZ l_size = 1;
         for (uZ i = 0; i < m_align_count; ++i) {
-            insert(l_size, twiddles, m_align_size);
+            insert(twiddles, l_size, m_align_size);
             l_size *= m_align_size;
         }
         while (l_size < size) {
-            insert(l_size, twiddles, NodeSizeStrategy);
+            insert(twiddles, l_size, NodeSizeStrategy);
             l_size *= NodeSizeStrategy;
         }
-        std::cout << "<get twiddles new> equation: " << n_twiddles << " real: " << twiddles.size() << "\n";
         return twiddles;
     };
 

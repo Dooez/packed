@@ -273,7 +273,7 @@ auto fft_dif(auto& vector) {
         n_groups *= NodeSize;
     }
 
-    return;
+    // return;
     for (uZ i = 0; i < size; ++i) {
         auto rev = reverse_bit_order(i, log2i(size));
         if (i < rev) {
