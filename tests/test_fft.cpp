@@ -715,7 +715,7 @@ int test_par_fft_float(std::size_t size) {
             ++i;
         }
 
-        pcx::fft_unit_par<float, order, false, false, pcx::aligned_allocator<float>, 2> par_unit(size);
+        pcx::fft_unit_par<float, order, false, false, pcx::aligned_allocator<float>, 8> par_unit(size);
         pcx::fft_unit<float, order>                                                     check_unit(size);
 
         par_unit.new_tform(st_par, st_par);

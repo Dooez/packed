@@ -2710,17 +2710,18 @@ public:
                 uZ l_size = NodeSize;
                 for (uZ i = 1; i < align_count; ++i) {
                     const auto grp_size = size / l_size / NodeSize;
-                    for (uZ grp = 0; grp < grp_size; ++grp) {
-                        auto dst = get_data_ptr(dest, grp, grp_size, idxs);
+                    for (uZ i = 0; i < grp_size; ++i) {
+                        auto dst = get_data_ptr(dest, i, grp_size, idxs);
                         long_node<NodeSize, PTform, PTform, false>(dst, data_size);
                     }
-                    for (uZ idx = 1; idx < l_size; ++idx) {
+                    for (uZ i_grp = 1; i_grp < l_size; ++i_grp) {
                         auto tw = []<uZ... I>(auto& tw_it, std::index_sequence<I...>) {
                             return std::array{simd::broadcast(*(tw_it + I))...};
                         }(tw_it, std::make_index_sequence<NodeSize - 1>{});
                         tw_it += NodeSize - 1;
-                        for (uZ grp = 0; grp < grp_size; ++grp) {
-                            auto dst = get_data_ptr(dest, grp, grp_size, idxs);
+                        for (uZ i = 0; i < grp_size; ++i) {
+                            uZ   start = grp_size * i_grp * NodeSize + i;
+                            auto dst   = get_data_ptr(dest, start, grp_size, idxs);
                             long_node<NodeSize, PTform, PTform, false>(dst, data_size, tw);
                         }
                     }
@@ -2728,17 +2729,18 @@ public:
                 }
                 if (PTform != PDest && powi(NodeSize, align_count) == size) {
                     const auto grp_size = size / l_size / NodeSize;
-                    for (uZ grp = 0; grp < grp_size; ++grp) {
-                        auto dst = get_data_ptr(dest, grp, grp_size, idxs);
+                    for (uZ i = 0; i < grp_size; ++i) {
+                        auto dst = get_data_ptr(dest, i, grp_size, idxs);
                         long_node<NodeSize, PDest, PTform, false>(dst, data_size);
                     }
-                    for (uZ idx = 1; idx < l_size; ++idx) {
+                    for (uZ i_grp = 1; i_grp < l_size; ++i_grp) {
                         auto tw = []<uZ... I>(auto& tw_it, std::index_sequence<I...>) {
                             return std::array{simd::broadcast(*(tw_it + I))...};
                         }(tw_it, std::make_index_sequence<NodeSize - 1>{});
                         tw_it += NodeSize - 1;
-                        for (uZ grp = 0; grp < grp_size; ++grp) {
-                            auto dst = get_data_ptr(dest, grp, grp_size, idxs);
+                        for (uZ i = 0; i < grp_size; ++i) {
+                            uZ   start = grp_size * i_grp * NodeSize + i;
+                            auto dst   = get_data_ptr(dest, start, grp_size, idxs);
                             long_node<NodeSize, PDest, PTform, false>(dst, data_size, tw);
                         }
                     }
@@ -2774,17 +2776,17 @@ public:
         } else {
             if (PTform != PDest && m_size == NodeSizeStrategy) {
                 const auto grp_size = m_size / l_size / NodeSizeStrategy;
-                for (uZ grp = 0; grp < grp_size; ++grp) {
-                    auto dst = get_data_ptr(dest, grp, grp_size, idxs);
-                    auto src = get_data_ptr(source, grp, grp_size, idxs);
+                for (uZ i = 0; i < grp_size; ++i) {
+                    auto dst = get_data_ptr(dest, i, grp_size, idxs);
+                    auto src = get_data_ptr(source, i, grp_size, idxs);
                     long_node<NodeSizeStrategy, PDest, PSrc>(dst, data_size, src);
                 }
                 l_size *= NodeSizeStrategy;
             } else {
                 const auto grp_size = m_size / l_size / NodeSizeStrategy;
-                for (uZ grp = 0; grp < grp_size; ++grp) {
-                    auto dst = get_data_ptr(dest, grp, grp_size, idxs);
-                    auto src = get_data_ptr(source, grp, grp_size, idxs);
+                for (uZ i = 0; i < grp_size; ++i) {
+                    auto dst = get_data_ptr(dest, i, grp_size, idxs);
+                    auto src = get_data_ptr(source, i, grp_size, idxs);
                     long_node<NodeSizeStrategy, PTform, PSrc>(dst, data_size, src);
                 }
                 l_size *= NodeSizeStrategy;
@@ -2821,13 +2823,14 @@ public:
                 auto dst = get_data_ptr(dest, grp, grp_size, idxs);
                 long_node<NodeSizeStrategy, PDest, PTform>(dst, data_size);
             }
-            for (uZ idx = 1; idx < l_size; ++idx) {
+            for (uZ i_grp = 1; i_grp < l_size; ++i_grp) {
                 auto tw = []<uZ... I>(auto& tw_it, std::index_sequence<I...>) {
                     return std::array{simd::broadcast(*(tw_it + I))...};
                 }(tw_it, std::make_index_sequence<NodeSizeStrategy - 1>{});
                 tw_it += NodeSizeStrategy - 1;
-                for (uZ grp = 0; grp < grp_size; ++grp) {
-                    auto dst = get_data_ptr(dest, grp, grp_size, idxs);
+                for (uZ i = 0; i < grp_size; ++i) {
+                    uZ   start = grp_size * i_grp * NodeSizeStrategy + i;
+                    auto dst   = get_data_ptr(dest, start, grp_size, idxs);
                     long_node<NodeSizeStrategy, PDest, PTform>(dst, data_size, tw);
                 }
             }
