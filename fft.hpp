@@ -2747,9 +2747,9 @@ public:
                 return std::make_tuple(l_size, tw_it);
             };
             uZ l_size;
-            (void)((align_size == powi(2, log2i(NodeSizeStrategy) - Pow) &&
+            (void)((align_size == powi(2, log2i(NodeSizeStrategy) - Pow - 1) &&
                     (std::tie(l_size, tw_it) =
-                         multi_step(uZ_constant<powi(2, log2i(NodeSizeStrategy) - Pow)>{},
+                         multi_step(uZ_constant<powi(2, log2i(NodeSizeStrategy) - Pow - 1)>{},
                                     align_count,
                                     size,
                                     data_size,
@@ -2790,15 +2790,12 @@ public:
                 l_size *= NodeSizeStrategy;
             }
         }
-        // return;
 
         uZ max_size = m_size;
         if constexpr (PTform != PDest) {
             max_size /= NodeSizeStrategy;
         }
-        while (l_size <= max_size) {
-            // if (l_size >= 4)
-            //     return;
+        while (l_size < max_size) {
             const auto grp_size = m_size / l_size / NodeSizeStrategy;
             for (uZ i = 0; i < grp_size; ++i) {
                 auto dst = get_data_ptr(dest, i, grp_size, idxs);
@@ -2813,16 +2810,10 @@ public:
                     uZ   start = grp_size * i_grp * NodeSizeStrategy + i;
                     auto dst   = get_data_ptr(dest, start, grp_size, idxs);
                     long_node<NodeSizeStrategy, PTform, PTform>(dst, data_size, tw);
-                    // for (uZ i: rv::iota(0U, NodeSizeStrategy - 1)) {
-                    //     auto* cxptr       = dst[i];
-                    //     *cxptr            = (tw_it + i)->real();
-                    //     *(cxptr + PTform) = (tw_it + i)->imag();
-                    // }
                 }
             }
             l_size *= NodeSizeStrategy;
         }
-        return;
 
         if (PTform != PDest && l_size <= m_size) {
             const auto grp_size = m_size / l_size / NodeSizeStrategy;
@@ -2842,6 +2833,7 @@ public:
             }
             l_size *= NodeSizeStrategy;
         }
+        return;
 
         for (uZ i = 0; i < m_sort.size(); i += 2) {
             using std::swap;

@@ -254,8 +254,6 @@ auto fft_dif(auto& vector) {
 
     constexpr auto ns = uZ_constant<NodeSize>{};
     while (l_size <= size) {
-        // if (l_size >= 4)
-        //     return;
         grp_size /= NodeSize;
         for (uZ i = 0; i < grp_size; ++i) {
             auto data = load(vector, i, grp_size, ns);
@@ -268,9 +266,6 @@ auto fft_dif(auto& vector) {
                 auto data  = load(vector, start, grp_size, ns);
                 auto tw    = get_tw(i_grp, l_size);
                 data       = node(data, tw, ns);
-                // for (uZ ik: rv::iota(0U, NodeSize - 1)) {
-                //     data[ik] = tw[ik];
-                // }
                 store(vector, data, start, grp_size, ns);
             }
         }
@@ -725,7 +720,7 @@ int test_par_fft_float(std::size_t size) {
 
         par_unit.new_tform(st_par, st_par);
         // check_unit(vec_check);
-        fft_dif<2>(vec_check);
+        fft_dif<4>(vec_check);
         uint q = 0;
         for (uint i = 0; i < size; ++i) {
             auto val       = (st_par[i])[0].value();
