@@ -746,8 +746,8 @@ template<typename T, typename V>
 concept complex_vector_of = std::same_as<T, typename cx_vector_traits<V>::real_type>;
 
 template<typename T, typename R>
-concept range_complex_vector_of = rv::random_access_range<R> &&    //
-                                  complex_vector_of<T, std::remove_pointer_t<rv::range_value_t<R>>>;
+concept range_of_complex_vector_of = rv::random_access_range<R> &&    //
+                                     complex_vector_of<T, std::remove_pointer_t<rv::range_value_t<R>>>;
 
 /**
  * @brief Controls how fft output and ifft input is ordered;
@@ -2046,36 +2046,33 @@ private:
         return 0;
     }
 
-    static auto get_sort(uZ fft_size, sort_allocator_type allocator) -> std::vector<uZ, sort_allocator_type>
-        requires(sorted)
-    {
-        using detail_::fft::reverse_bit_order;
+    static auto get_sort(uZ fft_size, sort_allocator_type allocator) -> sort_t {
+        if constexpr (sorted) {
+            using detail_::fft::reverse_bit_order;
 
-        const auto packed_sort_size =
-            fft_size / simd::size_specific::sorted_size<T> / simd::size_specific::sorted_size<T>;
-        const auto order = detail_::fft::log2i(packed_sort_size);
-        auto       sort  = std::vector<uZ, sort_allocator_type>(allocator);
-        sort.reserve(packed_sort_size);
+            const auto packed_sort_size =
+                fft_size / simd::size_specific::sorted_size<T> / simd::size_specific::sorted_size<T>;
+            const auto order = detail_::fft::log2i(packed_sort_size);
+            auto       sort  = std::vector<uZ, sort_allocator_type>(allocator);
+            sort.reserve(packed_sort_size);
 
-        for (uZ i = 0; i < packed_sort_size; ++i) {
-            if (i >= reverse_bit_order(i, order)) {
-                continue;
-            }
-            sort.push_back(i);
-            sort.push_back(reverse_bit_order(i, order));
-        }
-        for (uZ i = 0; i < packed_sort_size; ++i) {
-            if (i == reverse_bit_order(i, order)) {
+            for (uZ i = 0; i < packed_sort_size; ++i) {
+                if (i >= reverse_bit_order(i, order)) {
+                    continue;
+                }
                 sort.push_back(i);
+                sort.push_back(reverse_bit_order(i, order));
             }
+            for (uZ i = 0; i < packed_sort_size; ++i) {
+                if (i == reverse_bit_order(i, order)) {
+                    sort.push_back(i);
+                }
+            }
+            return sort;
+        } else {
+            return {};
         }
-        return sort;
     }
-    static auto get_sort(uZ fft_size, sort_allocator_type allocator)
-        requires(!sorted)
-    {
-        return sort_t{};
-    };
 
     static auto get_subtform_idx_strategic_(uZ fft_size, uZ sub_size, uZ specific_size) {
         using detail_::fft::log2i;
@@ -2391,10 +2388,8 @@ private:
 
 template<typename T,
          fft_order Order     = fft_order::normal,
-         bool      BigG      = false,
-         bool      BiggerG   = false,
          typename Allocator  = pcx::aligned_allocator<T, std::align_val_t(64)>,
-         uZ NodeSizeStrategy = 2>
+         uZ NodeSizeStrategy = 4>
     requires(std::same_as<T, float> || std::same_as<T, double>)
 class fft_unit_par {
 public:
@@ -2417,224 +2412,11 @@ public:
     fft_unit_par(uZ size, allocator_type allocator = allocator_type{})
     : m_size(size)
     , m_sort(get_sort(size, allocator))
-    , m_twiddles(get_twiddles(size, allocator))
-    , m_twiddles_new(get_twiddles_new(size, allocator)){};
+    , m_twiddles(get_twiddles(size, allocator)){};
 
     template<typename DestR_, typename SrcR_>
-        requires range_complex_vector_of<T, DestR_> && range_complex_vector_of<T, SrcR_>
+        requires range_of_complex_vector_of<T, DestR_> && range_of_complex_vector_of<T, SrcR_>
     void operator()(DestR_& dest, const SrcR_& source) {
-        if (dest.size() != m_size) {
-            throw(std::invalid_argument(std::string("destination size (which is ")
-                                            .append(std::to_string(dest.size()))
-                                            .append(" is not equal to fft size (which is ")
-                                            .append(std::to_string(m_size))
-                                            .append(")")));
-        }
-        if (source.size() != m_size) {
-            throw(std::invalid_argument(std::string("source size (which is ")
-                                            .append(std::to_string(source.size()))
-                                            .append(" is not equal to fft size (which is ")
-                                            .append(std::to_string(m_size))
-                                            .append(")")));
-        }
-
-        using dest_vector_t = std::remove_pointer_t<rv::range_value_t<DestR_>>;
-        using src_vector_t  = std::remove_pointer_t<rv::range_value_t<SrcR_>>;
-
-        constexpr auto PDest = cx_vector_traits<dest_vector_t>::pack_size;
-        constexpr auto PSrc  = cx_vector_traits<src_vector_t>::pack_size;
-
-        auto get_vector = [](auto&& R, uZ i) -> auto& {
-            using vector_t = rv::range_value_t<std::remove_cvref_t<decltype(R)>>;
-            if constexpr (std::is_pointer_v<vector_t>) {
-                return *R[i];
-            } else {
-                return R[i];
-            }
-        };
-
-        auto tw_it     = m_twiddles.begin();
-        auto data_size = get_vector(dest, 0).size();
-
-        uZ l_size = 1;
-        if constexpr (BigG && !BiggerG) {
-            if (log2i(m_size) % 2 != 0) {
-                const auto grp_size = m_size / l_size / 8;
-                for (uZ grp = 0; grp < grp_size; ++grp) {
-                    std::array<T*, 8> dst{
-                        get_vector(dest, grp).data(),
-                        get_vector(dest, grp + grp_size * 1).data(),
-                        get_vector(dest, grp + grp_size * 2).data(),
-                        get_vector(dest, grp + grp_size * 3).data(),
-                        get_vector(dest, grp + grp_size * 4).data(),
-                        get_vector(dest, grp + grp_size * 5).data(),
-                        get_vector(dest, grp + grp_size * 6).data(),
-                        get_vector(dest, grp + grp_size * 7).data(),
-                    };
-                    std::array<T*, 8> src{
-                        get_vector(source, grp).data(),
-                        get_vector(source, grp + grp_size * 1).data(),
-                        get_vector(source, grp + grp_size * 2).data(),
-                        get_vector(source, grp + grp_size * 3).data(),
-                        get_vector(source, grp + grp_size * 4).data(),
-                        get_vector(source, grp + grp_size * 5).data(),
-                        get_vector(source, grp + grp_size * 6).data(),
-                        get_vector(source, grp + grp_size * 7).data(),
-                    };
-                    long_btfly8<PDest, PSrc>(dst, data_size, src);
-                }
-                l_size *= 8;
-            }
-        }
-        if constexpr (BiggerG) {
-            auto max_size = m_size;
-            if (log2i(m_size) % 3 == 1) {
-                max_size /= 4;
-            };
-            const auto grp_size = m_size / l_size / 8;
-            for (uZ grp = 0; grp < grp_size; ++grp) {
-                std::array<T*, 8> dst{
-                    get_vector(dest, grp).data(),
-                    get_vector(dest, grp + grp_size * 1).data(),
-                    get_vector(dest, grp + grp_size * 2).data(),
-                    get_vector(dest, grp + grp_size * 3).data(),
-                    get_vector(dest, grp + grp_size * 4).data(),
-                    get_vector(dest, grp + grp_size * 5).data(),
-                    get_vector(dest, grp + grp_size * 6).data(),
-                    get_vector(dest, grp + grp_size * 7).data(),
-                };
-                std::array<T*, 8> src{
-                    get_vector(source, grp).data(),
-                    get_vector(source, grp + grp_size * 1).data(),
-                    get_vector(source, grp + grp_size * 2).data(),
-                    get_vector(source, grp + grp_size * 3).data(),
-                    get_vector(source, grp + grp_size * 4).data(),
-                    get_vector(source, grp + grp_size * 5).data(),
-                    get_vector(source, grp + grp_size * 6).data(),
-                    get_vector(source, grp + grp_size * 7).data(),
-                };
-                long_btfly8<PDest, PSrc>(dst, data_size, src);
-            }
-            l_size *= 8;
-
-            for (; l_size < max_size / 4; l_size *= 8) {
-                const auto grp_size = m_size / l_size / 8;
-                for (uZ grp = 0; grp < grp_size; ++grp) {
-                    std::array<T*, 8> dst{
-                        get_vector(dest, grp).data(),
-                        get_vector(dest, grp + grp_size * 1).data(),
-                        get_vector(dest, grp + grp_size * 2).data(),
-                        get_vector(dest, grp + grp_size * 3).data(),
-                        get_vector(dest, grp + grp_size * 4).data(),
-                        get_vector(dest, grp + grp_size * 5).data(),
-                        get_vector(dest, grp + grp_size * 6).data(),
-                        get_vector(dest, grp + grp_size * 7).data(),
-                    };
-                    long_btfly8<PDest, PSrc>(dst, data_size);
-                }
-                for (uZ idx = 1; idx < l_size; ++idx) {
-                    std::array<std::complex<T>, 7> tw = {
-                        *(tw_it++),
-                        *(tw_it++),
-                        *(tw_it++),
-                        *(tw_it++),
-                        *(tw_it++),
-                        *(tw_it++),
-                        *(tw_it++),
-                    };
-                    for (uZ grp = 0; grp < grp_size; ++grp) {
-                        std::array<T*, 8> dst{
-                            get_vector(dest, grp + idx * grp_size * 8).data(),
-                            get_vector(dest, grp + idx * grp_size * 8 + grp_size * 1).data(),
-                            get_vector(dest, grp + idx * grp_size * 8 + grp_size * 2).data(),
-                            get_vector(dest, grp + idx * grp_size * 8 + grp_size * 3).data(),
-                            get_vector(dest, grp + idx * grp_size * 8 + grp_size * 4).data(),
-                            get_vector(dest, grp + idx * grp_size * 8 + grp_size * 5).data(),
-                            get_vector(dest, grp + idx * grp_size * 8 + grp_size * 6).data(),
-                            get_vector(dest, grp + idx * grp_size * 8 + grp_size * 7).data(),
-                        };
-                        long_btfly8<PDest, PSrc>(dst, data_size, tw);
-                    }
-                }
-            }
-        } else if constexpr (!BigG) {
-            const auto grp_size = m_size / l_size / 4;
-            for (uZ grp = 0; grp < grp_size; ++grp) {
-                std::array<T*, 4> dst{
-                    get_vector(dest, grp).data(),
-                    get_vector(dest, grp + grp_size * 1).data(),
-                    get_vector(dest, grp + grp_size * 2).data(),
-                    get_vector(dest, grp + grp_size * 3).data(),
-                };
-                std::array<T*, 4> src{
-                    get_vector(source, grp).data(),
-                    get_vector(source, grp + grp_size * 1).data(),
-                    get_vector(source, grp + grp_size * 2).data(),
-                    get_vector(source, grp + grp_size * 3).data(),
-                };
-                long_btfly4<PDest, PSrc>(dst, data_size, src);
-            }
-            l_size *= 4;
-        }
-
-        for (; l_size < m_size / 2; l_size *= 4) {
-            const auto grp_size = m_size / l_size / 4;
-            for (uZ grp = 0; grp < grp_size; ++grp) {
-                std::array<T*, 4> dst{
-                    get_vector(dest, grp).data(),
-                    get_vector(dest, grp + grp_size * 1).data(),
-                    get_vector(dest, grp + grp_size * 2).data(),
-                    get_vector(dest, grp + grp_size * 3).data(),
-                };
-                long_btfly4<PDest, PSrc>(dst, data_size);
-            }
-            for (uZ idx = 1; idx < l_size; ++idx) {
-                std::array<std::complex<T>, 3> tw = {
-                    *(tw_it++),
-                    *(tw_it++),
-                    *(tw_it++),
-                };
-                for (uZ grp = 0; grp < grp_size; ++grp) {
-                    std::array<T*, 4> dst{
-                        get_vector(dest, grp + idx * grp_size * 4).data(),
-                        get_vector(dest, grp + idx * grp_size * 4 + grp_size * 1).data(),
-                        get_vector(dest, grp + idx * grp_size * 4 + grp_size * 2).data(),
-                        get_vector(dest, grp + idx * grp_size * 4 + grp_size * 3).data(),
-                    };
-                    long_btfly4<PDest, PSrc>(dst, data_size, tw);
-                }
-            }
-        }
-        if constexpr (!BigG && !BiggerG) {
-            if (l_size == m_size / 2) {
-                std::array<T*, 2> dst{
-                    get_vector(dest, 0).data(),
-                    get_vector(dest, 1).data(),
-                };
-                long_btfly2<PDest, PSrc>(dst, data_size);
-
-                for (uZ idx = 1; idx < l_size; ++idx) {
-                    auto tw = *(tw_it++);
-
-                    std::array<T*, 2> dst{
-                        get_vector(dest, idx * 2).data(),
-                        get_vector(dest, idx * 2 + 1).data(),
-                    };
-                    long_btfly2<PDest, PSrc>(dst, data_size, tw);
-                }
-            }
-        }
-        if constexpr (sorted) {
-            for (uZ i = 0; i < m_sort.size(); i += 2) {
-                using std::swap;
-                swap(get_vector(dest, m_sort[i]), get_vector(dest, m_sort[i + 1]));
-            }
-        }
-    };
-
-    template<typename DestR_, typename SrcR_>
-        requires range_complex_vector_of<T, DestR_> && range_complex_vector_of<T, SrcR_>
-    void new_tform(DestR_& dest, const SrcR_& source) {
         if (dest.size() != m_size) {
             throw(std::invalid_argument(std::string("destination size (which is ")
                                             .append(std::to_string(dest.size()))
@@ -2666,37 +2448,41 @@ public:
             }
         };
 
-        auto tw_it     = m_twiddles_new.begin();
+        auto tw_it     = m_twiddles.begin();
         auto data_size = get_vector(dest, 0).size();
 
-        uZ l_size = 1;
-
-        constexpr auto get_data_ptr =
-            [get_vector]<uZ... I>(auto& data, uZ i, uZ grp_size, std::index_sequence<I...>) {
-                using vector_t = rv::range_value_t<std::remove_cvref_t<decltype(data)>>;
-                using traits   = cx_vector_traits<vector_t>;
-                // using data_ptr_t      = typename traits::real_type*;
-                constexpr uZ NodeSize = sizeof...(I);
-                return std::array{traits::re_data(get_vector(data, i + grp_size * I))...};
-            };
+        using detail_::fft::log2i;
         auto misalign = log2i(m_size) % log2i(NodeSizeStrategy);
         using detail_::fft::powi;
 
-        constexpr auto realign = [get_data_ptr]<uZ... Pow>(auto& dest,
-                                                           auto& source,
-                                                           auto& tw_it,
-                                                           uZ    size,
-                                                           uZ    data_size,
-                                                           uZ    align_size,
-                                                           uZ    align_count,
-                                                           std::index_sequence<Pow...>) {
-            constexpr auto multi_step = [get_data_ptr]<uZ NodeSize>(uZ_constant<NodeSize>,    //
-                                                                    uZ    align_count,
-                                                                    uZ    size,
-                                                                    uZ    data_size,
-                                                                    auto& dest,
-                                                                    auto& source,
-                                                                    auto  tw_it) {
+        constexpr auto realign = []<uZ... Pow>(auto& dest,
+                                               auto& source,
+                                               auto& tw_it,
+                                               uZ    size,
+                                               uZ    data_size,
+                                               uZ    align_size,
+                                               uZ    align_count,
+                                               std::index_sequence<Pow...>) {
+            constexpr auto realign_iml = []<uZ NodeSize>(uZ_constant<NodeSize>,    //
+                                                         uZ    align_count,
+                                                         uZ    size,
+                                                         uZ    data_size,
+                                                         auto& dest,
+                                                         auto& source,
+                                                         auto  tw_it) {
+                constexpr auto get_data_ptr =
+                    []<uZ... I>(auto& data, uZ i, uZ grp_size, std::index_sequence<I...>) {
+                        using vector_t            = rv::range_value_t<std::remove_cvref_t<decltype(data)>>;
+                        constexpr auto get_vector = [](auto&& R, uZ i) -> auto& {
+                            if constexpr (std::is_pointer_v<vector_t>) {
+                                return *R[i];
+                            } else {
+                                return R[i];
+                            }
+                        };
+                        using traits = cx_vector_traits<vector_t>;
+                        return std::array{traits::re_data(get_vector(data, i + grp_size * I))...};
+                    };
                 const auto     grp_size = size / NodeSize;
                 constexpr auto idxs     = std::make_index_sequence<NodeSize>{};
                 for (uZ grp = 0; grp < grp_size; ++grp) {
@@ -2751,19 +2537,39 @@ public:
             uZ l_size;
             (void)((align_size == powi(2, log2i(NodeSizeStrategy) - Pow - 1) &&
                     (std::tie(l_size, tw_it) =
-                         multi_step(uZ_constant<powi(2, log2i(NodeSizeStrategy) - Pow - 1)>{},
-                                    align_count,
-                                    size,
-                                    data_size,
-                                    dest,
-                                    source,
-                                    tw_it),
+                         realign_iml(uZ_constant<powi(2, log2i(NodeSizeStrategy) - Pow - 1)>{},
+                                     align_count,
+                                     size,
+                                     data_size,
+                                     dest,
+                                     source,
+                                     tw_it),
                      true)) ||
                    ...);
             return std::make_tuple(l_size, tw_it);
         };
 
-        auto idxs = std::make_index_sequence<NodeSizeStrategy>{};
+        constexpr auto get_data_ptr = [](auto& data, uZ i, uZ grp_size) {
+            constexpr auto get_data_ptr_iml =
+                []<uZ... I>(auto& data, uZ i, uZ grp_size, std::index_sequence<I...>) {
+                    using vector_t            = rv::range_value_t<std::remove_cvref_t<decltype(data)>>;
+                    constexpr auto get_vector = [](auto& R, uZ i) -> auto& {
+                        if constexpr (std::is_pointer_v<vector_t>) {
+                            return *R[i];
+                        } else {
+                            return R[i];
+                        }
+                    };
+                    using traits = cx_vector_traits<vector_t>;
+                    return std::array{traits::re_data(get_vector(data, i + grp_size * I))...};
+                };
+            return get_data_ptr_iml(data,    //
+                                    i,
+                                    grp_size,
+                                    std::make_index_sequence<NodeSizeStrategy>{});
+        };
+
+        uZ l_size = 1;
         if (m_align_count != 0) {
             std::tie(l_size, tw_it) = realign(dest,
                                               source,
@@ -2777,16 +2583,16 @@ public:
             if (PTform != PDest && m_size == NodeSizeStrategy) {
                 const auto grp_size = m_size / l_size / NodeSizeStrategy;
                 for (uZ i = 0; i < grp_size; ++i) {
-                    auto dst = get_data_ptr(dest, i, grp_size, idxs);
-                    auto src = get_data_ptr(source, i, grp_size, idxs);
+                    auto dst = get_data_ptr(dest, i, grp_size);
+                    auto src = get_data_ptr(source, i, grp_size);
                     long_node<NodeSizeStrategy, PDest, PSrc>(dst, data_size, src);
                 }
                 l_size *= NodeSizeStrategy;
             } else {
                 const auto grp_size = m_size / l_size / NodeSizeStrategy;
                 for (uZ i = 0; i < grp_size; ++i) {
-                    auto dst = get_data_ptr(dest, i, grp_size, idxs);
-                    auto src = get_data_ptr(source, i, grp_size, idxs);
+                    auto dst = get_data_ptr(dest, i, grp_size);
+                    auto src = get_data_ptr(source, i, grp_size);
                     long_node<NodeSizeStrategy, PTform, PSrc>(dst, data_size, src);
                 }
                 l_size *= NodeSizeStrategy;
@@ -2800,7 +2606,7 @@ public:
         while (l_size < max_size) {
             const auto grp_size = m_size / l_size / NodeSizeStrategy;
             for (uZ i = 0; i < grp_size; ++i) {
-                auto dst = get_data_ptr(dest, i, grp_size, idxs);
+                auto dst = get_data_ptr(dest, i, grp_size);
                 long_node<NodeSizeStrategy, PTform, PTform>(dst, data_size);
             }
             for (uZ i_grp = 1; i_grp < l_size; ++i_grp) {
@@ -2810,7 +2616,7 @@ public:
                 tw_it += NodeSizeStrategy - 1;
                 for (uZ i = 0; i < grp_size; ++i) {
                     uZ   start = grp_size * i_grp * NodeSizeStrategy + i;
-                    auto dst   = get_data_ptr(dest, start, grp_size, idxs);
+                    auto dst   = get_data_ptr(dest, start, grp_size);
                     long_node<NodeSizeStrategy, PTform, PTform>(dst, data_size, tw);
                 }
             }
@@ -2819,7 +2625,7 @@ public:
         if (PTform != PDest && l_size <= m_size) {
             const auto grp_size = m_size / l_size / NodeSizeStrategy;
             for (uZ grp = 0; grp < grp_size; ++grp) {
-                auto dst = get_data_ptr(dest, grp, grp_size, idxs);
+                auto dst = get_data_ptr(dest, grp, grp_size);
                 long_node<NodeSizeStrategy, PDest, PTform>(dst, data_size);
             }
             for (uZ i_grp = 1; i_grp < l_size; ++i_grp) {
@@ -2829,7 +2635,7 @@ public:
                 tw_it += NodeSizeStrategy - 1;
                 for (uZ i = 0; i < grp_size; ++i) {
                     uZ   start = grp_size * i_grp * NodeSizeStrategy + i;
-                    auto dst   = get_data_ptr(dest, start, grp_size, idxs);
+                    auto dst   = get_data_ptr(dest, start, grp_size);
                     long_node<NodeSizeStrategy, PDest, PTform>(dst, data_size, tw);
                 }
             }
@@ -2848,196 +2654,6 @@ public:
     }
 
 private:
-    template<uZ PDest, uZ PSrc, typename... Optional>
-    inline void long_btfly8(std::array<T*, 8> dest, uZ size, Optional... optional) {
-        using src_type       = std::array<const T*, 8>;
-        using tw_type        = std::array<std::complex<T>, 7>;
-        constexpr bool Src   = detail_::has_type<src_type, Optional...>;
-        constexpr bool Tw    = detail_::has_type<tw_type, Optional...>;
-        constexpr bool Scale = detail_::has_type<T, Optional...>;
-
-        const auto& source = [](auto... optional) {
-            if constexpr (Src) {
-                return std::get<src_type&>(std::tie(optional...));
-            } else {
-                return [] {};
-            }
-        }(optional...);
-
-        auto tw = [](auto... optional) {
-            if constexpr (Tw) {
-                auto& tw = std::get<tw_type&>(std::tie(optional...));
-                return std::array<simd::cx_reg<T>, 7>{
-                    simd::broadcast(tw[0]),
-                    simd::broadcast(tw[1]),
-                    simd::broadcast(tw[2]),
-                    simd::broadcast(tw[3]),
-                    simd::broadcast(tw[4]),
-                    simd::broadcast(tw[5]),
-                    simd::broadcast(tw[6]),
-                };
-            } else {
-                return [] {};
-            }
-        }(optional...);
-
-        auto scaling = [](auto... optional) {
-            if constexpr (Scale) {
-                auto scale = std::get<T>(std::tie(optional...));
-                return simd::broadcast(scale);
-            } else {
-                return [] {};
-            }
-        }(optional...);
-
-        for (uZ i = 0; i < size; i += simd::reg<T>::size) {
-            std::array<T*, 8> dst{
-                simd::ra_addr<PDest>(dest[0], i),
-                simd::ra_addr<PDest>(dest[1], i),
-                simd::ra_addr<PDest>(dest[2], i),
-                simd::ra_addr<PDest>(dest[3], i),
-                simd::ra_addr<PDest>(dest[4], i),
-                simd::ra_addr<PDest>(dest[5], i),
-                simd::ra_addr<PDest>(dest[6], i),
-                simd::ra_addr<PDest>(dest[7], i),
-            };
-            auto src = [](auto source, auto i) {
-                if constexpr (Src) {
-                    return std::array<const T*, 8>{
-                        simd::ra_addr<PSrc>(source[0], i),
-                        simd::ra_addr<PSrc>(source[1], i),
-                        simd::ra_addr<PSrc>(source[2], i),
-                        simd::ra_addr<PSrc>(source[3], i),
-                        simd::ra_addr<PSrc>(source[4], i),
-                        simd::ra_addr<PSrc>(source[5], i),
-                        simd::ra_addr<PSrc>(source[6], i),
-                        simd::ra_addr<PSrc>(source[7], i),
-                    };
-                } else {
-                    return [] {};
-                }
-            }(source, i);
-
-            detail_::fft::node<8>::template perform<T, PDest, PSrc, false, false>(dst, src, tw, scaling);
-        }
-    }
-
-    template<uZ PDest, uZ PSrc, typename... Optional>
-    inline void long_btfly4(std::array<T*, 4> dest, uZ size, Optional... optional) {
-        using src_type       = std::array<const T*, 4>;
-        using tw_type        = std::array<std::complex<T>, 3>;
-        constexpr bool Src   = detail_::has_type<src_type, Optional...>;
-        constexpr bool Tw    = detail_::has_type<tw_type, Optional...>;
-        constexpr bool Scale = detail_::has_type<T, Optional...>;
-
-        const auto& source = [](auto... optional) {
-            if constexpr (Src) {
-                return std::get<src_type&>(std::tie(optional...));
-            } else {
-                return [] {};
-            }
-        }(optional...);
-
-        auto tw = [](auto... optional) {
-            if constexpr (Tw) {
-                auto& tw = std::get<tw_type&>(std::tie(optional...));
-                return std::array<simd::cx_reg<T>, 3>{
-                    simd::broadcast(tw[0]),
-                    simd::broadcast(tw[1]),
-                    simd::broadcast(tw[2]),
-                };
-            } else {
-                return [] {};
-            }
-        }(optional...);
-
-        auto scaling = [](auto... optional) {
-            if constexpr (Scale) {
-                auto scale = std::get<T>(std::tie(optional...));
-                return simd::broadcast(scale);
-            } else {
-                return [] {};
-            }
-        }(optional...);
-
-        for (uZ i = 0; i < size; i += simd::reg<T>::size) {
-            std::array<T*, 4> dst{
-                simd::ra_addr<PDest>(dest[0], i),
-                simd::ra_addr<PDest>(dest[1], i),
-                simd::ra_addr<PDest>(dest[2], i),
-                simd::ra_addr<PDest>(dest[3], i),
-            };
-            auto src = [](auto source, auto i) {
-                if constexpr (Src) {
-                    return std::array<const T*, 4>{
-                        simd::ra_addr<PSrc>(source[0], i),
-                        simd::ra_addr<PSrc>(source[1], i),
-                        simd::ra_addr<PSrc>(source[2], i),
-                        simd::ra_addr<PSrc>(source[3], i),
-                    };
-                } else {
-                    return [] {};
-                }
-            }(source, i);
-
-            detail_::fft::node<4>::template perform<T, PDest, PSrc, false, false>(dst, src, tw, scaling);
-        }
-    }
-
-    template<uZ PDest, uZ PSrc, typename... Optional>
-    inline void long_btfly2(std::array<T*, 2> dest, uZ size, Optional... optional) {
-        using src_type       = std::array<const T*, 2>;
-        using tw_type        = std::complex<T>;
-        constexpr bool Src   = detail_::has_type<src_type, Optional...>;
-        constexpr bool Tw    = detail_::has_type<tw_type, Optional...>;
-        constexpr bool Scale = detail_::has_type<T, Optional...>;
-
-        const auto& source = [](auto... optional) {
-            if constexpr (Src) {
-                return std::get<src_type&>(std::tie(optional...));
-            } else {
-                return [] {};
-            }
-        }(optional...);
-
-        auto tw = [](auto... optional) {
-            if constexpr (Tw) {
-                auto& tw = std::get<tw_type&>(std::tie(optional...));
-                return simd::broadcast(tw);
-            } else {
-                return [] {};
-            }
-        }(optional...);
-
-        auto scaling = [](auto... optional) {
-            if constexpr (Scale) {
-                auto scale = std::get<T>(std::tie(optional...));
-                return simd::broadcast(scale);
-            } else {
-                return [] {};
-            }
-        }(optional...);
-
-        for (uZ i = 0; i < size; i += simd::reg<T>::size) {
-            std::array<T*, 2> dst{
-                simd::ra_addr<PDest>(dest[0], i),
-                simd::ra_addr<PDest>(dest[1], i),
-            };
-            auto src = [](auto source, auto i) {
-                if constexpr (Src) {
-                    return std::array<const T*, 2>{
-                        simd::ra_addr<PSrc>(source[0], i),
-                        simd::ra_addr<PSrc>(source[1], i),
-                    };
-                } else {
-                    return [] {};
-                }
-            }(source, i);
-
-            detail_::fft::node<2>::template perform<T, PDest, PSrc, false, false>(dst, src, tw, scaling);
-        }
-    }
-
     template<uZ   NodeSize,
              uZ   PDest,
              uZ   PSrc,
@@ -3057,22 +2673,20 @@ private:
             }
         }(optional...);
 
-        constexpr auto get_data_array = []<uZ PackSize, uZ... I>(auto& data,
-                                                                 uZ    offset,
-                                                                 uZ_constant<PackSize>,
-                                                                 std::index_sequence<I...>) {
-            constexpr auto Size = sizeof...(I);
-            static_assert(std::same_as<T*, std::remove_cvref_t<decltype(data[0])>>);
-            return std::array<std::remove_cvref_t<decltype(data[0])>, Size>{
-                simd::ra_addr<PackSize>(data[I], offset)...};
+        constexpr auto get_data_array = []<uZ PackSize>(auto& data, uZ offset, uZ_constant<PackSize>) {
+            constexpr auto get_data_array_impl =
+                []<uZ... I>(auto& data, uZ offset, std::index_sequence<I...>) {
+                    return std::array{simd::ra_addr<PackSize>(data[I], offset)...};
+                };
+            return get_data_array_impl(data, offset, std::make_index_sequence<NodeSize>{});
         };
-        constexpr auto Idxs = std::make_index_sequence<NodeSize>{};
 
+        // TODO: handle simd-unpadded storage
         for (uZ i = 0; i < size; i += simd::reg<T>::size) {
-            auto dst = get_data_array(dest, i, uZ_constant<PDest>{}, Idxs);
-            auto src = [](auto& source, auto i) {
+            auto dst = get_data_array(dest, i, uZ_constant<PDest>{});
+            auto src = [](auto& source, uZ i) {
                 if constexpr (Src) {
-                    return get_data_array(source, i, uZ_constant<PSrc>{}, Idxs);
+                    return get_data_array(source, i, uZ_constant<PSrc>{});
                 } else {
                     return [] {};
                 }
@@ -3089,59 +2703,8 @@ private:
     uZ                                 m_align_size  = 0;
     uZ                                 m_align_count = 0;
     const twiddle_t                    m_twiddles;
-    const twiddle_t                    m_twiddles_new;
 
-    auto get_twiddles(size_type size, allocator_type allocator) -> twiddle_t {
-        auto twiddles = twiddle_t(static_cast<tw_allocator_type>(allocator));
-        //twiddles.reserve(?);
-        uZ l_size = 1;
-
-        using namespace detail_::fft;
-        if constexpr (BigG) {
-            if (log2i(size) % 2 != 0) {
-                l_size *= 8;
-            }
-        }
-
-        if constexpr (BiggerG) {
-            auto max_size = m_size;
-            if (log2i(m_size) % 3 == 1) {
-                max_size /= 4;
-            };
-            for (; l_size < max_size / 4; l_size *= 8) {
-                const auto grp_size = std::max(m_size / l_size / 4, 0UL);
-                for (uZ idx = 1; idx < l_size; ++idx) {
-                    twiddles.push_back(wnk<T>(l_size * 2, reverse_bit_order(idx, log2i(l_size))));
-                    twiddles.push_back(wnk<T>(l_size * 4, reverse_bit_order(idx * 2 + 0, log2i(l_size * 2))));
-                    twiddles.push_back(wnk<T>(l_size * 4, reverse_bit_order(idx * 2 + 1, log2i(l_size * 2))));
-                    twiddles.push_back(wnk<T>(l_size * 8, reverse_bit_order(idx * 4 + 0, log2i(l_size * 4))));
-                    twiddles.push_back(wnk<T>(l_size * 8, reverse_bit_order(idx * 4 + 1, log2i(l_size * 4))));
-                    twiddles.push_back(wnk<T>(l_size * 8, reverse_bit_order(idx * 4 + 2, log2i(l_size * 4))));
-                    twiddles.push_back(wnk<T>(l_size * 8, reverse_bit_order(idx * 4 + 3, log2i(l_size * 4))));
-                }
-            }
-        }
-        for (; l_size < m_size / 2; l_size *= 4) {
-            const auto grp_size = std::max(m_size / l_size / 4, 0UL);
-            for (uZ idx = 1; idx < l_size; ++idx) {
-                twiddles.push_back(wnk<T>(l_size * 2, reverse_bit_order(idx, log2i(l_size))));
-                twiddles.push_back(wnk<T>(l_size * 4, reverse_bit_order(idx * 2, log2i(l_size * 2))));
-                twiddles.push_back(wnk<T>(l_size * 4, reverse_bit_order(idx * 2 + 1, log2i(l_size * 2))));
-            }
-        }
-
-        if constexpr (!BiggerG) {
-            if (l_size == m_size / 2) {
-                for (uZ idx = 1; idx < l_size; ++idx) {
-                    twiddles.push_back(wnk<T>(l_size * 2, reverse_bit_order(idx, log2i(l_size))));
-                }
-            }
-        }
-        std::cout << "<get twiddles> real: " << twiddles.size() << "\n";
-        return twiddles;
-    };
-
-    auto get_twiddles_new(uZ size, allocator_type allocator) -> twiddle_t {
+    auto get_twiddles(uZ size, allocator_type allocator) -> twiddle_t {
         auto twiddles = twiddle_t(static_cast<tw_allocator_type>(allocator));
         using namespace detail_::fft;
 
@@ -3216,9 +2779,9 @@ private:
             return {};
         } else {
             auto sort = sort_t(static_cast<sort_allocator_type>(allocator));
-            //sort.reserve(?);
+            sort.reserve(detail_::fft::n_reversals(size));
             for (uZ i = 0; i < size; ++i) {
-                auto rev = detail_::fft::reverse_bit_order(i, log2i(size));
+                auto rev = detail_::fft::reverse_bit_order(i, detail_::fft::log2i(size));
                 if (rev > i) {
                     sort.push_back(i);
                     sort.push_back(rev);
@@ -3227,13 +2790,6 @@ private:
             return sort;
         }
     };
-    static constexpr auto log2i(uZ num) -> uZ {
-        uZ order = 0;
-        while ((num >>= 1U) != 0) {
-            order++;
-        }
-        return order;
-    }
 };
 
 // NOLINTEND (*magic-numbers)

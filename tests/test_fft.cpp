@@ -715,10 +715,11 @@ int test_par_fft_float(std::size_t size) {
             ++i;
         }
 
-        pcx::fft_unit_par<float, order, false, false, pcx::aligned_allocator<float>, 8> par_unit(size);
-        pcx::fft_unit<float, order>                                                     check_unit(size);
+        pcx::fft_unit_par<float, order, pcx::aligned_allocator<float>, 4> par_unit(size);
+        pcx::fft_unit<float, order>                                       check_unit(size);
 
-        par_unit.new_tform(st_par, st_par);
+        const auto st_par_c{st_par};
+        par_unit(st_par, st_par_c);
         // check_unit(vec_check);
         fft_dif<4>(vec_check);
         uint q = 0;
@@ -777,9 +778,9 @@ int main() {
         std::cout << (1U << i) << "\n";
 
         // ret += test_fft_float<1024>(1U << i);
-        // ret += test_fft_float(1U << i);
+        ret += test_fft_float(1U << i);
         // ret += test_fft_dif(1U << i);
-        // ret += test_fftu_float(1U << i);
+        ret += test_fftu_float(1U << i);
         ret += test_par_fft_float(1U << i);
 
         if (ret > 0) {
