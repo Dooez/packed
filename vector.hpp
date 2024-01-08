@@ -6,6 +6,7 @@
 #include <complex>
 #include <cstddef>
 #include <memory>
+#include <type_traits>
 #include <vector>
 
 namespace pcx {
@@ -144,39 +145,36 @@ public:
         return *this;
     }
 
-    vector& operator=(vector&& other) noexcept(alloc_traits::propagate_on_container_move_assignment::value&&
-                                                   std::is_nothrow_swappable_v<allocator_type> ||
-                                               alloc_traits::is_always_equal::value) {
+    vector& operator=(vector&& other) noexcept(alloc_traits::propagate_on_container_move_assignment::value &&
+                                                   std::is_nothrow_move_assignable_v<allocator_type> ||
+                                               !alloc_traits::propagate_on_container_move_assignment::value &&
+                                                   alloc_traits::is_always_equal::value) {
+        using std::swap;
         if constexpr (alloc_traits::propagate_on_container_move_assignment::value) {
             deallocate();
-            using std::swap;
-            swap(m_allocator, other.m_allocator);
+            m_allocator  = std::move(other.m_allocator);
+            m_size       = other.m_size;
+            m_ptr        = other.m_ptr;
+            other.m_size = 0;
+            other.m_ptr  = real_pointer{};
+            return *this;
+        } else if constexpr (alloc_traits::is_always_equal::value) {
             swap(m_size, other.m_size);
             swap(m_ptr, other.m_ptr);
             return *this;
         } else {
-            if constexpr (alloc_traits::is_always_equal::value) {
-                deallocate();
-                using std::swap;
+            if (m_allocator == other.m_allocator) {
                 swap(m_size, other.m_size);
                 swap(m_ptr, other.m_ptr);
                 return *this;
-            } else {
-                if (m_allocator == other.m_allocator) {
-                    deallocate();
-                    using std::swap;
-                    swap(m_size, other.m_size);
-                    swap(m_ptr, other.m_ptr);
-                    return *this;
-                }
-                if (num_packs(m_size) != num_packs(other.m_size)) {
-                    deallocate();
-                    m_size = other.m_size;
-                    m_ptr  = alloc_traits::allocate(m_allocator, real_size(m_size));
-                }
-                packed_copy(other.begin(), other.end(), begin());
-                return *this;
             }
+            if (num_packs(m_size) != num_packs(other.m_size)) {
+                deallocate();
+                m_ptr = alloc_traits::allocate(m_allocator, real_size(other.m_size));
+            }
+            m_size = other.m_size;
+            packed_copy(other.begin(), other.end(), begin());
+            return *this;
         }
     }
 
@@ -219,9 +217,9 @@ public:
         deallocate();
     };
 
-    void swap(vector& other) noexcept(
-        alloc_traits::propagate_on_container_swap::value&& std::is_nothrow_swappable_v<allocator_type> ||
-        alloc_traits::is_always_equal::value) {
+    void swap(vector& other) noexcept(alloc_traits::propagate_on_container_swap::value &&
+                                          std::is_nothrow_swappable_v<allocator_type> ||
+                                      alloc_traits::is_always_equal::value) {
         if constexpr (alloc_traits::propagate_on_container_swap::value) {
             using std::swap;
             swap(m_allocator, other.m_allocator);

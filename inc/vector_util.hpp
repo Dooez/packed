@@ -64,18 +64,18 @@ public:
     using value_type      = T;
     using is_always_equal = std::true_type;
 
-    aligned_allocator() = default;
+    aligned_allocator() noexcept = default;
 
     template<typename U>
     explicit aligned_allocator(const aligned_allocator<U, Alignment>&) noexcept {};
 
-    aligned_allocator(const aligned_allocator&)     = default;
-    aligned_allocator(aligned_allocator&&) noexcept = default;
+    aligned_allocator(const aligned_allocator&) noexcept = default;
+    aligned_allocator(aligned_allocator&&) noexcept      = default;
 
     ~aligned_allocator() = default;
 
-    aligned_allocator& operator=(const aligned_allocator&)     = default;
-    aligned_allocator& operator=(aligned_allocator&&) noexcept = default;
+    aligned_allocator& operator=(const aligned_allocator&) noexcept = default;
+    aligned_allocator& operator=(aligned_allocator&&) noexcept      = default;
 
     [[nodiscard]] auto allocate(std::size_t n) -> value_type* {
         return reinterpret_cast<value_type*>(::operator new[](n * sizeof(value_type), Alignment));
@@ -93,15 +93,14 @@ public:
 private:
 };
 
-
 template<typename T, std::align_val_t Alignment>
 bool operator==(const aligned_allocator<T, Alignment>&, const aligned_allocator<T, Alignment>&) noexcept {
     return true;
 }
-template<typename T, std::align_val_t Alignment>
-bool operator!=(const aligned_allocator<T, Alignment>&, const aligned_allocator<T, Alignment>&) noexcept {
-    return false;
-}
+// template<typename T, std::align_val_t Alignment>
+// bool operator!=(const aligned_allocator<T, Alignment>&, const aligned_allocator<T, Alignment>&) noexcept {
+//     return false;
+// }
 
 namespace simd {
 
