@@ -169,7 +169,7 @@ auto ifftu(const pcx::vector<T, PackSize, Allocator>& vector) {
 template<pcx::uZ NodeSize>
 auto fft_dif(auto& vector) {
     using namespace pcx;
-    using T = cx_vector_traits<std::remove_cvref_t<decltype(vector)>>::real_type;
+    using T = typename cx_vector_traits<std::remove_cvref_t<decltype(vector)>>::real_type;
 
     constexpr auto load = []<uZ Node>(auto&& vec, uZ i, uZ grp_size, uZ_constant<Node>) {
         return []<uZ... I>(auto&& vec, uZ i, uZ grp_size, std::index_sequence<I...>) {

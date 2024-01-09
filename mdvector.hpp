@@ -81,7 +81,7 @@ struct expand_value_sequence_impl<value_sequence<Values...>, NewValues...> {
 };
 
 template<typename Sequence, auto... NewValues>
-using expand_value_sequence = expand_value_sequence_impl<Sequence, NewValues...>::type;
+using expand_value_sequence = typename expand_value_sequence_impl<Sequence, NewValues...>::type;
 
 template<typename S, auto Vfilter, auto... Vs>
 struct filter_value_sequence_impl {};
@@ -101,11 +101,11 @@ template<typename S, auto Vfilter>
 struct filter_value_sequence_adapter {};
 template<auto... Vs, auto Vfilter>
 struct filter_value_sequence_adapter<value_sequence<Vs...>, Vfilter> {
-    using type = filter_value_sequence_impl<value_sequence<>, Vfilter, Vs...>::type;
+    using type = typename filter_value_sequence_impl<value_sequence<>, Vfilter, Vs...>::type;
 };
 
 template<typename Sequence, auto FilterValue>
-using filter_value_sequence = filter_value_sequence_adapter<Sequence, FilterValue>::type;
+using filter_value_sequence = typename filter_value_sequence_adapter<Sequence, FilterValue>::type;
 
 }    // namespace detail_
 
@@ -143,7 +143,7 @@ private:
         using type = left_first_basis<Vs...>;
     };
     template<typename S>
-    using basis_from_seq_t = basis_from_seq<S>::type;
+    using basis_from_seq_t = typename basis_from_seq<S>::type;
 
 public:
     static constexpr uZ size = sizeof...(Axes);
@@ -158,7 +158,7 @@ public:
     static constexpr uZ index = idx_impl<0, Axis, Axes...>::value;
 
     template<uZ I>
-        requires(I < size)
+        requires /**/ (I < size)
     static constexpr auto axis = value_impl<0, I, Axes...>::value;
 
     template<auto Axis>
@@ -201,7 +201,7 @@ private:
     };
 
     template<typename S>
-    using basis_from_seq_t = basis_from_seq<S>::type;
+    using basis_from_seq_t = typename basis_from_seq<S>::type;
 
 public:
     static constexpr uZ size = sizeof...(Axes);
@@ -251,12 +251,12 @@ public:
         uZ size     = extents[0] + misalign > 0 ? align - misalign : 0;
         uZ stride   = size;
         for (uZ i = 1; i < Basis::size - 1; ++i) {
-            size *= m_extents[i];
             stride *= m_extents[i];
         }
-        size *= m_extents.back();
+        size     = stride * m_extents.back();
         m_stride = stride;
         m_ptr    = allocator_traits::allocate(allocator, size);
+        std::memset(m_ptr, 0, size * sizeof(T));
     };
     explicit mdarray() = default;
 
@@ -268,33 +268,27 @@ public:
     , m_ptr(other.m_ptr)
     , m_stride(other.m_stride)
     , m_extents(other.m_extents) {
-        other.m_ptr     = 0;
+        other.m_ptr     = nullptr;
         other.m_stride  = 0;
         other.m_extents = {};
     };
 
-    mdarray& operator=(mdarray&& other) noexcept(allocator_traits::is_always_equal::value ||
-                                                 allocator_traits::propaget_on_move_assignment::value) {
+    mdarray& operator=(mdarray&& other) noexcept(allocator_traits::propagate_on_move_assignment::value ||
+                                                 allocator_traits::is_always_equal::value) {
         using std::swap;
-        if constexpr (allocator_traits::is_always_equal) {
-            swap(m_extents, other.m_extents);
+        if constexpr (allocator_traits::propagate_on_move_assignment::value) {
+            deallocate();
+            m_allocator     = std::move(other.m_allocator);
+            m_ptr           = other.m_ptr;
+            m_stride        = other.m_stride;
+            m_extents       = other.m_extents;
+            other.m_ptr     = nullptr;
+            other.m_stride  = 0;
+            other.m_extents = {};
+        } else if constexpr (allocator_traits::is_always_equal::value) {
             swap(m_ptr, other.m_ptr);
             swap(m_stride, other.n_stride);
-        } else if constexpr (allocator_traits::propagate_on_move_assignment::value) {
-            if (m_allocator == other.m_allocator) {
-                swap(m_extents, other.m_extents);
-                swap(m_ptr, other.m_ptr);
-                swap(m_stride, other.n_stride);
-            } else {
-                deallocate();
-                m_allocator     = std::move(other.m_allocator);
-                m_ptr           = other.m_ptr;
-                m_stride        = other.m_stride;
-                m_extents       = other.m_extents;
-                other.m_ptr     = nullptr;
-                other.m_stride  = 0;
-                other.m_extents = {};
-            }
+            swap(m_extents, other.m_extents);
         } else {
             if (m_allocator == other.m_allocator) {
                 swap(m_ptr, other.m_ptr);
@@ -308,9 +302,13 @@ public:
                 }
                 m_stride  = other.m_stride;
                 m_extents = other.m_extents;
-                std::memcpy(m_ptr, other.m_ptr, size);
+                std::memcpy(m_ptr, other.m_ptr, size * sizeof(T));
             }
         }
+    }
+
+    ~mdarray() noexcept {
+        deallocate();
     }
 
     template<auto... Axis, typename... Tidx>
@@ -325,10 +323,14 @@ private:
     uZ                              m_stride{};
     std::array<uZ, Basis::size>     m_extents{};
 
-    void deallocate() noexcept {};
+    inline void deallocate() noexcept {
+        if (m_ptr != nullptr) {
+            allocator_traits::deallocate(m_ptr, m_stride * m_extents.back());
+        }
+    };
 };
 
-template<typename T, md_basis Basis, bool Contigious>
+template<typename T, md_basis Basis, bool Contigious, bool Const>
 class mdslice : public std::ranges::view_base {
     using extent_t = std::array<uZ, Basis::size>;
 
@@ -345,9 +347,9 @@ class mdslice : public std::ranges::view_base {
         using type = detail_::value_sequence<Is...>;
     };
     template<typename S>
-    using value_to_index_sequence = value_to_index_sequence_impl<S>::type;
+    using value_to_index_sequence = typename value_to_index_sequence_impl<S>::type;
     template<typename S>
-    using index_to_value_sequence = index_to_value_sequence_impl<S>::type;
+    using index_to_value_sequence = typename index_to_value_sequence_impl<S>::type;
 
     using contigious_size_t = std::conditional_t<Contigious, uZ, decltype([] {})>;
 
@@ -364,9 +366,32 @@ public:
     , m_stride(stride)
     , m_extents(extents){};
 
+    auto operator[](uZ index) {
+        if constexpr (Basis::size == 1) {
+            return *(m_start + m_stride * index);
+        } else {
+            constexpr auto axis = Basis::template axis<Basis::size - 1>;
+            return slice_impl<axis>(index);
+        }
+    };
+
+    auto operator++() {
+        m_start += m_stride;
+    }
+    auto operator*() {
+        constexpr auto axis = Basis::template axis<Basis::size - 1>;
+        return slice_impl<axis>(0);
+    }
+
+
     template<auto Axis>
     inline auto slice(uZ index) {
-        using new_basis               = Basis::template exclude<Axis>;
+        return slice_impl<Axis>(index);
+    }
+
+    template<auto Axis>
+    inline auto slice_impl(uZ index) {
+        using new_basis               = typename Basis::template exclude<Axis>;
         constexpr auto axis_index     = uZ_constant<Basis::template index<Axis>>{};
         constexpr bool new_contigious = Contigious && Basis::template index<Axis> != 0;
 
@@ -393,8 +418,9 @@ public:
             }(extents, filtered{});
         }(m_extents, axis_index);
 
-        return mdslice<T, new_basis, new_contigious>(new_start, new_stride, new_extents);
+        return mdslice<T, new_basis, new_contigious, Const>(new_start, new_stride, new_extents);
     };
+
 
 private:
     T*                          m_start;
@@ -402,8 +428,77 @@ private:
     std::array<uZ, Basis::size> m_extents;
 
     static auto packed_offset(uZ offset) {
+        //TODO: actually calculate index
         return offset * 2;
     };
+};
+
+template<typename S>
+struct value_to_index_sequence_impl {};
+template<uZ... Is>
+struct value_to_index_sequence_impl<detail_::value_sequence<Is...>> {
+    using type = std::index_sequence<Is...>;
+};
+template<typename S>
+struct index_to_value_sequence_impl {};
+template<uZ... Is>
+struct index_to_value_sequence_impl<std::index_sequence<Is...>> {
+    using type = detail_::value_sequence<Is...>;
+};
+template<typename S>
+using value_to_index_sequence = typename value_to_index_sequence_impl<S>::type;
+template<typename S>
+using index_to_value_sequence = typename index_to_value_sequence_impl<S>::type;
+
+template<typename T, md_basis Basis, auto Axis, bool Contigious, bool Const>
+inline auto generic_slice_impl(T* start, uZ stride, uZ index, const std::array<uZ, Basis::size>& extents) {
+    using new_basis = typename Basis::template exclude<Axis>;
+    if constexpr (new_basis::size == 1) {}
+
+    constexpr auto axis_index     = uZ_constant<Basis::template index<Axis>>{};
+    constexpr bool new_contigious = Contigious && Basis::template index<Axis> != 0;
+    constexpr auto packed_offset  = [](uZ offset) { return offset * 2; };
+
+    constexpr auto get_offset = [axis_index](auto&& extents, uZ index, uZ stride) {
+        if constexpr (Contigious && axis_index == 0) {
+            return packed_offset(index);
+        } else {
+            for (iZ i = Basis::size - 1; i > axis_index; --i) {
+                stride /= extents[i];
+            }
+            return stride * index;
+        }
+    };
+
+    auto new_start   = start + get_offset(extents, index, stride);
+    auto new_stride  = (axis_index == (Basis::size - 1)) ? stride / extents.back() : stride;
+    auto new_extents = []<uZ I>(auto& extents, uZ_constant<I>) {
+        using indexes  = index_to_value_sequence<decltype(std::make_index_sequence<Basis::size>{})>;
+        using filtered = value_to_index_sequence<detail_::filter_value_sequence<indexes, I>>;
+        return []<uZ... Is>(auto& extents, std::index_sequence<Is...>) {
+            return std::array{extents[Is]...};
+        }(extents, filtered{});
+    }(extents, axis_index);
+
+    return mdslice<T, new_basis, new_contigious, Const>(new_start, new_stride, new_extents);
+};
+
+template<typename T, md_basis Basis, uZ PackSize, bool Const, bool Contigious>
+class md_iterator {
+public:
+    auto operator*() {
+        if constexpr (Basis::size == 1) {
+            return cx_ref<T, Const, PackSize>(m_ptr);
+        } else {
+            constexpr auto axis = Basis::template axis<Basis::size - 1>;
+            return generic_slice_impl<T, Basis, axis, Contigious, Const>(m_ptr, m_stride, 0, m_extents);
+        }
+    }
+
+private:
+    T*                          m_ptr{};
+    uZ                          m_stride{};
+    std::array<uZ, Basis::size> m_extents{};
 };
 
 }    // namespace pcx
