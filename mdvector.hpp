@@ -149,6 +149,7 @@ private:
 public:
     static constexpr uZ size = sizeof...(Axes);
 
+    static constexpr auto outer_axis = value_impl<0, size - 1, Axes...>::value;
     /**
      * @brief Index of the axis in basis.
      * 
@@ -209,6 +210,8 @@ private:
 
 public:
     static constexpr uZ size = sizeof...(Axes);
+
+    static constexpr auto outer_axis = value_impl<size - 1, size - 1, Axes...>::value;
 
     /**
      * @brief Index of the axis in basis.
@@ -345,38 +348,6 @@ private:
     };
 };
 
-template<typename T, uZ PackSize, md_basis Basis, bool Contigious, bool Const>
-class mdslice : public std::ranges::view_base {
-    using extents_t = std::array<uZ, Basis::size>;
-
-    template<typename T_,
-             typename PackSize_,
-             typename Basis_,
-             auto ExcludeAxis,
-             bool Contigious_,
-             bool Const_>
-        requires /**/ (Basis_::template contains<ExcludeAxis>)
-    friend class detail_::mdslice_maker;
-
-    /**
-     * @brief Construct a new mdslice object
-     * 
-     * @param start First
-     * @param stride 
-     * @param extents Sizes of axis. 
-     */
-    mdslice(T* start, uZ stride, extents_t extents)
-    : m_start(start)
-    , m_stride(stride)
-    , m_extents(extents){};
-
-public:
-private:
-    T*        m_start;
-    uZ        m_stride;
-    extents_t m_extents;
-};
-
 namespace detail_ {
 template<typename S>
 struct value_to_index_sequence_impl {};
@@ -401,14 +372,14 @@ auto packed_offset(uZ offset) -> uZ {
     return offset + offset / PackSize * PackSize;
 }
 
-template<typename T, uZ PackSize, md_basis Basis, auto Axis, bool Contigious, bool Const>
-    requires /**/ (Basis::template contains<Axis>)
-inline auto mdslice_maker<T, PackSize, Basis, Axis, Contigious, Const>::make(
+template<typename T, uZ PackSize, md_basis Basis, auto ExcludeAxis, bool Contigious, bool Const>
+    requires /**/ (Basis::template contains<ExcludeAxis>)
+inline auto mdslice_maker<T, PackSize, Basis, ExcludeAxis, Contigious, Const>::make(
     T* start, uZ stride, uZ index, const std::array<uZ, Basis::size>& extents) {
-    using new_basis = typename Basis::template exclude<Axis>;
+    using new_basis = typename Basis::template exclude<ExcludeAxis>;
 
-    constexpr auto axis_index     = uZ_constant<Basis::template index<Axis>>{};
-    constexpr bool new_contigious = Contigious && Basis::template index<Axis> != 0;
+    constexpr auto axis_index     = uZ_constant<Basis::template index<ExcludeAxis>>{};
+    constexpr bool new_contigious = Contigious && Basis::template index<ExcludeAxis> != 0;
 
     constexpr auto get_offset = [axis_index](auto&& extents, uZ index, uZ stride) {
         if constexpr (Contigious && axis_index == 0) {
@@ -436,12 +407,97 @@ inline auto mdslice_maker<T, PackSize, Basis, Axis, Contigious, Const>::make(
 }    // namespace detail_
 
 template<typename T, md_basis Basis, uZ PackSize, bool Const, bool Contigious>
-class md_iterator {
-    using mdslice_maker =
-        detail_::mdslice_maker<T, PackSize, Basis, Basis::template axis<Basis::size - 1>, Contigious, Const>;
+    requires /**/ (Basis::size > 1)
+class mditerator;
+
+template<typename T, uZ PackSize, md_basis Basis, bool Contigious, bool Const>
+class mdslice : public std::ranges::view_base {
     using extents_t = std::array<uZ, Basis::size>;
 
-    md_iterator(T* ptr, uZ stride, const extents_t& extents)
+    template<typename T_,
+             typename PackSize_,
+             typename Basis_,
+             auto ExcludeAxis,
+             bool Contigious_,
+             bool Const_>
+        requires /**/ (Basis_::template contains<ExcludeAxis>)
+    friend class detail_::mdslice_maker;
+
+    static constexpr bool vector_like = Contigious && Basis::size == 1;
+
+    /**
+     * @brief Construct a new mdslice object
+     * 
+     * @param start First
+     * @param stride 
+     * @param extents   Sizes of axes.
+     */
+    mdslice(T* start, uZ stride, extents_t extents)
+        requires(!vector_like)
+    : m_start(start)
+    , m_stride(stride)
+    , m_extents(extents){};
+
+    /**
+     * @brief Construct a new mdslice object
+     * 
+     * @param start     First element address.
+     * @param stride    Unused for vector-like slices.
+     * @param extents   Sizes of axes. 
+     */
+    mdslice(T* start, uZ /*stride*/, extents_t extents)
+        requires(vector_like)
+    : m_start(start)
+    , m_extents(extents){};
+
+    using stride_type = std::conditional_t<vector_like, decltype([] {}), uZ>;
+
+public:
+    using iterator = std::conditional_t<vector_like,
+                                        iterator<T, Const, PackSize>,
+                                        mditerator<T, Basis, PackSize, Const, Contigious>>;
+    template<auto Axis>
+        requires /**/ (Basis::template includes<Axis> && !vector_like)
+    auto slice(uZ index) const noexcept {
+        using mdslice_maker = detail_::mdslice_maker<T, PackSize, Basis, Axis, Contigious, Const>;
+        return mdslice_maker::make(m_start, m_stride, index, m_extents);
+    }
+
+    auto operator[](uZ index) const noexcept {
+        return slice<Basis::outer_axis>(index);
+    }
+
+    auto begin() const noexcept -> iterator {
+        if constexpr (vector_like) {
+            return iterator(m_start, 0);
+        } else {
+            return iterator(m_start, m_stride, m_extents);
+        }
+    }
+
+    auto end() const noexcept -> iterator {
+        if constexpr (vector_like) {
+            auto size = m_extents.front();
+            return iterator(m_start + detail_::packed_offset<PackSize>(size), size % PackSize);
+        } else {
+            return iterator(m_start + m_stride * m_extents.back(), m_stride, m_extents);
+        }
+    }
+
+
+private:
+    T*          m_start;
+    stride_type m_stride{};
+    extents_t   m_extents;
+};
+
+template<typename T, md_basis Basis, uZ PackSize, bool Const, bool Contigious>
+    requires /**/ (Basis::size > 1)
+class mditerator {
+    using mdslice_maker = detail_::mdslice_maker<T, PackSize, Basis, Basis::outer_axis, Contigious, Const>;
+    using extents_t     = std::array<uZ, Basis::size>;
+
+    mditerator(T* ptr, uZ stride, const extents_t& extents)
     : m_ptr(ptr)
     , m_stride(stride)
     , m_extents(extents){};
@@ -451,7 +507,7 @@ public:
         return mdslice_maker::make(m_ptr, m_stride, 0, m_extents);
     }
 
-    using value_type       = decltype(*std::declval<md_iterator>);
+    using value_type       = decltype(*std::declval<mditerator>);
     using iterator_concept = std::random_access_iterator_tag;
     using difference_type  = iZ;
 
@@ -468,40 +524,40 @@ public:
         return *this;
     };
 
-    inline auto operator++() noexcept -> md_iterator& {
+    inline auto operator++() noexcept -> mditerator& {
         m_ptr += m_stride;
         return *this;
     };
-    inline auto operator++(int) noexcept -> md_iterator {
+    inline auto operator++(int) noexcept -> mditerator {
         auto copy = *this;
         m_ptr += m_stride;
         return copy;
     };
-    inline auto operator--() noexcept -> md_iterator& {
+    inline auto operator--() noexcept -> mditerator& {
         m_ptr -= m_stride;
         return *this;
     };
-    inline auto operator--(int) noexcept -> md_iterator {
+    inline auto operator--(int) noexcept -> mditerator {
         auto copy = *this;
         m_ptr -= m_stride;
         return copy;
     };
 
-    [[nodiscard]] inline friend auto operator+(const md_iterator& lhs, difference_type rhs) noexcept
-        -> md_iterator {
+    [[nodiscard]] inline friend auto operator+(const mditerator& lhs, difference_type rhs) noexcept
+        -> mditerator {
         return {lhs.m_ptr + rhs * lhs.m_stride, lhs.m_stride, lhs.m_extents};
     };
-    [[nodiscard]] inline friend auto operator+(difference_type lhs, const md_iterator& rhs) noexcept
-        -> md_iterator {
+    [[nodiscard]] inline friend auto operator+(difference_type lhs, const mditerator& rhs) noexcept
+        -> mditerator {
         return rhs + lhs;
     };
 
-    [[nodiscard]] inline friend auto operator-(const md_iterator& lhs, difference_type rhs) noexcept
-        -> md_iterator {
+    [[nodiscard]] inline friend auto operator-(const mditerator& lhs, difference_type rhs) noexcept
+        -> mditerator {
         return lhs + (-rhs);
     };
 
-    [[nodiscard]] inline auto operator<=>(const md_iterator& other) const noexcept {
+    [[nodiscard]] inline auto operator<=>(const mditerator& other) const noexcept {
         return m_ptr <=> other.m_ptr;
     };
 
