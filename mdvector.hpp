@@ -149,7 +149,10 @@ private:
 public:
     static constexpr uZ size = sizeof...(Axes);
 
+    static constexpr auto inner_axis = value_impl<0, 0, Axes...>::value;
+
     static constexpr auto outer_axis = value_impl<0, size - 1, Axes...>::value;
+
     /**
      * @brief Index of the axis in basis.
      * 
@@ -211,6 +214,8 @@ private:
 public:
     static constexpr uZ size = sizeof...(Axes);
 
+    static constexpr auto inner_axis = value_impl<size - 1, 0, Axes...>::value;
+
     static constexpr auto outer_axis = value_impl<size - 1, size - 1, Axes...>::value;
 
     /**
@@ -241,7 +246,8 @@ namespace detail_ {
 template<typename T, uZ PackSize, md_basis Basis, auto ExcludeAxis, bool Contigious, bool Const>
     requires /**/ (Basis::template contains<ExcludeAxis>)
 struct mdslice_maker {
-    static inline auto make(T* start, uZ stride, uZ index, const std::array<uZ, Basis::size>& extents);
+    static inline auto
+    make(T* start, uZ stride, uZ index, const std::array<uZ, Basis::size>& extents) noexcept;
 };
 }    // namespace detail_
 
@@ -330,7 +336,7 @@ public:
     }
 
     template<auto Axis>
-    auto slice(uZ index) {
+    [[nodiscard]] auto slice(uZ index) noexcept {
         using mdslice_maker = detail_::mdslice_maker<T, PackSize, Basis, Axis, true, false>;
         return mdslice_maker::make(m_ptr, m_stride, index, m_extents);
     };
@@ -368,14 +374,14 @@ using index_to_value_sequence = typename index_to_value_sequence_impl<S>::type;
 
 template<uZ PackSize>
     requires pack_size<PackSize>
-auto packed_offset(uZ offset) -> uZ {
+inline auto packed_offset(uZ offset) noexcept -> uZ {
     return offset + offset / PackSize * PackSize;
 }
 
 template<typename T, uZ PackSize, md_basis Basis, auto ExcludeAxis, bool Contigious, bool Const>
     requires /**/ (Basis::template contains<ExcludeAxis>)
 inline auto mdslice_maker<T, PackSize, Basis, ExcludeAxis, Contigious, Const>::make(
-    T* start, uZ stride, uZ index, const std::array<uZ, Basis::size>& extents) {
+    T* start, uZ stride, uZ index, const std::array<uZ, Basis::size>& extents) noexcept {
     using new_basis = typename Basis::template exclude<ExcludeAxis>;
 
     constexpr auto axis_index     = uZ_constant<Basis::template index<ExcludeAxis>>{};
@@ -458,16 +464,20 @@ public:
                                         mditerator<T, Basis, PackSize, Const, Contigious>>;
     template<auto Axis>
         requires /**/ (Basis::template includes<Axis> && !vector_like)
-    auto slice(uZ index) const noexcept {
+    [[nodiscard]] auto slice(uZ index) const noexcept {
         using mdslice_maker = detail_::mdslice_maker<T, PackSize, Basis, Axis, Contigious, Const>;
         return mdslice_maker::make(m_start, m_stride, index, m_extents);
     }
 
-    auto operator[](uZ index) const noexcept {
+    [[nodiscard]] auto operator[](uZ index) const noexcept {
         return slice<Basis::outer_axis>(index);
     }
 
-    auto begin() const noexcept -> iterator {
+    [[nodiscard]] auto size() const noexcept -> uZ {
+        return m_extents.back();
+    }
+
+    [[nodiscard]] auto begin() const noexcept -> iterator {
         if constexpr (vector_like) {
             return iterator(m_start, 0);
         } else {
@@ -475,7 +485,7 @@ public:
         }
     }
 
-    auto end() const noexcept -> iterator {
+    [[nodiscard]] auto end() const noexcept -> iterator {
         if constexpr (vector_like) {
             auto size = m_extents.front();
             return iterator(m_start + detail_::packed_offset<PackSize>(size), size % PackSize);
@@ -491,6 +501,7 @@ private:
     extents_t   m_extents;
 };
 
+
 template<typename T, md_basis Basis, uZ PackSize, bool Const, bool Contigious>
     requires /**/ (Basis::size > 1)
 class mditerator {
@@ -503,7 +514,7 @@ class mditerator {
     , m_extents(extents){};
 
 public:
-    auto operator*() const noexcept {
+    [[nodiscard]] auto operator*() const noexcept {
         return mdslice_maker::make(m_ptr, m_stride, 0, m_extents);
     }
 
@@ -511,7 +522,7 @@ public:
     using iterator_concept = std::random_access_iterator_tag;
     using difference_type  = iZ;
 
-    auto operator[](uZ index) const noexcept {
+    [[nodiscard]] auto operator[](uZ index) const noexcept {
         return mdslice_maker::make(m_ptr, m_stride, index, m_extents);
     };
 
@@ -568,4 +579,8 @@ private:
     extents_t m_extents{};
 };
 }    // namespace pcx
+namespace std::ranges {
+template<typename T, pcx::uZ PackSize, pcx::md_basis Basis, bool Contigious, bool Const>
+inline constexpr bool enable_borrowed_range<pcx::mdslice<T, PackSize, Basis, Contigious, Const>> = true;
+}
 #endif
