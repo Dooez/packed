@@ -7,6 +7,7 @@
 #include <concepts>
 #include <cstddef>
 #include <cstring>
+#include <iterator>
 #include <memory>
 #include <numeric>
 #include <ranges>
@@ -164,6 +165,9 @@ public:
     template<auto Axis>
         requires value_matched<Axis, Axes...>
     using exclude = basis_from_seq_t<detail_::filter_value_sequence<detail_::value_sequence<Axes...>, Axis>>;
+
+    template<auto Axis>
+    static constexpr bool contains = value_matched<Axis, Axes...>;
 };
 
 /**
@@ -222,10 +226,21 @@ public:
     template<auto Axis>
         requires value_matched<Axis, Axes...>
     using exclude = basis_from_seq_t<detail_::filter_value_sequence<detail_::value_sequence<Axes...>, Axis>>;
+
+    template<auto Axis>
+    static constexpr bool contains = value_matched<Axis, Axes...>;
 };
 
 template<typename T>
 concept md_basis = std::derived_from<T, detail_::basis_base>;
+
+namespace detail_ {
+template<typename T, uZ PackSize, md_basis Basis, auto ExcludeAxis, bool Contigious, bool Const>
+    requires /**/ (Basis::template contains<ExcludeAxis>)
+struct mdslice_maker {
+    static inline auto make(T* start, uZ stride, uZ index, const std::array<uZ, Basis::size>& extents);
+};
+}    // namespace detail_
 
 template<typename T,
          md_basis Basis,
@@ -311,10 +326,10 @@ public:
         deallocate();
     }
 
-    template<auto... Axis, typename... Tidx>
-        requires(sizeof...(Axis) == sizeof...(Tidx) && (std::same_as<Tidx, uZ> && ...))
-    auto slice(Tidx... indexes){
-
+    template<auto Axis>
+    auto slice(uZ index) {
+        using mdslice_maker = detail_::mdslice_maker<T, PackSize, Basis, Axis, true, false>;
+        return mdslice_maker::make(m_ptr, m_stride, index, m_extents);
     };
 
 private:
@@ -330,30 +345,19 @@ private:
     };
 };
 
-template<typename T, md_basis Basis, bool Contigious, bool Const>
+template<typename T, uZ PackSize, md_basis Basis, bool Contigious, bool Const>
 class mdslice : public std::ranges::view_base {
-    using extent_t = std::array<uZ, Basis::size>;
+    using extents_t = std::array<uZ, Basis::size>;
 
-    template<typename S>
-    struct value_to_index_sequence_impl {};
-    template<uZ... Is>
-    struct value_to_index_sequence_impl<detail_::value_sequence<Is...>> {
-        using type = std::index_sequence<Is...>;
-    };
-    template<typename S>
-    struct index_to_value_sequence_impl {};
-    template<uZ... Is>
-    struct index_to_value_sequence_impl<std::index_sequence<Is...>> {
-        using type = detail_::value_sequence<Is...>;
-    };
-    template<typename S>
-    using value_to_index_sequence = typename value_to_index_sequence_impl<S>::type;
-    template<typename S>
-    using index_to_value_sequence = typename index_to_value_sequence_impl<S>::type;
+    template<typename T_,
+             typename PackSize_,
+             typename Basis_,
+             auto ExcludeAxis,
+             bool Contigious_,
+             bool Const_>
+        requires /**/ (Basis_::template contains<ExcludeAxis>)
+    friend class detail_::mdslice_maker;
 
-    using contigious_size_t = std::conditional_t<Contigious, uZ, decltype([] {})>;
-
-public:
     /**
      * @brief Construct a new mdslice object
      * 
@@ -361,78 +365,19 @@ public:
      * @param stride 
      * @param extents Sizes of axis. 
      */
-    mdslice(T* start, uZ stride, extent_t extents)
+    mdslice(T* start, uZ stride, extents_t extents)
     : m_start(start)
     , m_stride(stride)
     , m_extents(extents){};
 
-    auto operator[](uZ index) {
-        if constexpr (Basis::size == 1) {
-            return *(m_start + m_stride * index);
-        } else {
-            constexpr auto axis = Basis::template axis<Basis::size - 1>;
-            return slice_impl<axis>(index);
-        }
-    };
-
-    auto operator++() {
-        m_start += m_stride;
-    }
-    auto operator*() {
-        constexpr auto axis = Basis::template axis<Basis::size - 1>;
-        return slice_impl<axis>(0);
-    }
-
-
-    template<auto Axis>
-    inline auto slice(uZ index) {
-        return slice_impl<Axis>(index);
-    }
-
-    template<auto Axis>
-    inline auto slice_impl(uZ index) {
-        using new_basis               = typename Basis::template exclude<Axis>;
-        constexpr auto axis_index     = uZ_constant<Basis::template index<Axis>>{};
-        constexpr bool new_contigious = Contigious && Basis::template index<Axis> != 0;
-
-        bool valid_index = index < m_extents[axis_index];
-
-        constexpr auto get_offset = [axis_index](auto&& extents, uZ index, uZ stride) {
-            if constexpr (Contigious && axis_index == 0) {
-                return packed_offset(index);
-            } else {
-                for (iZ i = Basis::size - 1; i > axis_index; --i) {
-                    stride /= extents[i];
-                }
-                return stride * index;
-            }
-        };
-
-        auto new_start   = m_start + get_offset(m_extents, index, m_stride);
-        auto new_stride  = (axis_index == (Basis::size - 1)) ? m_stride / m_extents.back() : m_stride;
-        auto new_extents = []<uZ I>(auto&& extents, uZ_constant<I>) {
-            using indexes  = index_to_value_sequence<decltype(std::make_index_sequence<Basis::size>{})>;
-            using filtered = value_to_index_sequence<detail_::filter_value_sequence<indexes, I>>;
-            return []<uZ... Is>(auto&& extents, std::index_sequence<Is...>) {
-                return std::array{extents[Is]...};
-            }(extents, filtered{});
-        }(m_extents, axis_index);
-
-        return mdslice<T, new_basis, new_contigious, Const>(new_start, new_stride, new_extents);
-    };
-
-
+public:
 private:
-    T*                          m_start;
-    uZ                          m_stride;
-    std::array<uZ, Basis::size> m_extents;
-
-    static auto packed_offset(uZ offset) {
-        //TODO: actually calculate index
-        return offset * 2;
-    };
+    T*        m_start;
+    uZ        m_stride;
+    extents_t m_extents;
 };
 
+namespace detail_ {
 template<typename S>
 struct value_to_index_sequence_impl {};
 template<uZ... Is>
@@ -450,18 +395,24 @@ using value_to_index_sequence = typename value_to_index_sequence_impl<S>::type;
 template<typename S>
 using index_to_value_sequence = typename index_to_value_sequence_impl<S>::type;
 
-template<typename T, md_basis Basis, auto Axis, bool Contigious, bool Const>
-inline auto generic_slice_impl(T* start, uZ stride, uZ index, const std::array<uZ, Basis::size>& extents) {
+template<uZ PackSize>
+    requires pack_size<PackSize>
+auto packed_offset(uZ offset) -> uZ {
+    return offset + offset / PackSize * PackSize;
+}
+
+template<typename T, uZ PackSize, md_basis Basis, auto Axis, bool Contigious, bool Const>
+    requires /**/ (Basis::template contains<Axis>)
+inline auto mdslice_maker<T, PackSize, Basis, Axis, Contigious, Const>::make(
+    T* start, uZ stride, uZ index, const std::array<uZ, Basis::size>& extents) {
     using new_basis = typename Basis::template exclude<Axis>;
-    if constexpr (new_basis::size == 1) {}
 
     constexpr auto axis_index     = uZ_constant<Basis::template index<Axis>>{};
     constexpr bool new_contigious = Contigious && Basis::template index<Axis> != 0;
-    constexpr auto packed_offset  = [](uZ offset) { return offset * 2; };
 
     constexpr auto get_offset = [axis_index](auto&& extents, uZ index, uZ stride) {
         if constexpr (Contigious && axis_index == 0) {
-            return packed_offset(index);
+            return packed_offset<PackSize>(index);
         } else {
             for (iZ i = Basis::size - 1; i > axis_index; --i) {
                 stride /= extents[i];
@@ -480,26 +431,85 @@ inline auto generic_slice_impl(T* start, uZ stride, uZ index, const std::array<u
         }(extents, filtered{});
     }(extents, axis_index);
 
-    return mdslice<T, new_basis, new_contigious, Const>(new_start, new_stride, new_extents);
+    return mdslice<T, PackSize, new_basis, new_contigious, Const>(new_start, new_stride, new_extents);
 };
+}    // namespace detail_
 
 template<typename T, md_basis Basis, uZ PackSize, bool Const, bool Contigious>
 class md_iterator {
+    using mdslice_maker =
+        detail_::mdslice_maker<T, PackSize, Basis, Basis::template axis<Basis::size - 1>, Contigious, Const>;
+    using extents_t = std::array<uZ, Basis::size>;
+
+    md_iterator(T* ptr, uZ stride, const extents_t& extents)
+    : m_ptr(ptr)
+    , m_stride(stride)
+    , m_extents(extents){};
+
 public:
-    auto operator*() {
-        if constexpr (Basis::size == 1) {
-            return cx_ref<T, Const, PackSize>(m_ptr);
-        } else {
-            constexpr auto axis = Basis::template axis<Basis::size - 1>;
-            return generic_slice_impl<T, Basis, axis, Contigious, Const>(m_ptr, m_stride, 0, m_extents);
-        }
+    auto operator*() const noexcept {
+        return mdslice_maker::make(m_ptr, m_stride, 0, m_extents);
     }
 
-private:
-    T*                          m_ptr{};
-    uZ                          m_stride{};
-    std::array<uZ, Basis::size> m_extents{};
-};
+    using value_type       = decltype(*std::declval<md_iterator>);
+    using iterator_concept = std::random_access_iterator_tag;
+    using difference_type  = iZ;
 
+    auto operator[](uZ index) const noexcept {
+        return mdslice_maker::make(m_ptr, m_stride, index, m_extents);
+    };
+
+    inline auto operator+=(difference_type n) noexcept {
+        m_ptr += m_stride * n;
+        return *this;
+    };
+    inline auto operator-=(difference_type n) noexcept {
+        m_ptr -= m_stride * n;
+        return *this;
+    };
+
+    inline auto operator++() noexcept -> md_iterator& {
+        m_ptr += m_stride;
+        return *this;
+    };
+    inline auto operator++(int) noexcept -> md_iterator {
+        auto copy = *this;
+        m_ptr += m_stride;
+        return copy;
+    };
+    inline auto operator--() noexcept -> md_iterator& {
+        m_ptr -= m_stride;
+        return *this;
+    };
+    inline auto operator--(int) noexcept -> md_iterator {
+        auto copy = *this;
+        m_ptr -= m_stride;
+        return copy;
+    };
+
+    [[nodiscard]] inline friend auto operator+(const md_iterator& lhs, difference_type rhs) noexcept
+        -> md_iterator {
+        return {lhs.m_ptr + rhs * lhs.m_stride, lhs.m_stride, lhs.m_extents};
+    };
+    [[nodiscard]] inline friend auto operator+(difference_type lhs, const md_iterator& rhs) noexcept
+        -> md_iterator {
+        return rhs + lhs;
+    };
+
+    [[nodiscard]] inline friend auto operator-(const md_iterator& lhs, difference_type rhs) noexcept
+        -> md_iterator {
+        return lhs + (-rhs);
+    };
+
+    [[nodiscard]] inline auto operator<=>(const md_iterator& other) const noexcept {
+        return m_ptr <=> other.m_ptr;
+    };
+
+
+private:
+    T*        m_ptr{};
+    uZ        m_stride{};
+    extents_t m_extents{};
+};
 }    // namespace pcx
 #endif
