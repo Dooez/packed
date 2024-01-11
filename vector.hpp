@@ -411,6 +411,7 @@ class iterator {
         requires packed_floating_point<VT, VPackSize>
     friend class vector;
     friend class iterator<T, true, PackSize>;
+    friend class detail_::iterator_maker<T, Const, PackSize>;
 
 public:
     using real_type       = T;
@@ -545,6 +546,7 @@ class iterator<T, Const, 1> {
         requires packed_floating_point<VT, VPackSize>
     friend class vector;
     friend class iterator<T, true, 1>;
+    friend class detail_::iterator_maker<T, Const, 1>;
 
 public:
     using real_type       = T;
@@ -659,6 +661,15 @@ public:
 private:
     real_pointer m_ptr{};
 };
+
+namespace detail_ {
+template<typename T, bool Const, uZ PackSize>
+struct iterator_maker {
+    auto make(T* data_ptr, iZ index) {
+        return iterator<T, Const, PackSize>(data_ptr, index);
+    }
+};
+}    // namespace detail_
 
 template<typename T, bool Const = false, uZ PackSize = pcx::default_pack_size<T>>
 class subrange : public rv::view_base {
@@ -913,4 +924,9 @@ private:
     pointer m_ptr{};
 };
 }    // namespace pcx
+namespace std::ranges {
+template<typename T, pcx::uZ PackSize, bool Const>
+inline constexpr bool enable_borrowed_range<pcx::subrange<T, Const, PackSize>> = true;
+}
+
 #endif

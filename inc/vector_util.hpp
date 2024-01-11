@@ -32,9 +32,9 @@ using i8  = int8_t;
 
 template<typename T>
     requires std::same_as<T, float> || std::same_as<T, double>
-constexpr const std::size_t default_pack_size = 32 / sizeof(T);
+constexpr const uZ default_pack_size = 32 / sizeof(T);
 
-constexpr const std::size_t dynamic_size = -1;
+constexpr const uZ dynamic_size = -1;
 
 template<typename T, uZ PackSize>
 concept packed_floating_point = floating_point<T> && pack_size<PackSize>;
@@ -43,18 +43,22 @@ template<typename T, uZ PackSize, typename Allocator>
     requires packed_floating_point<T, PackSize>
 class vector;
 
-template<typename T, bool Const, std::size_t PackSize>
+template<typename T, bool Const, uZ PackSize>
 class iterator;
+namespace detail_ {
+template<typename T, bool Const, uZ PackSize>
+struct iterator_maker;
+}
 
-template<typename T, bool Const, std::size_t PackSize>
+template<typename T, bool Const, uZ PackSize>
 class subrange;
 
-template<typename T, bool Const, std::size_t PackSize>
+template<typename T, bool Const, uZ PackSize>
 class cx_ref;
 
 
-template<std::size_t PackSize>
-constexpr auto pidx(std::size_t idx) -> std::size_t {
+template<uZ PackSize>
+constexpr auto pidx(uZ idx) -> uZ {
     return idx + idx / PackSize * PackSize;
 }
 
@@ -77,11 +81,11 @@ public:
     aligned_allocator& operator=(const aligned_allocator&) noexcept = default;
     aligned_allocator& operator=(aligned_allocator&&) noexcept      = default;
 
-    [[nodiscard]] auto allocate(std::size_t n) -> value_type* {
+    [[nodiscard]] auto allocate(uZ n) -> value_type* {
         return reinterpret_cast<value_type*>(::operator new[](n * sizeof(value_type), Alignment));
     }
 
-    void deallocate(value_type* p, std::size_t) {
+    void deallocate(value_type* p, uZ) {
         ::operator delete[](reinterpret_cast<void*>(p), Alignment);
     }
 
@@ -101,6 +105,85 @@ bool operator==(const aligned_allocator<T, Alignment>&, const aligned_allocator<
 // bool operator!=(const aligned_allocator<T, Alignment>&, const aligned_allocator<T, Alignment>&) noexcept {
 //     return false;
 // }
+
+namespace detail_ {
+
+template<typename T>
+struct is_std_complex_floating_point {
+    static constexpr bool value = false;
+};
+
+template<std::floating_point F>
+struct is_std_complex_floating_point<std::complex<F>> {
+    using real_type             = F;
+    static constexpr bool value = true;
+};
+
+}    // namespace detail_
+
+template<typename V>
+struct cx_vector_traits {
+    using real_type               = decltype([] {});
+    static constexpr uZ pack_size = 0;
+};
+
+template<typename R>
+    requires rv::contiguous_range<R> && detail_::is_std_complex_floating_point<rv::range_value_t<R>>::value
+struct cx_vector_traits<R> {
+    using real_type = typename detail_::is_std_complex_floating_point<rv::range_value_t<R>>::real_type;
+    static constexpr uZ pack_size = 1;
+
+    static auto re_data(R& vector) {
+        return reinterpret_cast<real_type*>(rv::data(vector));
+    }
+    static auto re_data(const R& vector) {
+        return reinterpret_cast<const real_type*>(rv::data(vector));
+    }
+    static auto size(const R& vector) {
+        return rv::size(vector);
+    }
+};
+
+template<typename T_, uZ PackSize_, typename Alloc_>
+struct cx_vector_traits<pcx::vector<T_, PackSize_, Alloc_>> {
+    using real_type               = T_;
+    static constexpr uZ pack_size = PackSize_;
+
+    static auto re_data(pcx::vector<T_, PackSize_, Alloc_>& vector) {
+        return vector.data();
+    }
+    static auto re_data(const pcx::vector<T_, PackSize_, Alloc_>& vector) {
+        return vector.data();
+    }
+    static auto size(const pcx::vector<T_, PackSize_, Alloc_>& vector) {
+        return vector.size();
+    }
+};
+
+template<typename T_, bool Const_, uZ PackSize_>
+struct cx_vector_traits<pcx::subrange<T_, Const_, PackSize_>> {
+    using real_type               = T_;
+    static constexpr uZ pack_size = PackSize_;
+
+    static auto re_data(pcx::subrange<T_, false, PackSize_> subrange) {
+        if (!subrange.aligned()) {
+            throw(std::invalid_argument(std::string(
+                "subrange is not aligned. pcx::subrange must be aligned to be accessed as a vector")));
+        }
+        return &(*subrange.begin());
+    }
+    static auto size(pcx::subrange<T_, Const_, PackSize_> subrange) {
+        return subrange.size();
+    }
+};
+
+template<typename T, typename V>
+concept complex_vector_of = std::same_as<T, typename cx_vector_traits<V>::real_type>;
+
+template<typename T, typename R>
+concept range_of_complex_vector_of = rv::random_access_range<R> &&    //
+                                     complex_vector_of<T, std::remove_pointer_t<rv::range_value_t<R>>>;
+
 
 namespace simd {
 
@@ -146,7 +229,7 @@ struct convert<float> {
         }
     }
 
-    template<std::size_t PackTo>
+    template<uZ PackTo>
     static inline auto combine(auto... args) {
         auto tup = std::make_tuple(args...);
         if constexpr (PackTo == 1) {
@@ -173,14 +256,14 @@ struct convert<float> {
 
 }    // namespace simd
 
-template<typename T, bool Const, std::size_t PackSize>
+template<typename T, bool Const, uZ PackSize>
 inline void packed_copy(iterator<T, Const, PackSize> first,
                         iterator<T, Const, PackSize> last,
                         iterator<T, false, PackSize> d_first) {
     packed_copy(iterator<T, true, PackSize>(first), iterator<T, true, PackSize>(last), d_first);
 }
 
-template<typename T, std::size_t PackSize>
+template<typename T, uZ PackSize>
 void packed_copy(iterator<T, true, PackSize>  first,
                  iterator<T, true, PackSize>  last,
                  iterator<T, false, PackSize> d_first) {
@@ -204,9 +287,9 @@ void packed_copy(iterator<T, true, PackSize>  first,
 };
 
 
-template<typename T, std::size_t PackSize>
+template<typename T, uZ PackSize>
 void fill(iterator<T, false, PackSize> first, iterator<T, false, PackSize> last, std::complex<T> value) {
-    constexpr const std::size_t reg_size = 32 / sizeof(T);
+    constexpr const uZ reg_size = 32 / sizeof(T);
 
     while (first < std::min(first.align_upper(), last)) {
         *first = value;
@@ -227,7 +310,7 @@ void fill(iterator<T, false, PackSize> first, iterator<T, false, PackSize> last,
     }
 };
 
-template<typename T, std::size_t PackSize, typename U>
+template<typename T, uZ PackSize, typename U>
     requires std::convertible_to<U, std::complex<T>>
 inline void fill(iterator<T, false, PackSize> first, iterator<T, false, PackSize> last, U value) {
     auto value_cx = std::complex<T>(value);

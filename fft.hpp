@@ -29,20 +29,8 @@
 
 // NOLINTBEGIN (*magic-numbers)
 namespace pcx {
+
 namespace detail_ {
-
-template<typename T>
-struct is_std_complex_floating_point {
-    static constexpr bool value = false;
-};
-
-template<std::floating_point F>
-struct is_std_complex_floating_point<std::complex<F>> {
-    using real_type             = F;
-    static constexpr bool value = true;
-};
-
-
 namespace fft {
 //TODO: Replace with tables.
 constexpr auto log2i(u64 num) -> uZ {
@@ -686,68 +674,6 @@ struct node<8> {
 }    // namespace fft
 }    // namespace detail_
 
-template<typename V>
-struct cx_vector_traits {
-    using real_type               = decltype([] {});
-    static constexpr uZ pack_size = 0;
-};
-
-template<typename R>
-    requires rv::contiguous_range<R> && detail_::is_std_complex_floating_point<rv::range_value_t<R>>::value
-struct cx_vector_traits<R> {
-    using real_type = typename detail_::is_std_complex_floating_point<rv::range_value_t<R>>::real_type;
-    static constexpr uZ pack_size = 1;
-
-    static auto re_data(R& vector) {
-        return reinterpret_cast<real_type*>(rv::data(vector));
-    }
-    static auto re_data(const R& vector) {
-        return reinterpret_cast<const real_type*>(rv::data(vector));
-    }
-    static auto size(const R& vector) {
-        return rv::size(vector);
-    }
-};
-
-template<typename T_, uZ PackSize_, typename Alloc_>
-struct cx_vector_traits<pcx::vector<T_, PackSize_, Alloc_>> {
-    using real_type               = T_;
-    static constexpr uZ pack_size = PackSize_;
-
-    static auto re_data(pcx::vector<T_, PackSize_, Alloc_>& vector) {
-        return vector.data();
-    }
-    static auto re_data(const pcx::vector<T_, PackSize_, Alloc_>& vector) {
-        return vector.data();
-    }
-    static auto size(const pcx::vector<T_, PackSize_, Alloc_>& vector) {
-        return vector.size();
-    }
-};
-
-template<typename T_, bool Const_, uZ PackSize_>
-struct cx_vector_traits<pcx::subrange<T_, Const_, PackSize_>> {
-    using real_type               = T_;
-    static constexpr uZ pack_size = PackSize_;
-
-    static auto re_data(pcx::subrange<T_, false, PackSize_> subrange) {
-        if (!subrange.aligned()) {
-            throw(std::invalid_argument(std::string(
-                "subrange is not aligned. pcx::subrange must be aligned to be accessed as a vector")));
-        }
-        return &(*subrange.begin());
-    }
-    static auto size(pcx::subrange<T_, Const_, PackSize_> subrange) {
-        return subrange.size();
-    }
-};
-
-template<typename T, typename V>
-concept complex_vector_of = std::same_as<T, typename cx_vector_traits<V>::real_type>;
-
-template<typename T, typename R>
-concept range_of_complex_vector_of = rv::random_access_range<R> &&    //
-                                     complex_vector_of<T, std::remove_pointer_t<rv::range_value_t<R>>>;
 
 /**
  * @brief Controls how fft output and ifft input is ordered;
