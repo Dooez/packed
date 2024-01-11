@@ -44,7 +44,7 @@ int main() {
 
     auto storage = xyz_storage({32, 16, 8});
 
-    auto s1 = storage.slice<x>(0);
+    auto s1 = storage.slice<z>(0);
     auto s11 = s1.slice<y>(0);
 
 

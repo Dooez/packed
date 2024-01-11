@@ -2,10 +2,9 @@
 #define MDVECTOR_HPP
 
 #include "types.hpp"
+#include "vector.hpp"
 #include "vector_util.hpp"
 
-#include <concepts>
-#include <cstddef>
 #include <cstring>
 #include <iterator>
 #include <memory>
@@ -559,7 +558,9 @@ inline auto mdslice_maker<T, PackSize, Basis, ExcludeAxis, Contigious, Const>::m
     };
 
     auto new_start = start + get_offset(extents, index, stride);
-    if constexpr (new_basis::size == 1 && new_contigious) {
+    if constexpr (Basis::size == 1) {
+        return cx_ref<T, Const, PackSize>(new_start);
+    } else if constexpr (new_basis::size == 1 && new_contigious) {
         using iterator_maker = detail_::iterator_maker<T, Const, PackSize>;
         return subrange(iterator_maker::make(new_start, 0), extents.front());
     } else {

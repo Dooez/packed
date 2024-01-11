@@ -666,7 +666,7 @@ private:
 namespace detail_ {
 template<typename T, bool Const, uZ PackSize>
 struct iterator_maker {
-    auto make(T* data_ptr, iZ index) {
+    inline static auto make(T* data_ptr, iZ index) {
         return iterator<T, Const, PackSize>(data_ptr, index);
     }
 };
