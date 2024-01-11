@@ -719,6 +719,10 @@ int test_par_fft_float(std::size_t size) {
         pcx::fft_unit<float, order>                                       check_unit(size);
 
         const auto st_par_c{st_par};
+
+        for (auto& iv: st_par) {
+            pcx::fill(iv.begin(), iv.end(), 0);
+        }
         par_unit(st_par, st_par_c);
         // check_unit(vec_check);
         fft_dif<4>(vec_check);

@@ -252,7 +252,6 @@ struct mdslice_maker {
 }    // namespace detail_
 
 template<typename T, md_basis Basis, uZ PackSize, bool Const, bool Contigious>
-    requires /**/ (Basis::size > 1)
 class mditerator;
 
 template<typename T,
@@ -386,22 +385,16 @@ private:
 
     inline void deallocate() noexcept {
         if (m_ptr != nullptr) {
-            allocator_traits::deallocate(m_ptr, m_stride * m_extents.back());
+            allocator_traits::deallocate(m_allocator, m_ptr, m_stride * m_extents.back());
         }
     };
 };
 
 template<typename T, uZ PackSize, md_basis Basis, bool Contigious, bool Const>
-    requires /**/ (Basis::size > 1)
 class mdslice : public std::ranges::view_base {
     using extents_t = std::array<uZ, Basis::size>;
 
-    template<typename T_,
-             typename PackSize_,
-             typename Basis_,
-             auto ExcludeAxis,
-             bool Contigious_,
-             bool Const_>
+    template<typename T_, uZ PackSize_, md_basis Basis_, auto ExcludeAxis, bool Contigious_, bool Const_>
         requires /**/ (Basis_::template contains<ExcludeAxis>)
     friend class detail_::mdslice_maker;
 
@@ -422,7 +415,7 @@ public:
     using iterator = mditerator<T, Basis, PackSize, Const, Contigious>;
 
     template<auto Axis>
-        requires /**/ (Basis::template includes<Axis>)
+        requires /**/ (Basis::template contains<Axis>)
     [[nodiscard]] auto slice(uZ index) const noexcept {
         using mdslice_maker = detail_::mdslice_maker<T, PackSize, Basis, Axis, Contigious, Const>;
         return mdslice_maker::make(m_start, m_stride, index, m_extents);
@@ -452,7 +445,6 @@ private:
 };
 
 template<typename T, md_basis Basis, uZ PackSize, bool Const, bool Contigious>
-    requires /**/ (Basis::size > 1)
 class mditerator {
     using mdslice_maker = detail_::mdslice_maker<T, PackSize, Basis, Basis::outer_axis, Contigious, Const>;
     using extents_t     = std::array<uZ, Basis::size>;

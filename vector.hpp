@@ -31,8 +31,9 @@ private:
     using alloc_traits = std::allocator_traits<Allocator>;
 
 public:
-    using real_type    = T;
-    using real_pointer = T*;
+    using real_type          = T;
+    using real_pointer       = T*;
+    using const_real_pointer = const T*;
 
     using allocator_type  = Allocator;
     using size_type       = uZ;
@@ -293,7 +294,7 @@ public:
     [[nodiscard]] auto data() noexcept -> real_pointer {
         return m_ptr;
     }
-    [[nodiscard]] auto data() const noexcept -> const real_pointer {
+    [[nodiscard]] auto data() const noexcept -> const_real_pointer {
         return m_ptr;
     }
 

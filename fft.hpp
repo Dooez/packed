@@ -2588,7 +2588,7 @@ private:
              bool Reverse   = false,
              typename... Optional>
     inline static void long_node(const std::array<T*, NodeSize>& dest, uZ size, const Optional&... optional) {
-        using src_type     = std::array<const T*, NodeSize>;
+        using src_type     = const std::array<const T*, NodeSize>;
         constexpr bool Src = detail_::has_type<src_type, Optional...>;
 
         const auto& source = [](const auto&... optional) {

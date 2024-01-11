@@ -123,7 +123,7 @@ struct is_std_complex_floating_point<std::complex<F>> {
 
 template<typename V>
 struct cx_vector_traits {
-    using real_type               = decltype([] {});
+    using real_type               = void;
     static constexpr uZ pack_size = 0;
 };
 
@@ -133,10 +133,10 @@ struct cx_vector_traits<R> {
     using real_type = typename detail_::is_std_complex_floating_point<rv::range_value_t<R>>::real_type;
     static constexpr uZ pack_size = 1;
 
-    static auto re_data(R& vector) {
+    static auto re_data(R& vector) -> real_type* {
         return reinterpret_cast<real_type*>(rv::data(vector));
     }
-    static auto re_data(const R& vector) {
+    static auto re_data(const R& vector) -> const real_type* {
         return reinterpret_cast<const real_type*>(rv::data(vector));
     }
     static auto size(const R& vector) {
@@ -149,10 +149,10 @@ struct cx_vector_traits<pcx::vector<T_, PackSize_, Alloc_>> {
     using real_type               = T_;
     static constexpr uZ pack_size = PackSize_;
 
-    static auto re_data(pcx::vector<T_, PackSize_, Alloc_>& vector) {
+    static auto re_data(pcx::vector<T_, PackSize_, Alloc_>& vector) -> real_type* {
         return vector.data();
     }
-    static auto re_data(const pcx::vector<T_, PackSize_, Alloc_>& vector) {
+    static auto re_data(const pcx::vector<T_, PackSize_, Alloc_>& vector) -> const real_type* {
         return vector.data();
     }
     static auto size(const pcx::vector<T_, PackSize_, Alloc_>& vector) {
@@ -162,13 +162,12 @@ struct cx_vector_traits<pcx::vector<T_, PackSize_, Alloc_>> {
 
 template<typename T_, bool Const_, uZ PackSize_>
 struct cx_vector_traits<pcx::subrange<T_, Const_, PackSize_>> {
-    using real_type               = T_;
-    static constexpr uZ pack_size = PackSize_;
+    using real_type = T_;
 
-    static auto re_data(pcx::subrange<T_, false, PackSize_> subrange) {
+    static auto re_data(pcx::subrange<T_, Const_, PackSize_> subrange) {
         if (!subrange.aligned()) {
-            throw(std::invalid_argument(std::string(
-                "subrange is not aligned. pcx::subrange must be aligned to be accessed as a vector")));
+            throw(std::invalid_argument(
+                "subrange is not aligned. pcx::subrange must be aligned to be accessed as a vector"));
         }
         return &(*subrange.begin());
     }
