@@ -397,6 +397,10 @@ class mdslice : public std::ranges::view_base {
         requires /**/ (Basis_::template contains<ExcludeAxis>)
     friend class detail_::mdslice_maker;
 
+    static constexpr bool vector_like = Basis::size == 1 && Contigious;
+
+    using stride_t = std::conditional_t<vector_like, decltype([] {}), uZ>;
+
     /**
      * @brief Construct a new mdslice object
      * 
@@ -405,13 +409,27 @@ class mdslice : public std::ranges::view_base {
      * @param extents   Sizes of axes.
      */
     mdslice(T* start, uZ stride, extents_t extents)
+        requires(!vector_like)
     : m_start(start)
     , m_stride(stride)
     , m_extents(extents){};
 
+    /**
+     * @brief Construct a new mdslice object
+     * 
+     * @param start First
+     * @param stride 
+     * @param extents   Sizes of axes.
+     */
+    mdslice(T* start, uZ /*stride*/, extents_t extents)
+        requires(vector_like)
+    : m_start(start)
+    , m_extents(extents){};
 
 public:
-    using iterator = mditerator<T, Basis, PackSize, Const, Contigious>;
+    using iterator = std::conditional_t<vector_like,
+                                        iterator<T, Const, PackSize>,
+                                        mditerator<T, Basis, PackSize, Const, Contigious>>;
 
     template<auto Axis>
         requires /**/ (Basis::template contains<Axis>)
@@ -429,11 +447,20 @@ public:
     }
 
     [[nodiscard]] auto begin() const noexcept -> iterator {
-        return iterator(m_start, m_stride, m_extents);
+        if constexpr (vector_like) {
+            return detail_::iterator_maker<T, Const, PackSize>::make(m_start, 0);
+        } else {
+            return iterator(m_start, m_stride, m_extents);
+        }
     }
 
     [[nodiscard]] auto end() const noexcept -> iterator {
-        return iterator(m_start + m_stride * m_extents.back(), m_stride, m_extents);
+        if constexpr (vector_like) {
+            return detail_::iterator_maker<T, Const, PackSize>::make(
+                m_start + pidx<PackSize>(m_extents.front()), 0);
+        } else {
+            return iterator(m_start + m_stride * m_extents.back(), m_stride, m_extents);
+        }
     }
 
 
