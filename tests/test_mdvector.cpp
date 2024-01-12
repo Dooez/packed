@@ -40,7 +40,7 @@ int main() {
     static_assert(!pcx::md_basis<ax1>);
 
     using xyz_basis   = pcx::left_first_basis<x, y, z>;
-    using xyz_storage = pcx::mdarray<float, xyz_basis>;
+    using xyz_storage = pcx::mdstorage<float, xyz_basis>;
 
     auto storage = xyz_storage({32, 16, 8});
 

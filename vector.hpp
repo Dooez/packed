@@ -21,7 +21,7 @@ namespace pcx {
  */
 template<typename T, uZ PackSize = pcx::default_pack_size<T>, typename Allocator = pcx::aligned_allocator<T>>
     requires packed_floating_point<T, PackSize>
-class vector {
+class vector : public detail_::aligned_base<true> {
     friend class detail_::expression_traits;
     template<typename OT, uZ OPackSize, typename OAllocator>
         requires packed_floating_point<OT, OPackSize>

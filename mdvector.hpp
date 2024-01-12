@@ -3,6 +3,7 @@
 
 #include "types.hpp"
 #include "vector.hpp"
+#include "vector_arithm.hpp"
 #include "vector_util.hpp"
 
 #include <cstring>
@@ -257,8 +258,8 @@ template<typename T,
          md_basis Basis,
          uZ       PackSize  = default_pack_size<T>,
          typename Allocator = aligned_allocator<T>>
-    requires pack_size<PackSize> 
-class mdarray {
+    requires pack_size<PackSize>
+class mdstorage : public detail_::aligned_base<Basis::size == 1> {
     using allocator_traits = std::allocator_traits<Allocator>;
 
     static constexpr bool vector_like = Basis::size == 1;
@@ -274,7 +275,7 @@ public:
      * @param alignment Contigious axis storage is padded to a multiple of the least common multiple of `alignment` and `PackSize`.
      * @param allocator 
      */
-    explicit mdarray(const extents_type& extents, uZ alignment = 1, Allocator allocator = {})
+    explicit mdstorage(const extents_type& extents, uZ alignment = 1, Allocator allocator = {})
     : m_extents(extents)
     , m_allocator(allocator) {
         uZ align    = std::lcm(alignment, PackSize * 2);
@@ -292,12 +293,12 @@ public:
         std::memset(m_ptr, 0, size * sizeof(T));
     };
 
-    explicit mdarray() = default;
+    explicit mdstorage() = default;
 
-    mdarray(const mdarray& other)            = delete;
-    mdarray& operator=(const mdarray& other) = delete;
+    mdstorage(const mdstorage& other)            = delete;
+    mdstorage& operator=(const mdstorage& other) = delete;
 
-    mdarray(mdarray&& other) noexcept
+    mdstorage(mdstorage&& other) noexcept
     : m_allocator(std::move(other.m_allocator))
     , m_ptr(other.m_ptr)
     , m_stride(other.m_stride)
@@ -307,8 +308,8 @@ public:
         other.m_extents = {};
     };
 
-    mdarray& operator=(mdarray&& other) noexcept(allocator_traits::propagate_on_move_assignment::value ||
-                                                 allocator_traits::is_always_equal::value) {
+    mdstorage& operator=(mdstorage&& other) noexcept(allocator_traits::propagate_on_move_assignment::value ||
+                                                     allocator_traits::is_always_equal::value) {
         using std::swap;
         if constexpr (allocator_traits::propagate_on_move_assignment::value) {
             deallocate();
@@ -341,7 +342,7 @@ public:
         }
     }
 
-    ~mdarray() noexcept {
+    ~mdstorage() noexcept {
         deallocate();
     }
 
@@ -438,7 +439,9 @@ private:
 };
 
 template<typename T, uZ PackSize, md_basis Basis, bool Contigious, bool Const>
-class mdslice : public std::ranges::view_base {
+class mdslice
+: public std::ranges::view_base
+, detail_::aligned_base<Basis::size == 1 && Contigious> {
     using extents_type = std::array<uZ, Basis::size>;
 
     template<typename T_, uZ PackSize_, md_basis Basis_, auto ExcludeAxis, bool Contigious_, bool Const_>
@@ -473,6 +476,7 @@ class mdslice : public std::ranges::view_base {
         requires(vector_like)
     : m_start(start)
     , m_extents(extents){};
+
 
 public:
     using iterator = std::conditional_t<vector_like,

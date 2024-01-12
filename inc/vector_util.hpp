@@ -13,6 +13,7 @@
 #include <immintrin.h>
 #include <new>
 #include <tuple>
+#include <type_traits>
 
 namespace pcx {
 using f32 = float;
@@ -119,7 +120,26 @@ struct is_std_complex_floating_point<std::complex<F>> {
     static constexpr bool value = true;
 };
 
+template<typename T>
+struct is_pcx_iterator {
+    static constexpr auto value = std::false_type{};
+};
+
+template<typename T, bool Const, uZ PackSize>
+struct is_pcx_iterator<iterator<T, Const, PackSize>> {
+    static constexpr auto value = std::true_type{};
+};
+
+template<bool Always>
+struct aligned_base {};
+template<>
+struct aligned_base<true> {
+    static constexpr std::true_type always_aligned{};
+};
 }    // namespace detail_
+
+template<typename T>
+concept always_aligned = std::derived_from<T, detail_::aligned_base<true>>;
 
 template<typename V>
 struct cx_vector_traits {
@@ -144,37 +164,72 @@ struct cx_vector_traits<R> {
     }
 };
 
-template<typename T_, uZ PackSize_, typename Alloc_>
-struct cx_vector_traits<pcx::vector<T_, PackSize_, Alloc_>> {
-    using real_type               = T_;
-    static constexpr uZ pack_size = PackSize_;
+template<typename R>
+    requires(detail_::is_pcx_iterator<rv::iterator_t<R>>::value)
+struct cx_vector_traits<R> {
+    using real_type               = typename rv::iterator_t<R>::real_type;
+    static constexpr uZ pack_size = rv::iterator_t<R>::pack_size;
 
-    static auto re_data(pcx::vector<T_, PackSize_, Alloc_>& vector) -> real_type* {
-        return vector.data();
-    }
-    static auto re_data(const pcx::vector<T_, PackSize_, Alloc_>& vector) -> const real_type* {
-        return vector.data();
-    }
-    static auto size(const pcx::vector<T_, PackSize_, Alloc_>& vector) {
-        return vector.size();
-    }
-};
-
-template<typename T_, bool Const_, uZ PackSize_>
-struct cx_vector_traits<pcx::subrange<T_, Const_, PackSize_>> {
-    using real_type = T_;
-
-    static auto re_data(pcx::subrange<T_, Const_, PackSize_> subrange) {
-        if (!subrange.aligned()) {
-            throw(std::invalid_argument(
-                "subrange is not aligned. pcx::subrange must be aligned to be accessed as a vector"));
+    inline static auto re_data(R& vector) {
+        auto it = vector.begin();
+        if constexpr (!always_aligned<R>) {
+            if (!it.aligned()) {
+                throw(
+                    std::invalid_argument("Packed complex range is not aligned. Packed complex range must be "
+                                          "aligned to be accessed as a vector."));
+            }
         }
-        return &(*subrange.begin());
+        return &(*it);
     }
-    static auto size(pcx::subrange<T_, Const_, PackSize_> subrange) {
-        return subrange.size();
+
+    inline static auto re_data(const R& vector) {
+        auto it = vector.begin();
+        if constexpr (!always_aligned<R>) {
+            if (!it.aligned()) {
+                throw(
+                    std::invalid_argument("Packed complex range is not aligned. Packed complex range must be "
+                                          "aligned to be accessed as a vector."));
+            }
+        }
+        return &(*it);
+    }
+
+    inline static auto size(const R& vector) {
+        return rv::size(vector);
     }
 };
+
+// template<typename T_, uZ PackSize_, typename Alloc_>
+// struct cx_vector_traits<pcx::vector<T_, PackSize_, Alloc_>> {
+//     using real_type               = T_;
+//     static constexpr uZ pack_size = PackSize_;
+//
+//     static auto re_data(pcx::vector<T_, PackSize_, Alloc_>& vector) -> real_type* {
+//         return vector.data();
+//     }
+//     static auto re_data(const pcx::vector<T_, PackSize_, Alloc_>& vector) -> const real_type* {
+//         return vector.data();
+//     }
+//     static auto size(const pcx::vector<T_, PackSize_, Alloc_>& vector) {
+//         return vector.size();
+//     }
+// };
+
+// template<typename T_, bool Const_, uZ PackSize_>
+// struct cx_vector_traits<pcx::subrange<T_, Const_, PackSize_>> {
+//     using real_type = T_;
+//
+//     static auto re_data(pcx::subrange<T_, Const_, PackSize_> subrange) {
+//         if (!subrange.aligned()) {
+//             throw(std::invalid_argument(
+//                 "subrange is not aligned. pcx::subrange must be aligned to be accessed as a vector"));
+//         }
+//         return &(*subrange.begin());
+//     }
+//     static auto size(pcx::subrange<T_, Const_, PackSize_> subrange) {
+//         return subrange.size();
+//     }
+// };
 
 template<typename T, typename V>
 concept complex_vector_of = std::same_as<T, typename cx_vector_traits<V>::real_type>;
