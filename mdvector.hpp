@@ -257,33 +257,41 @@ template<typename T,
          md_basis Basis,
          uZ       PackSize  = default_pack_size<T>,
          typename Allocator = aligned_allocator<T>>
-    requires pack_size<PackSize> && (Basis::size > 1)
+    requires pack_size<PackSize> 
 class mdarray {
     using allocator_traits = std::allocator_traits<Allocator>;
+
+    static constexpr bool vector_like = Basis::size == 1;
+
+    using stride_type  = std::conditional_t<vector_like, decltype([] {}), uZ>;
+    using extents_type = std::array<uZ, Basis::size>;
 
 public:
     /**
      * @brief Construct a new mdarray object.
      * 
      * @param extents   Extents of individual axes. `extents[i]` corresponds to `Basis::axis<i>`.
-     * @param alignment Contigious axis storage is padded to multiple of least common multiple `alignment` or PackSize.
+     * @param alignment Contigious axis storage is padded to a multiple of the least common multiple of `alignment` and `PackSize`.
      * @param allocator 
      */
-    explicit mdarray(std::array<uZ, Basis::size> extents, uZ alignment = 1, Allocator allocator = {})
+    explicit mdarray(const extents_type& extents, uZ alignment = 1, Allocator allocator = {})
     : m_extents(extents)
     , m_allocator(allocator) {
-        uZ align    = std::lcm(alignment, PackSize);
-        uZ misalign = extents[0] % align;
-        uZ size     = extents[0] + misalign > 0 ? align - misalign : 0;
-        uZ stride   = size;
-        for (uZ i = 1; i < Basis::size - 1; ++i) {
-            stride *= m_extents[i];
+        uZ align    = std::lcm(alignment, PackSize * 2);
+        uZ misalign = (extents[0] * 2) % align;
+        uZ size     = extents[0] * 2 + (misalign > 0 ? align - misalign : 0);
+        if constexpr (!vector_like) {
+            uZ stride = size;
+            for (uZ i = 1; i < Basis::size - 1; ++i) {
+                stride *= m_extents[i];
+            }
+            size     = stride * m_extents.back();
+            m_stride = stride;
         }
-        size     = stride * m_extents.back();
-        m_stride = stride;
-        m_ptr    = allocator_traits::allocate(allocator, size);
+        m_ptr = allocator_traits::allocate(allocator, size);
         std::memset(m_ptr, 0, size * sizeof(T));
     };
+
     explicit mdarray() = default;
 
     mdarray(const mdarray& other)            = delete;
@@ -337,9 +345,13 @@ public:
         deallocate();
     }
 
-    using iterator       = mditerator<T, Basis, PackSize, false, true>;
-    using const_iterator = mditerator<T, Basis, PackSize, true, true>;
-    using extents_type   = std::array<uZ, Basis::size>;
+    using iterator = std::conditional_t<vector_like,    //
+                                        pcx::iterator<T, false, PackSize>,
+                                        mditerator<T, Basis, PackSize, false, true>>;
+
+    using const_iterator = std::conditional_t<vector_like,    //
+                                              pcx::iterator<T, true, PackSize>,
+                                              mditerator<T, Basis, PackSize, true, true>>;
 
     template<auto Axis>
         requires /**/ (Basis::template contains<Axis>)
@@ -353,13 +365,49 @@ public:
         return mdslice_maker::make(m_ptr, m_stride, index, m_extents);
     }
 
-    [[nodiscard]] auto begin() noexcept -> iterator;
-    [[nodiscard]] auto begin() const noexcept -> const_iterator;
-    [[nodiscard]] auto cbegin() const noexcept -> const_iterator;
+    [[nodiscard]] auto begin() noexcept -> iterator {
+        if constexpr (vector_like) {
+            return detail_::iterator_maker<T, false, PackSize>(m_ptr, 0);
+        } else {
+            return iterator{m_ptr, m_stride, m_extents};
+        }
+    };
+    [[nodiscard]] auto begin() const noexcept -> const_iterator {
+        if constexpr (vector_like) {
+            return detail_::iterator_maker<T, true, PackSize>(m_ptr, 0);
+        } else {
+            return const_iterator{m_ptr, m_stride, m_extents};
+        }
+    };
+    [[nodiscard]] auto cbegin() const noexcept -> const_iterator {
+        if constexpr (vector_like) {
+            return detail_::iterator_maker<T, true, PackSize>(m_ptr, 0);
+        } else {
+            return const_iterator{m_ptr, m_stride, m_extents};
+        };
+    }
 
-    [[nodiscard]] auto end() noexcept -> iterator;
-    [[nodiscard]] auto end() const noexcept -> const_iterator;
-    [[nodiscard]] auto cend() const noexcept -> const_iterator;
+    [[nodiscard]] auto end() noexcept -> iterator {
+        if constexpr (vector_like) {
+            return detail_::iterator_maker<T, false, PackSize>(m_ptr + pidx(size()), size());
+        } else {
+            return iterator{m_ptr + m_stride * size(), m_stride, m_extents};
+        }
+    };
+    [[nodiscard]] auto end() const noexcept -> const_iterator {
+        if constexpr (vector_like) {
+            return detail_::iterator_maker<T, true, PackSize>(m_ptr + pidx(size()), size());
+        } else {
+            return const_iterator{m_ptr + m_stride * size(), m_stride, m_extents};
+        }
+    }
+    [[nodiscard]] auto cend() const noexcept -> const_iterator {
+        if constexpr (vector_like) {
+            return detail_::iterator_maker<T, true, PackSize>(m_ptr + pidx(size()), size());
+        } else {
+            return const_iterator{m_ptr + m_stride * size(), m_stride, m_extents};
+        }
+    };
 
     [[nodiscard]] auto size() const noexcept -> uZ {
         return m_extents.back();
@@ -379,7 +427,7 @@ private:
     [[no_unique_address]] Allocator m_allocator{};
 
     T*           m_ptr{};
-    uZ           m_stride{};
+    stride_type  m_stride{};
     extents_type m_extents{};
 
     inline void deallocate() noexcept {
@@ -391,7 +439,7 @@ private:
 
 template<typename T, uZ PackSize, md_basis Basis, bool Contigious, bool Const>
 class mdslice : public std::ranges::view_base {
-    using extents_t = std::array<uZ, Basis::size>;
+    using extents_type = std::array<uZ, Basis::size>;
 
     template<typename T_, uZ PackSize_, md_basis Basis_, auto ExcludeAxis, bool Contigious_, bool Const_>
         requires /**/ (Basis_::template contains<ExcludeAxis>)
@@ -399,7 +447,7 @@ class mdslice : public std::ranges::view_base {
 
     static constexpr bool vector_like = Basis::size == 1 && Contigious;
 
-    using stride_t = std::conditional_t<vector_like, decltype([] {}), uZ>;
+    using stride_type = std::conditional_t<vector_like, decltype([] {}), uZ>;
 
     /**
      * @brief Construct a new mdslice object
@@ -408,7 +456,7 @@ class mdslice : public std::ranges::view_base {
      * @param stride 
      * @param extents   Sizes of axes.
      */
-    mdslice(T* start, uZ stride, extents_t extents)
+    mdslice(T* start, uZ stride, extents_type extents) noexcept
         requires(!vector_like)
     : m_start(start)
     , m_stride(stride)
@@ -421,7 +469,7 @@ class mdslice : public std::ranges::view_base {
      * @param stride 
      * @param extents   Sizes of axes.
      */
-    mdslice(T* start, uZ /*stride*/, extents_t extents)
+    mdslice(T* start, uZ /*stride*/, extents_type extents) noexcept
         requires(vector_like)
     : m_start(start)
     , m_extents(extents){};
@@ -456,18 +504,17 @@ public:
 
     [[nodiscard]] auto end() const noexcept -> iterator {
         if constexpr (vector_like) {
-            return detail_::iterator_maker<T, Const, PackSize>::make(
-                m_start + pidx<PackSize>(m_extents.front()), 0);
+            using iterator_maker = detail_::iterator_maker<T, Const, PackSize>;
+            return iterator_maker::make(m_start + pidx<PackSize>(size()), size());
         } else {
-            return iterator(m_start + m_stride * m_extents.back(), m_stride, m_extents);
+            return iterator(m_start + m_stride * size(), m_stride, m_extents);
         }
     }
 
-
 private:
-    T*        m_start;
-    uZ        m_stride{};
-    extents_t m_extents;
+    T*           m_start;
+    stride_type  m_stride{};
+    extents_type m_extents;
 };
 
 template<typename T, md_basis Basis, uZ PackSize, bool Const, bool Contigious>
@@ -476,7 +523,7 @@ class mditerator {
     using extents_t     = std::array<uZ, Basis::size>;
     friend class mdslice<T, PackSize, Basis, Contigious, Const>;
 
-    mditerator(T* ptr, uZ stride, const extents_t& extents)
+    mditerator(T* ptr, uZ stride, const extents_t& extents) noexcept
     : m_ptr(ptr)
     , m_stride(stride)
     , m_extents(extents){};
