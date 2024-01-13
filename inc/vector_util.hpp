@@ -122,12 +122,12 @@ struct is_std_complex_floating_point<std::complex<F>> {
 
 template<typename T>
 struct is_pcx_iterator {
-    static constexpr auto value = std::false_type{};
+    static constexpr bool value = false;
 };
 
 template<typename T, bool Const, uZ PackSize>
 struct is_pcx_iterator<iterator<T, Const, PackSize>> {
-    static constexpr auto value = std::true_type{};
+    static constexpr bool value = true;
 };
 
 template<bool Always>

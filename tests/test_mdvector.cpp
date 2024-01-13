@@ -44,9 +44,11 @@ int main() {
 
     auto storage = xyz_storage({32, 16, 8});
 
-    auto s1 = storage.slice<z>(0);
+    auto s1  = storage.slice<z>(0);
     auto s11 = s1.slice<y>(0);
 
+    using namespace std::ranges;
+    // static_assert(range<xyz_storage>);
 
     return 0;
 }
