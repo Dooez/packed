@@ -4,7 +4,6 @@
 #include "meta.hpp"
 #include "types.hpp"
 #include "vector.hpp"
-#include "vector_arithm.hpp"
 #include "vector_util.hpp"
 
 #include <cstring>
@@ -20,7 +19,6 @@ namespace pcx {
 
 namespace detail_ {
 struct basis_base {};
-
 }    // namespace detail_
 
 /**
@@ -289,6 +287,7 @@ public:
     }
 
     // TODO: multidimentional slice(), operator[](), at()
+    // TODO: runtime slice() ?
 
     [[nodiscard]] auto begin() noexcept {
         return detail_::md_get_iterator<T, PackSize, Basis, false, true>(m_ptr, m_stride, 0, m_extents);
@@ -421,6 +420,9 @@ public:
         return slice<Basis::outer_axis>(index);
     }
 
+    // TODO: `at()`
+    // TODO: multidimensional slice and operator[]
+
     [[nodiscard]] auto begin() const noexcept {
         return detail_::md_get_iterator<T, PackSize, Basis, Const, Contigious>(
             m_start, stride(), 0, m_extents);
@@ -435,6 +437,11 @@ public:
         return m_extents.back();
     }
 
+    template<auto Axis>
+        requires /**/ (Basis::template contains<Axis>)
+    [[nodiscard]] auto extent() const noexcept -> uZ {
+        return m_extents[Basis::template index<Axis>];
+    }
     [[nodiscard]] auto extents() const noexcept -> uZ {
         return m_extents;
     }
@@ -627,7 +634,7 @@ auto md_get_slice(T* start, uZ stride, uZ index, const std::array<uZ, ExtentsSiz
 
     start += get_offset(extents, index, stride);
     if constexpr (Basis::size == 1) {
-        return cx_ref<T, Const, PackSize>(start);
+        return detail_::make_cx_ref<T, Const, PackSize>(start);
     } else {
         if constexpr (axis_index == Basis::size - 1 && Basis::size > 2) {
             stride /= extents.back();
@@ -638,7 +645,7 @@ auto md_get_slice(T* start, uZ stride, uZ index, const std::array<uZ, ExtentsSiz
 
             return mdslice<T, PackSize, new_basis, new_contigious, Const>(start, stride, extents, filtered{});
         } else {
-            // `mditerator` has outer axis extent removedc
+            // `mditerator` has outer axis extent removed
             return mdslice<T, PackSize, new_basis, new_contigious, Const>(
                 start, stride, extents, std::make_index_sequence<ExtentsSize>{});
         }

@@ -832,6 +832,13 @@ private:
     iterator  m_begin{};
 };
 
+namespace detail_ {
+template<typename T, bool Const, uZ PackSize>
+[[nodiscard]] auto make_cx_ref(T* ptr) {
+    return cx_ref<T, Const, PackSize>(ptr);
+}
+}    // namespace detail_
+
 template<typename T, bool Const = false, uZ PackSize = pcx::default_pack_size<T>>
 class cx_ref {
     template<typename VT, uZ VPackSize, typename>
@@ -845,6 +852,8 @@ class cx_ref {
     friend class subrange;
 
     friend class cx_ref<T, true, PackSize>;
+
+    friend auto detail_::make_cx_ref<T, Const, PackSize>(T* ptr);
 
 public:
     using real_type  = T;
