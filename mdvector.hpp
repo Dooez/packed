@@ -167,7 +167,8 @@ template<typename T,
          bool     Const,
          bool     Contigious,
          uZ       ExtentsSize>
-    requires(ExtentsSize == Basis::size || ExtentsSize == Basis::size - 1)
+    requires(ExtentsSize == Basis::size ||
+             equal_values<ExcludeAxis, Basis::outer_axis> && ExtentsSize == Basis::size - 1)
 auto md_get_slice(T* start, uZ stride, uZ index, const std::array<uZ, ExtentsSize>& extents) noexcept;
 
 }    // namespace detail_
@@ -229,10 +230,11 @@ public:
         other.m_extents = {};
     };
 
-    mdstorage& operator=(mdstorage&& other) noexcept(allocator_traits::propagate_on_move_assignment::value ||
-                                                     allocator_traits::is_always_equal::value) {
+    mdstorage&
+    operator=(mdstorage&& other) noexcept(allocator_traits::propagate_on_container_move_assignment::value ||
+                                          allocator_traits::is_always_equal::value) {
         using std::swap;
-        if constexpr (allocator_traits::propagate_on_move_assignment::value) {
+        if constexpr (allocator_traits::propagate_on_container_move_assignment::value) {
             deallocate();
             m_allocator     = std::move(other.m_allocator);
             m_ptr           = other.m_ptr;
@@ -274,11 +276,12 @@ public:
             m_ptr, m_stride, index, m_extents);
     };
 
-    [[nodiscard]] auto operator[](uZ index) {
+    [[nodiscard]] auto operator[](uZ index) noexcept {
         return slice<Basis::outer_axis>(index);
     }
 
     [[nodiscard]] auto at(uZ index) {
+        //TODO: move to `bounds_check()`
         if (index >= size()) {
             throw(std::out_of_range("index (which is ) >= size (which is)"));
         }
@@ -342,7 +345,8 @@ class mdslice
     using extents_type = std::array<uZ, Basis::size>;
 
     template<typename T_, uZ, md_basis Basis_, auto ExcludeAxis, bool, bool, uZ ExtentsSize>
-        requires(ExtentsSize == Basis_::size || ExtentsSize == Basis_::size - 1)
+        requires(ExtentsSize == Basis_::size ||
+                 equal_values<ExcludeAxis, Basis_::outer_axis> && ExtentsSize == Basis_::size - 1)
     friend auto detail_::md_get_slice(T_*                                start,
                                       uZ                                 stride,
                                       uZ                                 index,
@@ -370,7 +374,7 @@ class mdslice
             uZ                                 stride,
             const std::array<uZ, ExtentsSize>& parent_extents,
             std::index_sequence<Is...>) noexcept
-        requires(!vector_like && valid_extents<ExtentsSize, Is...>)
+        requires /**/ (!vector_like && valid_extents<ExtentsSize, Is...>)
     : m_start(start)
     , m_stride(stride)
     , m_extents{parent_extents[Is]...} {};
@@ -391,11 +395,21 @@ class mdslice
             uZ /*stride*/,
             const std::array<uZ, ExtentsSize>& extents,
             std::index_sequence<Is...>) noexcept
-        requires(vector_like && valid_extents<ExtentsSize, Is...>)
+        requires /**/ (vector_like && valid_extents<ExtentsSize, Is...>)
     : m_start(start)
     , m_extents{extents[Is]...} {};
 
 public:
+    mdslice() = default;
+
+    mdslice(const mdslice&) noexcept = default;
+    mdslice(mdslice&&) noexcept      = default;
+
+    mdslice& operator=(const mdslice&) noexcept = default;
+    mdslice& operator=(mdslice&&) noexcept      = default;
+
+    ~mdslice() = default;
+
     template<auto Axis>
         requires /**/ (Basis::template contains<Axis>)
     [[nodiscard]] auto slice(uZ index) const noexcept {
@@ -407,21 +421,33 @@ public:
         return slice<Basis::outer_axis>(index);
     }
 
-    [[nodiscard]] auto size() const noexcept -> uZ {
-        return m_extents.back();
-    }
-
     [[nodiscard]] auto begin() const noexcept {
         return detail_::md_get_iterator<T, PackSize, Basis, Const, Contigious>(
-            m_start, m_stride, 0, m_extents);
+            m_start, stride(), 0, m_extents);
     }
 
     [[nodiscard]] auto end() const noexcept {
         return detail_::md_get_iterator<T, PackSize, Basis, Const, Contigious>(
-            m_start, m_stride, size(), m_extents);
+            m_start, stride(), size(), m_extents);
+    }
+
+    [[nodiscard]] auto size() const noexcept -> uZ {
+        return m_extents.back();
+    }
+
+    [[nodiscard]] auto extents() const noexcept -> uZ {
+        return m_extents;
     }
 
 private:
+    [[nodiscard]] auto stride() const noexcept -> uZ {
+        if constexpr (vector_like) {
+            return 1;
+        } else {
+            return m_stride;
+        }
+    }
+
     using stride_type = std::conditional_t<vector_like, decltype([] {}), uZ>;
     T*           m_start{};
     stride_type  m_stride{};
@@ -430,8 +456,9 @@ private:
 
 template<typename T, md_basis Basis, uZ PackSize, bool Const, bool Contigious>
 class mditerator {
-    // using extents_t = std::conditional_t<Basis::size == 1, decltype([] {}), std::array<uZ, Basis::size - 1>>;
-    using extents_t = std::array<uZ, Basis::size - 1>;
+    static constexpr bool one_dimensional = Basis::size == 1;
+    using extents_type =
+        std::conditional_t<one_dimensional, decltype([] {}), std::array<uZ, Basis::size - 1>>;
 
     template<typename T_, uZ, md_basis Basis_, bool, bool>
     friend auto detail_::md_get_iterator(T_*                                 start,
@@ -448,12 +475,12 @@ class mditerator {
     , m_stride(stride)
     , m_extents{extents[Is]...} {};
 
-    template<uZ... Is>
+    // template<uZ... Is>
     mditerator(T* ptr,
                uZ stride,
                const std::array<uZ, Basis::size>& /*extents*/,
-               std::index_sequence<Is...>) noexcept
-        requires(Basis::size == 1)
+               std::index_sequence<>) noexcept
+        requires(one_dimensional)
     : m_ptr(ptr)
     , m_stride(stride){};
 
@@ -475,25 +502,27 @@ public:
     mditerator& operator=(mditerator&&) noexcept      = default;
     ~mditerator()                                     = default;
 
-    [[nodiscard]] auto operator*() const noexcept {
+    [[nodiscard]] inline auto operator*() const noexcept {
         return detail_::md_get_slice<T, PackSize, Basis, Basis::outer_axis, Const, Contigious>(
-            m_ptr, m_stride, 0, m_extents);
+            m_ptr, m_stride, 0, extents());
     }
 
-    using value_type       = decltype(*std::declval<mditerator>);
+    using value_type =
+        decltype(detail_::md_get_slice<T, PackSize, Basis, Basis::outer_axis, Const, Contigious>(
+            nullptr, 1, 0, std::array<uZ, Basis::size - 1>{}));
     using iterator_concept = std::random_access_iterator_tag;
     using difference_type  = iZ;
 
-    [[nodiscard]] auto operator[](uZ index) const noexcept {
+    [[nodiscard]] inline auto operator[](uZ index) const noexcept {
         return detail_::md_get_slice<T, PackSize, Basis, Basis::outer_axis, Const, Contigious>(
-            m_ptr, m_stride, index, m_extents);
+            m_ptr, m_stride, index, extents());
     };
 
-    inline auto operator+=(difference_type n) noexcept {
+    inline auto operator+=(difference_type n) noexcept -> mditerator& {
         m_ptr += m_stride * n;
         return *this;
     };
-    inline auto operator-=(difference_type n) noexcept {
+    inline auto operator-=(difference_type n) noexcept -> mditerator& {
         m_ptr -= m_stride * n;
         return *this;
     };
@@ -531,6 +560,11 @@ public:
         return lhs + (-rhs);
     };
 
+    [[nodiscard]] inline friend auto operator-(const mditerator& lhs, const mditerator& rhs) noexcept
+        -> difference_type {
+        return (lhs.m_ptr - rhs.m_ptr) / lhs.m_stride;
+    };
+
     [[nodiscard]] inline auto operator<=>(const mditerator& other) const noexcept {
         return m_ptr <=> other.m_ptr;
     };
@@ -538,10 +572,20 @@ public:
     [[nodiscard]] inline auto operator==(const mditerator& other) const noexcept {
         return m_ptr == other.m_ptr;
     };
+
 private:
-    T*        m_ptr{};
-    uZ        m_stride{};
-    extents_t m_extents{};
+    [[nodiscard]] auto extents() const noexcept
+        -> std::conditional_t<one_dimensional, std::array<uZ, 0>, const extents_type&> {
+        if constexpr (one_dimensional) {
+            return {};
+        } else {
+            return m_extents;
+        }
+    }
+
+    T*           m_ptr{};
+    uZ           m_stride{};
+    extents_type m_extents{};
 };
 
 namespace detail_ {
@@ -562,7 +606,8 @@ template<typename T,
          bool     Const,
          bool     Contigious,
          uZ       ExtentsSize>
-    requires(ExtentsSize == Basis::size || ExtentsSize == Basis::size - 1)
+    requires(ExtentsSize == Basis::size ||
+             equal_values<ExcludeAxis, Basis::outer_axis> && ExtentsSize == Basis::size - 1)
 auto md_get_slice(T* start, uZ stride, uZ index, const std::array<uZ, ExtentsSize>& extents) noexcept {
     constexpr uZ   axis_index     = Basis::template index<ExcludeAxis>;
     constexpr bool new_contigious = Contigious && Basis::template index<ExcludeAxis> != 0;
@@ -592,7 +637,8 @@ auto md_get_slice(T* start, uZ stride, uZ index, const std::array<uZ, ExtentsSiz
             using filtered = value_to_index_sequence<filter_value_sequence<indexes, axis_index>>;
 
             return mdslice<T, PackSize, new_basis, new_contigious, Const>(start, stride, extents, filtered{});
-        } else {    // iterator with outer axis extent removed
+        } else {
+            // `mditerator` has outer axis extent removedc
             return mdslice<T, PackSize, new_basis, new_contigious, Const>(
                 start, stride, extents, std::make_index_sequence<ExtentsSize>{});
         }

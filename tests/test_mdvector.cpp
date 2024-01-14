@@ -1,4 +1,7 @@
 #include "mdvector.hpp"
+#include "vector_util.hpp"
+
+#include <ranges>
 
 enum class ax1 {
     x = 0,
@@ -12,6 +15,17 @@ enum class ax2 {
     b,
 };
 
+template<typename T>
+struct test_ranges {
+    static_assert(std::ranges::range<T>);
+    static_assert(std::ranges::sized_range<T>);
+    static_assert(std::ranges::input_range<T>);
+    static_assert(std::ranges::forward_range<T>);
+    static_assert(std::ranges::bidirectional_range<T>);
+    static_assert(std::ranges::random_access_range<T>);
+    static_assert(std::ranges::common_range<T>);
+    static_assert(std::ranges::viewable_range<T>);
+};
 
 int main() {
     static_assert(!pcx::equal_values<ax1::x, ax2::a>);
@@ -43,13 +57,36 @@ int main() {
     using xyz_storage = pcx::mdstorage<float, xyz_basis>;
 
     auto storage = xyz_storage({32, 16, 8});
+    auto s_z     = storage.slice<z>(0);
+    auto s_y     = storage.slice<y>(0);
+    auto s_x     = storage.slice<x>(0);
 
-    auto s1  = storage.slice<z>(0);
-    auto s11 = s1.slice<y>(0);
+    auto s_zy = s_z.slice<y>(0);
+    auto s_yx = s_y.slice<x>(0);
+    auto s_xz = s_x.slice<z>(0);
 
-    using namespace std::ranges;
-    auto en = end(storage);
-    // static_assert(range<xyz_storage>);
+    using xy_slice = decltype(s_z);
+    using xz_slice = decltype(s_y);
+    using yz_slice = decltype(s_x);
+    using x_slice  = decltype(s_zy);
+    using y_slice  = decltype(s_yx);
+    using z_slice  = decltype(s_xz);
+
+    (void)test_ranges<xyz_storage>{};
+    (void)test_ranges<xy_slice>{};
+    (void)test_ranges<xz_slice>{};
+    (void)test_ranges<yz_slice>{};
+    (void)test_ranges<x_slice>{};
+    (void)test_ranges<y_slice>{};
+    (void)test_ranges<z_slice>{};
+
+    static_assert(std::ranges::output_range<x_slice, std::complex<float>>);
+    static_assert(std::ranges::output_range<y_slice, std::complex<float>>);
+    static_assert(std::ranges::output_range<z_slice, std::complex<float>>);
+
+    static_assert(pcx::complex_vector_of<float, x_slice>);
+    static_assert(!pcx::complex_vector_of<float, y_slice>);
+    static_assert(!pcx::complex_vector_of<float, z_slice>);
 
     return 0;
 }
