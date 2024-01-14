@@ -448,67 +448,50 @@ class mdslice
 
     static constexpr bool vector_like = Basis::size == 1 && Contigious;
 
-    using stride_type = std::conditional_t<vector_like, decltype([] {}), uZ>;
-
+    template<uZ ExtentsSize, uZ... Is>
+    static constexpr bool valid_extents =
+        unique_values<Is...> && sizeof...(Is) == Basis::size && ((Is < ExtentsSize) && ...);
 
     /**
-     * @brief Construct a new mdslice object
+     * @brief Construct a new mdslice object.
      * 
-     * @param start First
-     * @param stride 
-     * @param extents   Sizes of axes.
+     * @tparam ExtentsSize  
+     * @tparam Is...            Indexes of `parent_extents` to initialize slice extents.
+                                `Is` order corresponds to `Basis` axis order.
+     * @param start             Pointer to the first value.
+     * @param stride            Stride of the outermost axis. 
+     * @param parent_extents    Array of parent storage/slice extents.
+     * @param [unused]      
      */
     template<uZ ExtentsSize, uZ... Is>
     mdslice(T*                                 start,
             uZ                                 stride,
-            const std::array<uZ, ExtentsSize>& extents,
+            const std::array<uZ, ExtentsSize>& parent_extents,
             std::index_sequence<Is...>) noexcept
-        requires(!vector_like && sizeof...(Is) == Basis::size)
+        requires(!vector_like && valid_extents<ExtentsSize, Is...>)
     : m_start(start)
     , m_stride(stride)
-    , m_extents{extents[Is]...} {};
+    , m_extents{parent_extents[Is]...} {};
 
     /**
-     * @brief Construct a new mdslice object
+     * @brief Construct a new mdslice object.
      * 
-     * @param start First
-     * @param stride 
-     * @param extents   Sizes of axes.
+     * @tparam ExtentsSize  
+     * @tparam Is...            Indexes of `parent_extents` to initialize slice extents.
+                                `Is` order corresponds to `Basis` axis order.
+     * @param start             Pointer to the first value.
+     * @param stride            Stride is not used for contigious one-dimentional slice.
+     * @param parent_extents    Array of parent storage/slice extents.
+     * @param [unused]      
      */
     template<uZ ExtentsSize, uZ... Is>
     mdslice(T* start,
             uZ /*stride*/,
             const std::array<uZ, ExtentsSize>& extents,
             std::index_sequence<Is...>) noexcept
-        requires(vector_like && sizeof...(Is) == Basis::size)
+        requires(vector_like && valid_extents<ExtentsSize, Is...>)
     : m_start(start)
     , m_extents{extents[Is]...} {};
-
-    //     /**
-    //      * @brief Construct a new mdslice object
-    //      *
-    //      * @param start First
-    //      * @param stride
-    //      * @param extents   Sizes of axes.
-    //      */
-    //     mdslice(T* start, uZ stride, extents_type extents) noexcept
-    //         requires(!vector_like)
-    //     : m_start(start)
-    //     , m_stride(stride)
-    //     , m_extents(extents){};
-    //
-    //     /**
-    //      * @brief Construct a new mdslice object
-    //      *
-    //      * @param start First
-    //      * @param stride
-    //      * @param extents   Sizes of axes.
-    //      */
-    //     mdslice(T* start, uZ /*stride*/, extents_type extents) noexcept
-    //         requires(vector_like)
-    //     : m_start(start)
-    //     , m_extents(extents){};
-
 
 public:
     template<auto Axis>
@@ -537,43 +520,52 @@ public:
     }
 
 private:
-    T*           m_start;
+    using stride_type = std::conditional_t<vector_like, decltype([] {}), uZ>;
+    T*           m_start{};
     stride_type  m_stride{};
-    extents_type m_extents;
+    extents_type m_extents{};
 };
 
 template<typename T, md_basis Basis, uZ PackSize, bool Const, bool Contigious>
 class mditerator {
-    using mdslice_maker = detail_::mdslice_maker<T, PackSize, Basis, Basis::outer_axis, Contigious, Const>;
-    using extents_t     = std::array<uZ, Basis::size>;
-
-    //     friend class mdslice<T, PackSize, Basis, Contigious, Const>;
-    //
-    //     template<typename, md_basis, uZ PackSize_, typename>
-    //         requires pack_size<PackSize_>
-    //     friend class mdstorage;
+    using extents_t = std::conditional_t<Basis::size == 1, decltype([] {}), std::array<uZ, Basis::size - 1>>;
 
     friend auto detail_::md_get_iterator<T, PackSize, Basis, Const, Contigious>(
         T* start, uZ stride, uZ index, const std::array<uZ, Basis::size>& extents) noexcept;
 
-    template<uZ... I>
+    template<uZ... Is>
     mditerator(T*                                 ptr,
                uZ                                 stride,
                const std::array<uZ, Basis::size>& extents,
-               std::index_sequence<I...>) noexcept
+               std::index_sequence<Is...>) noexcept
     : m_ptr(ptr)
     , m_stride(stride)
-    , m_extents{extents[I]...} {};
+    , m_extents{extents[Is]...} {};
 
-    // mditerator(T* ptr, uZ stride, const extents_t& extents) noexcept
-    // : m_ptr(ptr)
-    // , m_stride(stride)
-    // , m_extents(extents){};
+    template<uZ... Is>
+    mditerator(T* ptr,
+               uZ stride,
+               const std::array<uZ, Basis::size>& /*extents*/,
+               std::index_sequence<Is...>) noexcept
+        requires(Basis::size == 1)
+    : m_ptr(ptr)
+    , m_stride(stride){};
+
+    /**
+     * @brief Construct a new mditerator object.
+     * 
+     * @param ptr               Pointer to the data.
+     * @param stride            Outer axis stride.  
+     * @param parent_extents    Array of parent storage/slice extents.
+     */
+    mditerator(T* ptr, uZ stride, const std::array<uZ, Basis::size>& parent_extents) noexcept
+    : mditerator(ptr, stride, parent_extents, std::make_index_sequence<Basis::size - 1>{}){};
 
 public:
     [[nodiscard]] auto operator*() const noexcept {
+        const auto& extents = Basis::size == 1 ? std::array<uZ, 0>{} : m_extents;
         return detail_::md_get_slice<T, PackSize, Basis, Basis::outer_axis, Const, Contigious>(
-            m_ptr, m_stride, 0, m_extents);
+            m_ptr, m_stride, 0, extents);
     }
 
     using value_type       = decltype(*std::declval<mditerator>);
@@ -581,8 +573,9 @@ public:
     using difference_type  = iZ;
 
     [[nodiscard]] auto operator[](uZ index) const noexcept {
+        const auto& extents = Basis::size == 1 ? std::array<uZ, 0>{} : m_extents;
         return detail_::md_get_slice<T, PackSize, Basis, Basis::outer_axis, Const, Contigious>(
-            m_ptr, m_stride, index, m_extents);
+            m_ptr, m_stride, index, extents);
     };
 
     inline auto operator+=(difference_type n) noexcept {
@@ -660,8 +653,7 @@ auto md_get_iterator(T* start, uZ stride, uZ index, const std::array<uZ, Basis::
     if constexpr (Basis::size == 1 && Contigious) {
         return iterator_maker<T, Const, PackSize>::make(start + pidx<PackSize>(index), index);
     } else {
-        return mditerator<T, Basis, PackSize, Const, Contigious>{
-            start + stride * index, stride, extents, std::make_index_sequence<Basis::size - 1>{}};
+        return mditerator<T, Basis, PackSize, Const, Contigious>{start + stride * index, stride, extents};
     }
 };
 
