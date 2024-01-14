@@ -528,7 +528,8 @@ private:
 
 template<typename T, md_basis Basis, uZ PackSize, bool Const, bool Contigious>
 class mditerator {
-    using extents_t = std::conditional_t<Basis::size == 1, decltype([] {}), std::array<uZ, Basis::size - 1>>;
+    // using extents_t = std::conditional_t<Basis::size == 1, decltype([] {}), std::array<uZ, Basis::size - 1>>;
+    using extents_t = std::array<uZ, Basis::size - 1>;
 
     friend auto detail_::md_get_iterator<T, PackSize, Basis, Const, Contigious>(
         T* start, uZ stride, uZ index, const std::array<uZ, Basis::size>& extents) noexcept;
@@ -563,9 +564,8 @@ class mditerator {
 
 public:
     [[nodiscard]] auto operator*() const noexcept {
-        const auto& extents = Basis::size == 1 ? std::array<uZ, 0>{} : m_extents;
         return detail_::md_get_slice<T, PackSize, Basis, Basis::outer_axis, Const, Contigious>(
-            m_ptr, m_stride, 0, extents);
+            m_ptr, m_stride, 0, m_extents);
     }
 
     using value_type       = decltype(*std::declval<mditerator>);
@@ -573,9 +573,8 @@ public:
     using difference_type  = iZ;
 
     [[nodiscard]] auto operator[](uZ index) const noexcept {
-        const auto& extents = Basis::size == 1 ? std::array<uZ, 0>{} : m_extents;
         return detail_::md_get_slice<T, PackSize, Basis, Basis::outer_axis, Const, Contigious>(
-            m_ptr, m_stride, index, extents);
+            m_ptr, m_stride, index, m_extents);
     };
 
     inline auto operator+=(difference_type n) noexcept {
