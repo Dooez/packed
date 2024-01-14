@@ -48,6 +48,7 @@ int main() {
     auto s11 = s1.slice<y>(0);
 
     using namespace std::ranges;
+    auto en = end(storage);
     // static_assert(range<xyz_storage>);
 
     return 0;

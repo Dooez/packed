@@ -1,6 +1,7 @@
 #ifndef MDVECTOR_HPP
 #define MDVECTOR_HPP
 
+#include "meta.hpp"
 #include "types.hpp"
 #include "vector.hpp"
 #include "vector_arithm.hpp"
@@ -18,96 +19,7 @@
 namespace pcx {
 
 namespace detail_ {
-template<auto... Vs>
-struct equal_impl {
-    static constexpr bool value = false;
-};
-template<auto V, auto... Vs>
-    requires(std::equality_comparable_with<decltype(V), decltype(Vs)> && ...)
-struct equal_impl<V, Vs...> {
-    static constexpr bool value = ((V == Vs) && ...) && equal_impl<Vs...>::value;
-};
-template<auto V>
-struct equal_impl<V> {
-    static constexpr bool value = true;
-};
-}    // namespace detail_
-
-/**
- * @brief Checks if all template parameter values are equality comparible and equal.
- * 
- * @tparam Vs... Values to check the equality.
- */
-template<auto... Vs>
-concept equal_values = detail_::equal_impl<Vs...>::value;
-
-namespace detail_ {
-template<auto... Vs>
-struct unique_values_impl {
-    static constexpr bool value = true;
-};
-template<auto V, auto... Vs>
-struct unique_values_impl<V, Vs...> {
-    static constexpr bool value = (!equal_values<V, Vs> && ...) && unique_values_impl<Vs...>::value;
-};
-}    // namespace detail_
-
-/**
- * @brief Checks if template parameters Vs... do not contain repeating values.
- * 
- * @tparam Vs...
- */
-template<auto... Vs>
-concept unique_values = detail_::unique_values_impl<Vs...>::value;
-
-/**
- * @brief Checks if a value V matches any of the values in Vs...
- * 
- * @tparam V 
- * @tparam Vs...
- */
-template<auto V, auto... Vs>
-concept value_matched = (!unique_values<V, Vs...>);
-
-namespace detail_ {
 struct basis_base {};
-
-template<auto... Values>
-struct value_sequence {};
-
-template<typename Sequence, auto... NewValues>
-struct expand_value_sequence_impl;
-template<auto... Values, auto... NewValues>
-struct expand_value_sequence_impl<value_sequence<Values...>, NewValues...> {
-    using type = value_sequence<Values..., NewValues...>;
-};
-
-template<typename Sequence, auto... NewValues>
-using expand_value_sequence = typename expand_value_sequence_impl<Sequence, NewValues...>::type;
-
-template<typename S, auto Vfilter, auto... Vs>
-struct filter_value_sequence_impl {};
-
-template<typename S, auto Vfilter, auto V, auto... Vs>
-struct filter_value_sequence_impl<S, Vfilter, V, Vs...> {
-    using type = std::conditional_t<
-        equal_values<Vfilter, V>,
-        expand_value_sequence<S, Vs...>,
-        typename filter_value_sequence_impl<expand_value_sequence<S, V>, Vfilter, Vs...>::type>;
-};
-template<typename S, auto Vfilter>
-struct filter_value_sequence_impl<S, Vfilter> {
-    using type = S;
-};
-template<typename S, auto Vfilter>
-struct filter_value_sequence_adapter {};
-template<auto... Vs, auto Vfilter>
-struct filter_value_sequence_adapter<value_sequence<Vs...>, Vfilter> {
-    using type = typename filter_value_sequence_impl<value_sequence<>, Vfilter, Vs...>::type;
-};
-
-template<typename Sequence, auto FilterValue>
-using filter_value_sequence = typename filter_value_sequence_adapter<Sequence, FilterValue>::type;
 
 }    // namespace detail_
 
@@ -244,12 +156,6 @@ template<typename T>
 concept md_basis = std::derived_from<T, detail_::basis_base>;
 
 namespace detail_ {
-template<typename T, uZ PackSize, md_basis Basis, auto ExcludeAxis, bool Contigious, bool Const>
-    requires /**/ (Basis::template contains<ExcludeAxis>)
-struct mdslice_maker {
-    static inline auto
-    make(T* start, uZ stride, uZ index, const std::array<uZ, Basis::size>& extents) noexcept;
-};
 
 template<typename T, uZ PackSize, md_basis Basis, bool Const, bool Contigious>
 auto md_get_iterator(T* start, uZ stride, uZ index, const std::array<uZ, Basis::size>& extents) noexcept;
@@ -435,10 +341,6 @@ class mdslice
 , detail_::aligned_base<Basis::size == 1 && Contigious> {
     using extents_type = std::array<uZ, Basis::size>;
 
-    template<typename T_, uZ PackSize_, md_basis Basis_, auto ExcludeAxis, bool Contigious_, bool Const_>
-        requires /**/ (Basis_::template contains<ExcludeAxis>)
-    friend class detail_::mdslice_maker;
-
     template<typename T_, uZ, md_basis Basis_, auto ExcludeAxis, bool, bool, uZ ExtentsSize>
         requires(ExtentsSize == Basis_::size || ExtentsSize == Basis_::size - 1)
     friend auto detail_::md_get_slice(T_*                                start,
@@ -531,8 +433,11 @@ class mditerator {
     // using extents_t = std::conditional_t<Basis::size == 1, decltype([] {}), std::array<uZ, Basis::size - 1>>;
     using extents_t = std::array<uZ, Basis::size - 1>;
 
-    friend auto detail_::md_get_iterator<T, PackSize, Basis, Const, Contigious>(
-        T* start, uZ stride, uZ index, const std::array<uZ, Basis::size>& extents) noexcept;
+    template<typename T_, uZ, md_basis Basis_, bool, bool>
+    friend auto detail_::md_get_iterator(T_*                                 start,
+                                         uZ                                  stride,
+                                         uZ                                  index,
+                                         const std::array<uZ, Basis_::size>& extents) noexcept;
 
     template<uZ... Is>
     mditerator(T*                                 ptr,
@@ -563,6 +468,13 @@ class mditerator {
     : mditerator(ptr, stride, parent_extents, std::make_index_sequence<Basis::size - 1>{}){};
 
 public:
+    mditerator()                                      = default;
+    mditerator(const mditerator&) noexcept            = default;
+    mditerator(mditerator&&) noexcept                 = default;
+    mditerator& operator=(const mditerator&) noexcept = default;
+    mditerator& operator=(mditerator&&) noexcept      = default;
+    ~mditerator()                                     = default;
+
     [[nodiscard]] auto operator*() const noexcept {
         return detail_::md_get_slice<T, PackSize, Basis, Basis::outer_axis, Const, Contigious>(
             m_ptr, m_stride, 0, m_extents);
@@ -623,6 +535,9 @@ public:
         return m_ptr <=> other.m_ptr;
     };
 
+    [[nodiscard]] inline auto operator==(const mditerator& other) const noexcept {
+        return m_ptr == other.m_ptr;
+    };
 private:
     T*        m_ptr{};
     uZ        m_stride{};
@@ -630,29 +545,13 @@ private:
 };
 
 namespace detail_ {
-template<typename S>
-struct value_to_index_sequence_impl {};
-template<uZ... Is>
-struct value_to_index_sequence_impl<detail_::value_sequence<Is...>> {
-    using type = std::index_sequence<Is...>;
-};
-template<typename S>
-struct index_to_value_sequence_impl {};
-template<uZ... Is>
-struct index_to_value_sequence_impl<std::index_sequence<Is...>> {
-    using type = detail_::value_sequence<Is...>;
-};
-template<typename S>
-using value_to_index_sequence = typename value_to_index_sequence_impl<S>::type;
-template<typename S>
-using index_to_value_sequence = typename index_to_value_sequence_impl<S>::type;
 
 template<typename T, uZ PackSize, md_basis Basis, bool Const, bool Contigious>
 auto md_get_iterator(T* start, uZ stride, uZ index, const std::array<uZ, Basis::size>& extents) noexcept {
     if constexpr (Basis::size == 1 && Contigious) {
         return iterator_maker<T, Const, PackSize>::make(start + pidx<PackSize>(index), index);
     } else {
-        return mditerator<T, Basis, PackSize, Const, Contigious>{start + stride * index, stride, extents};
+        return mditerator<T, Basis, PackSize, Const, Contigious>(start + stride * index, stride, extents);
     }
 };
 
@@ -693,7 +592,7 @@ auto md_get_slice(T* start, uZ stride, uZ index, const std::array<uZ, ExtentsSiz
             using filtered = value_to_index_sequence<filter_value_sequence<indexes, axis_index>>;
 
             return mdslice<T, PackSize, new_basis, new_contigious, Const>(start, stride, extents, filtered{});
-        } else {
+        } else {    // iterator with outer axis extent removed
             return mdslice<T, PackSize, new_basis, new_contigious, Const>(
                 start, stride, extents, std::make_index_sequence<ExtentsSize>{});
         }
