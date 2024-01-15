@@ -1,9 +1,9 @@
 #ifndef MDSTORAGE_HPP
 #define MDSTORAGE_HPP
 
+#include "element_access.hpp"
 #include "meta.hpp"
 #include "types.hpp"
-#include "vector.hpp"
 
 #include <cstring>
 #include <iterator>
@@ -468,9 +468,9 @@ class mditerator {
 
     template<typename T_, uZ, md_basis Basis_, bool, bool>
     friend auto detail_::md_make_iterator(T_*                                 start,
-                                         uZ                                  stride,
-                                         uZ                                  index,
-                                         const std::array<uZ, Basis_::size>& extents) noexcept;
+                                          uZ                                  stride,
+                                          uZ                                  index,
+                                          const std::array<uZ, Basis_::size>& extents) noexcept;
 
     template<uZ... Is>
     mditerator(T*                                 ptr,
