@@ -155,7 +155,7 @@ concept md_basis = std::derived_from<T, detail_::basis_base>;
 namespace detail_ {
 
 template<typename T, uZ PackSize, md_basis Basis, bool Const, bool Contigious>
-auto md_get_iterator(T* start, uZ stride, uZ index, const std::array<uZ, Basis::size>& extents) noexcept;
+auto md_make_iterator(T* start, uZ stride, uZ index, const std::array<uZ, Basis::size>& extents) noexcept;
 
 template<typename T,
          uZ       PackSize,
@@ -166,7 +166,7 @@ template<typename T,
          uZ       ExtentsSize>
     requires(ExtentsSize == Basis::size ||
              equal_values<ExcludeAxis, Basis::outer_axis> && ExtentsSize == Basis::size - 1)
-auto md_get_slice(T* start, uZ stride, uZ index, const std::array<uZ, ExtentsSize>& extents) noexcept;
+auto md_make_slice(T* start, uZ stride, uZ index, const std::array<uZ, ExtentsSize>& extents) noexcept;
 
 }    // namespace detail_
 
@@ -269,7 +269,7 @@ public:
     template<auto Axis>
         requires /**/ (Basis::template contains<Axis>)
     [[nodiscard]] auto slice(uZ index) noexcept {
-        return detail_::md_get_slice<T, PackSize, Basis, Axis, false, true>(
+        return detail_::md_make_slice<T, PackSize, Basis, Axis, false, true>(
             m_ptr, m_stride, index, m_extents);
     };
 
@@ -289,23 +289,23 @@ public:
     // TODO: runtime slice() ?
 
     [[nodiscard]] auto begin() noexcept {
-        return detail_::md_get_iterator<T, PackSize, Basis, false, true>(m_ptr, m_stride, 0, m_extents);
+        return detail_::md_make_iterator<T, PackSize, Basis, false, true>(m_ptr, m_stride, 0, m_extents);
     };
     [[nodiscard]] auto begin() const noexcept {
         return cbegin();
     };
     [[nodiscard]] auto cbegin() const noexcept {
-        return detail_::md_get_iterator<T, PackSize, Basis, true, true>(m_ptr, m_stride, 0, m_extents);
+        return detail_::md_make_iterator<T, PackSize, Basis, true, true>(m_ptr, m_stride, 0, m_extents);
     }
 
     [[nodiscard]] auto end() noexcept {
-        return detail_::md_get_iterator<T, PackSize, Basis, false, true>(m_ptr, m_stride, size(), m_extents);
+        return detail_::md_make_iterator<T, PackSize, Basis, false, true>(m_ptr, m_stride, size(), m_extents);
     };
     [[nodiscard]] auto end() const noexcept {
         return cend();
     }
     [[nodiscard]] auto cend() const noexcept {
-        return detail_::md_get_iterator<T, PackSize, Basis, true, true>(m_ptr, m_stride, size(), m_extents);
+        return detail_::md_make_iterator<T, PackSize, Basis, true, true>(m_ptr, m_stride, size(), m_extents);
     };
 
     [[nodiscard]] auto size() const noexcept -> uZ {
@@ -345,10 +345,10 @@ class mdslice
     template<typename T_, uZ, md_basis Basis_, auto ExcludeAxis, bool, bool, uZ ExtentsSize>
         requires(ExtentsSize == Basis_::size ||
                  equal_values<ExcludeAxis, Basis_::outer_axis> && ExtentsSize == Basis_::size - 1)
-    friend auto detail_::md_get_slice(T_*                                start,
-                                      uZ                                 stride,
-                                      uZ                                 index,
-                                      const std::array<uZ, ExtentsSize>& extents) noexcept;
+    friend auto detail_::md_make_slice(T_*                                start,
+                                       uZ                                 stride,
+                                       uZ                                 index,
+                                       const std::array<uZ, ExtentsSize>& extents) noexcept;
 
     static constexpr bool vector_like = Basis::size == 1 && Contigious;
 
@@ -411,7 +411,7 @@ public:
     template<auto Axis>
         requires /**/ (Basis::template contains<Axis>)
     [[nodiscard]] auto slice(uZ index) const noexcept {
-        return detail_::md_get_slice<T, PackSize, Basis, Axis, Const, Contigious>(
+        return detail_::md_make_slice<T, PackSize, Basis, Axis, Const, Contigious>(
             m_start, m_stride, index, m_extents);
     }
 
@@ -423,12 +423,12 @@ public:
     // TODO: multidimensional slice and operator[]
 
     [[nodiscard]] auto begin() const noexcept {
-        return detail_::md_get_iterator<T, PackSize, Basis, Const, Contigious>(
+        return detail_::md_make_iterator<T, PackSize, Basis, Const, Contigious>(
             m_start, stride(), 0, m_extents);
     }
 
     [[nodiscard]] auto end() const noexcept {
-        return detail_::md_get_iterator<T, PackSize, Basis, Const, Contigious>(
+        return detail_::md_make_iterator<T, PackSize, Basis, Const, Contigious>(
             m_start, stride(), size(), m_extents);
     }
 
@@ -467,7 +467,7 @@ class mditerator {
         std::conditional_t<one_dimensional, decltype([] {}), std::array<uZ, Basis::size - 1>>;
 
     template<typename T_, uZ, md_basis Basis_, bool, bool>
-    friend auto detail_::md_get_iterator(T_*                                 start,
+    friend auto detail_::md_make_iterator(T_*                                 start,
                                          uZ                                  stride,
                                          uZ                                  index,
                                          const std::array<uZ, Basis_::size>& extents) noexcept;
@@ -509,18 +509,18 @@ public:
     ~mditerator()                                     = default;
 
     [[nodiscard]] inline auto operator*() const noexcept {
-        return detail_::md_get_slice<T, PackSize, Basis, Basis::outer_axis, Const, Contigious>(
+        return detail_::md_make_slice<T, PackSize, Basis, Basis::outer_axis, Const, Contigious>(
             m_ptr, m_stride, 0, extents());
     }
 
     using value_type =
-        decltype(detail_::md_get_slice<T, PackSize, Basis, Basis::outer_axis, Const, Contigious>(
+        decltype(detail_::md_make_slice<T, PackSize, Basis, Basis::outer_axis, Const, Contigious>(
             nullptr, 1, 0, std::array<uZ, Basis::size - 1>{}));
     using iterator_concept = std::random_access_iterator_tag;
     using difference_type  = iZ;
 
     [[nodiscard]] inline auto operator[](uZ index) const noexcept {
-        return detail_::md_get_slice<T, PackSize, Basis, Basis::outer_axis, Const, Contigious>(
+        return detail_::md_make_slice<T, PackSize, Basis, Basis::outer_axis, Const, Contigious>(
             m_ptr, m_stride, index, extents());
     };
 
@@ -597,9 +597,9 @@ private:
 namespace detail_ {
 
 template<typename T, uZ PackSize, md_basis Basis, bool Const, bool Contigious>
-auto md_get_iterator(T* start, uZ stride, uZ index, const std::array<uZ, Basis::size>& extents) noexcept {
+auto md_make_iterator(T* start, uZ stride, uZ index, const std::array<uZ, Basis::size>& extents) noexcept {
     if constexpr (Basis::size == 1 && Contigious) {
-        return iterator_maker<T, Const, PackSize>::make(start + pidx<PackSize>(index), index);
+        return make_iterator<T, Const, PackSize>(start + pidx<PackSize>(index), index);
     } else {
         return mditerator<T, Basis, PackSize, Const, Contigious>(start + stride * index, stride, extents);
     }
@@ -614,7 +614,7 @@ template<typename T,
          uZ       ExtentsSize>
     requires(ExtentsSize == Basis::size ||
              equal_values<ExcludeAxis, Basis::outer_axis> && ExtentsSize == Basis::size - 1)
-auto md_get_slice(T* start, uZ stride, uZ index, const std::array<uZ, ExtentsSize>& extents) noexcept {
+auto md_make_slice(T* start, uZ stride, uZ index, const std::array<uZ, ExtentsSize>& extents) noexcept {
     constexpr uZ   axis_index     = Basis::template index<ExcludeAxis>;
     constexpr bool new_contigious = Contigious && Basis::template index<ExcludeAxis> != 0;
     using new_basis               = typename Basis::template exclude<ExcludeAxis>;

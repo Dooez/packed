@@ -408,15 +408,17 @@ private:
 
 namespace detail_ {
 template<typename T, bool Const, uZ PackSize>
-struct iterator_maker;
-}
+auto make_iterator(T* ptr, iZ index) noexcept;
+}    // namespace detail_
+
 template<typename T, bool Const = false, uZ PackSize = pcx::default_pack_size<T>>
 class iterator {
     template<typename VT, uZ VPackSize, typename>
         requires packed_floating_point<VT, VPackSize>
     friend class vector;
     friend class iterator<T, true, PackSize>;
-    friend class detail_::iterator_maker<T, Const, PackSize>;
+
+    friend auto detail_::make_iterator<T, Const, PackSize>(T* ptr, iZ index) noexcept;
 
 public:
     using real_type       = T;
@@ -551,7 +553,8 @@ class iterator<T, Const, 1> {
         requires packed_floating_point<VT, VPackSize>
     friend class vector;
     friend class iterator<T, true, 1>;
-    friend class detail_::iterator_maker<T, Const, 1>;
+
+    friend auto detail_::make_iterator<T, Const, 1>(T* ptr, iZ index) noexcept;
 
 public:
     using real_type       = T;
@@ -669,10 +672,8 @@ private:
 
 namespace detail_ {
 template<typename T, bool Const, uZ PackSize>
-struct iterator_maker {
-    inline static auto make(T* data_ptr, iZ index) {
-        return iterator<T, Const, PackSize>(data_ptr, index);
-    }
+auto make_iterator(T* data_ptr, iZ index) noexcept {
+    return iterator<T, Const, PackSize>(data_ptr, index);
 };
 }    // namespace detail_
 
