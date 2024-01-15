@@ -1,10 +1,9 @@
-#ifndef MDVECTOR_HPP
-#define MDVECTOR_HPP
+#ifndef MDSTORAGE_HPP
+#define MDSTORAGE_HPP
 
 #include "meta.hpp"
 #include "types.hpp"
 #include "vector.hpp"
-#include "vector_util.hpp"
 
 #include <cstring>
 #include <iterator>
