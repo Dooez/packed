@@ -406,6 +406,10 @@ private:
     }
 };
 
+namespace detail_ {
+template<typename T, bool Const, uZ PackSize>
+struct iterator_maker;
+}
 template<typename T, bool Const = false, uZ PackSize = pcx::default_pack_size<T>>
 class iterator {
     template<typename VT, uZ VPackSize, typename>

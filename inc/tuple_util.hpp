@@ -3,8 +3,8 @@
 
 #include "types.hpp"
 
-#include <tuple>
 #include <algorithm>
+#include <tuple>
 
 namespace pcx::detail_ {
 
@@ -20,9 +20,8 @@ constexpr auto zip_tuples_impl(std::index_sequence<I...>, Tups&&... tuples) {
 }
 
 template<typename... Tups>
+    requires /**/ (sizeof...(Tups) > 0)
 constexpr auto zip_tuples(Tups&&... tuples) {
-    static_assert(sizeof...(tuples) > 0);
-
     constexpr auto min_size = std::min({std::tuple_size_v<std::remove_reference_t<Tups>>...});
     return zip_tuples_impl(std::make_index_sequence<min_size>{}, std::forward<Tups>(tuples)...);
 }
@@ -64,12 +63,13 @@ concept has_result = has_result_<
 
 template<uZ... I, typename F, typename... Tups>
 constexpr auto apply_for_each_impl(std::index_sequence<I...>, F&& f, Tups&&... args) {
-    return std::make_tuple(std::apply(std::forward<F>(f), zip_tuple_element<I>(args...))...);
+    return std::make_tuple(
+        std::apply(std::forward<F>(f), zip_tuple_element<I>(std::forward<Tups>(args)...))...);
 }
 
 template<uZ... I, typename F, typename... Tups>
 constexpr void void_apply_for_each_impl(std::index_sequence<I...>, F&& f, Tups&&... args) {
-    (std::apply(std::forward<F>(f), zip_tuple_element<I>(args...)), ...);
+    (std::apply(std::forward<F>(f), zip_tuple_element<I>(std::forward<Tups>(args)...)), ...);
 }
 
 template<typename F, typename... Tups>
