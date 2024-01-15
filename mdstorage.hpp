@@ -178,7 +178,7 @@ template<typename T,
          uZ       PackSize  = default_pack_size<T>,
          typename Allocator = aligned_allocator<T>>
     requires pack_size<PackSize>
-class mdstorage : public detail_::aligned_base<Basis::size == 1> {
+class mdstorage : public detail_::pack_aligned_base<Basis::size == 1> {
     using allocator_traits = std::allocator_traits<Allocator>;
 
     static constexpr bool vector_like = Basis::size == 1;
@@ -339,7 +339,7 @@ private:
 template<typename T, uZ PackSize, md_basis Basis, bool Contigious, bool Const>
 class mdslice
 : public std::ranges::view_base
-, detail_::aligned_base<Basis::size == 1 && Contigious> {
+, detail_::pack_aligned_base<Basis::size == 1 && Contigious> {
     using extents_type = std::array<uZ, Basis::size>;
 
     template<typename T_, uZ, md_basis Basis_, auto ExcludeAxis, bool, bool, uZ ExtentsSize>

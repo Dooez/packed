@@ -68,15 +68,15 @@ struct cx_reg {
 
 namespace detail_ {
 template<bool Always>
-struct aligned_base {};
+struct pack_aligned_base {};
 template<>
-struct aligned_base<true> {
+struct pack_aligned_base<true> {
     static constexpr std::true_type always_aligned{};
 };
 }    // namespace detail_
 
 template<typename T>
-concept always_aligned = std::derived_from<T, detail_::aligned_base<true>>;
+concept always_aligned = std::derived_from<T, detail_::pack_aligned_base<true>>;
 
 template<typename T>
     requires floating_point<T>

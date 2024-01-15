@@ -2,6 +2,7 @@
 #define PCX_VECTOR_HPP
 
 #include "element_access.hpp"
+#include "types.hpp"
 #include "vector_arithm.hpp"
 #include "vector_util.hpp"
 
@@ -23,7 +24,7 @@ namespace pcx {
  */
 template<typename T, uZ PackSize = pcx::default_pack_size<T>, typename Allocator = pcx::aligned_allocator<T>>
     requires packed_floating_point<T, PackSize>
-class vector : public detail_::aligned_base<true> {
+class vector : public detail_::pack_aligned_base<true> {
     friend class detail_::expression_traits;
     template<typename OT, uZ OPackSize, typename OAllocator>
         requires packed_floating_point<OT, OPackSize>
@@ -410,7 +411,9 @@ private:
 
 
 template<typename T, bool Const = false, uZ PackSize = pcx::default_pack_size<T>>
-class subrange : public rv::view_base {
+class subrange
+: public rv::view_base
+, detail_::pack_aligned_base<PackSize == 1> {
     template<typename VT, uZ VPackSize, typename>
         requires packed_floating_point<VT, VPackSize>
     friend class vector;
