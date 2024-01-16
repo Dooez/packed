@@ -111,7 +111,42 @@ template<typename S>
 using value_to_index_sequence = typename value_to_index_sequence_impl<S>::type;
 template<typename S>
 using index_to_value_sequence = typename index_to_value_sequence_impl<S>::type;
+
+// template<uZ I, auto Vmatch, auto V, auto... Vs>
+// struct idx_impl {
+//     static constexpr uZ value = equal_values<Vmatch, V> ? I : idx_impl<I + 1, Vmatch, Vs...>::value;
+// };
+// template<uZ I, auto Vmatch, auto V>
+// struct idx_impl<I, Vmatch, V> {
+//     static constexpr uZ value = I;
+// };
+// template<typename S, uZ Index>
+// get_value_from_sequence =  idx_impl<Index, auto Vmatch, auto V, auto Vs>
+
+template<uZ I, uZ Imatch, auto V, auto... Vs>
+struct index_value_sequence_impl {
+    static constexpr auto value = index_value_sequence_impl<I + 1, Imatch, Vs...>::value;
+};
+template<uZ Imatch, auto V, auto... Vs>
+struct index_value_sequence_impl<Imatch, Imatch, V, Vs...> {
+    static constexpr auto value = V;
+};
+
+template<typename Sequence, uZ Index>
+struct index_value_sequence;
+
+template<uZ Index, auto... Vs>
+struct index_value_sequence<value_sequence<Vs...>, Index> {
+    static constexpr auto value = index_value_sequence_impl<0, Index, Vs...>::value;
+};
+
+template<typename Sequence, uZ Index>
+static constexpr auto index_value_sequence_v = index_value_sequence<Sequence, Index>::value;
+
+
 }    // namespace detail_
+
+
 }    // namespace pcx
 
 
