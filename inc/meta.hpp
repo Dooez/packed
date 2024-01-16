@@ -171,14 +171,14 @@ struct index_into_impl<Imatch, Imatch, V, Vs...> {
 
 template<auto V, auto... Vs>
     requires value_matched<V, Vs...>
-static constexpr uZ find_first_in_sequence = detail_::find_first_impl<0, V, Vs...>::index;
+static constexpr uZ find_first_in_values = detail_::find_first_impl<0, V, Vs...>::index;
 
 template<uZ I, auto... Vs>
     requires /**/ (I <= sizeof...(Vs))
-static constexpr auto index_into_sequence = detail_::index_into_impl<0, I, Vs...>::value;
+static constexpr auto index_into_values = detail_::index_into_impl<0, I, Vs...>::value;
 
-// template<uZ I, typename Sequence>
-// static constexpr auto index_into_sequence
+template<uZ I, typename Sequence>
+static constexpr auto index_into_sequence = 0;
 
 }    // namespace meta
 
