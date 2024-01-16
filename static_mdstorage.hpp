@@ -5,7 +5,10 @@
 #include "element_access.hpp"
 #include "mdstorage.hpp"
 #include "meta.hpp"
+#include "types.hpp"
 
+#include <array>
+#include <concepts>
 #include <numeric>
 
 namespace pcx {
@@ -16,6 +19,25 @@ namespace md {
 namespace detail_ {
 struct basis_base {};
 }    // namespace detail_
+
+template<auto... Axes>
+class static_basis : detail_::basis_base {
+public:
+    static constexpr uZ size = sizeof...(Axes);
+
+    template<std::unsigned_integral... Us>
+        requires /**/ (sizeof...(Us) == size)
+    constexpr explicit static_basis(Us... extents) noexcept
+    : m_extents{extents...} {}
+
+    template<auto Axis>
+    [[nodiscard]] static constexpr auto index() noexcept {
+        return 0;
+    }
+
+private:
+    std::array<uZ, size> m_extents;
+};
 
 /**
  * @brief Basis with left axis being most contigious in memory. Axis index increases left to right.
@@ -198,9 +220,7 @@ struct extents<Alignment, Ns...> {
     template<uZ PackSize, md_basis Basis, auto... Excluded>
     static consteval auto stride(pcx::detail_::value_sequence<Excluded...>) -> uZ {
         auto stride = storage_size<PackSize>;
-        for (uZ i = 0; i < Basis::size; ++i) {
-                
-        }
+        for (uZ i = 0; i < Basis::size; ++i) {}
         return 0;
     };
 };

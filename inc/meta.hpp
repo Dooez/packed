@@ -142,10 +142,45 @@ struct index_value_sequence<value_sequence<Vs...>, Index> {
 
 template<typename Sequence, uZ Index>
 static constexpr auto index_value_sequence_v = index_value_sequence<Sequence, Index>::value;
-
-
 }    // namespace detail_
 
+namespace meta {
+template<auto... Values>
+struct value_sequence {};
+
+namespace detail_ {
+template<uZ I, auto Vmatch, auto V, auto... Vs>
+struct find_first_impl {
+    static constexpr uZ index = equal_values<Vmatch, V> ? I : find_first_impl<I + 1, Vmatch, Vs...>::index;
+};
+template<uZ I, auto Vmatch, auto V>
+struct find_first_impl<I, Vmatch, V> {
+    static_assert(equal_values<Vmatch, V>);
+    static constexpr uZ index = I;
+};
+
+template<uZ I, auto Imatch, auto V, auto... Vs>
+struct index_into_impl {
+    static constexpr auto value = index_into_impl<I + 1, Imatch, Vs...>::value;
+};
+template<auto Imatch, auto V, auto... Vs>
+struct index_into_impl<Imatch, Imatch, V, Vs...> {
+    static constexpr auto value = V;
+};
+}    // namespace detail_
+
+template<auto V, auto... Vs>
+    requires value_matched<V, Vs...>
+static constexpr uZ find_first_in_sequence = detail_::find_first_impl<0, V, Vs...>::index;
+
+template<uZ I, auto... Vs>
+    requires /**/ (I <= sizeof...(Vs))
+static constexpr auto index_into_sequence = detail_::index_into_impl<0, I, Vs...>::value;
+
+// template<uZ I, typename Sequence>
+// static constexpr auto index_into_sequence
+
+}    // namespace meta
 
 }    // namespace pcx
 
