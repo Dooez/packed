@@ -1,6 +1,7 @@
 #ifndef PCX_VECTOR_HPP
 #define PCX_VECTOR_HPP
 
+#include "allocators.hpp"
 #include "element_access.hpp"
 #include "types.hpp"
 #include "vector_arithm.hpp"

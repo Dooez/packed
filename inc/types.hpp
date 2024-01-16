@@ -71,7 +71,7 @@ template<bool Always>
 struct pack_aligned_base {};
 template<>
 struct pack_aligned_base<true> {
-    static constexpr std::true_type always_aligned{};
+    using always_aligned = std::true_type;
 };
 }    // namespace detail_
 
@@ -81,45 +81,6 @@ concept always_aligned = std::derived_from<T, detail_::pack_aligned_base<true>>;
 template<typename T>
     requires floating_point<T>
 constexpr const uZ default_pack_size = 32 / sizeof(T);
-
-template<typename T, std::align_val_t Alignment = std::align_val_t{64}>
-class aligned_allocator {
-public:
-    using value_type      = T;
-    using is_always_equal = std::true_type;
-
-    aligned_allocator() noexcept = default;
-
-    template<typename U>
-    explicit aligned_allocator(const aligned_allocator<U, Alignment>&) noexcept {};
-
-    aligned_allocator(const aligned_allocator&) noexcept = default;
-    aligned_allocator(aligned_allocator&&) noexcept      = default;
-
-    ~aligned_allocator() = default;
-
-    aligned_allocator& operator=(const aligned_allocator&) noexcept = default;
-    aligned_allocator& operator=(aligned_allocator&&) noexcept      = default;
-
-    [[nodiscard]] auto allocate(uZ n) -> value_type* {
-        return reinterpret_cast<value_type*>(::operator new[](n * sizeof(value_type), Alignment));
-    }
-
-    void deallocate(value_type* p, uZ) {
-        ::operator delete[](reinterpret_cast<void*>(p), Alignment);
-    }
-
-    template<typename U>
-    struct rebind {
-        using other = aligned_allocator<U, Alignment>;
-    };
-
-private:
-};
-template<typename T, std::align_val_t Alignment>
-bool operator==(const aligned_allocator<T, Alignment>&, const aligned_allocator<T, Alignment>&) noexcept {
-    return true;
-}
 
 template<typename T, bool Const, uZ PackSize>
 class iterator;
@@ -134,11 +95,6 @@ class vector;
 template<typename T, bool Const, uZ PackSize>
 class subrange;
 
-template<uZ PackSize>
-constexpr auto pidx(uZ idx) -> uZ {
-    return idx + idx / PackSize * PackSize;
-}
-
 namespace detail_ {
 template<typename T>
 struct is_std_complex_floating_point {
@@ -148,16 +104,6 @@ struct is_std_complex_floating_point {
 template<floating_point F>
 struct is_std_complex_floating_point<std::complex<F>> {
     using real_type             = F;
-    static constexpr bool value = true;
-};
-
-template<typename T>
-struct is_pcx_iterator {
-    static constexpr bool value = false;
-};
-
-template<typename T, bool Const, uZ PackSize>
-struct is_pcx_iterator<iterator<T, Const, PackSize>> {
     static constexpr bool value = true;
 };
 }    // namespace detail_
@@ -172,7 +118,8 @@ template<typename R>
     requires rv::contiguous_range<R> && detail_::is_std_complex_floating_point<rv::range_value_t<R>>::value
 struct cx_vector_traits<R> {
     using real_type = typename detail_::is_std_complex_floating_point<rv::range_value_t<R>>::real_type;
-    static constexpr uZ pack_size = 1;
+    static constexpr uZ   pack_size                = 1;
+    static constexpr bool enable_vector_extensions = false;
 
     static auto re_data(R& vector) -> real_type* {
         return reinterpret_cast<real_type*>(rv::data(vector));
@@ -181,41 +128,6 @@ struct cx_vector_traits<R> {
         return reinterpret_cast<const real_type*>(rv::data(vector));
     }
     static auto size(const R& vector) {
-        return rv::size(vector);
-    }
-};
-
-template<typename R>
-    requires /**/ rv::range<R> && (detail_::is_pcx_iterator<rv::iterator_t<R>>::value)
-struct cx_vector_traits<R> {
-    using real_type               = typename rv::iterator_t<R>::real_type;
-    static constexpr uZ pack_size = rv::iterator_t<R>::pack_size;
-
-    inline static auto re_data(R& vector) {
-        auto it = vector.begin();
-        if constexpr (!always_aligned<R>) {
-            if (!it.aligned()) {
-                throw(
-                    std::invalid_argument("Packed complex range is not aligned. Packed complex range must be "
-                                          "aligned to be accessed as a vector."));
-            }
-        }
-        return &(*it);
-    }
-
-    inline static auto re_data(const R& vector) {
-        auto it = vector.begin();
-        if constexpr (!always_aligned<R>) {
-            if (!it.aligned()) {
-                throw(
-                    std::invalid_argument("Packed complex range is not aligned. Packed complex range must be "
-                                          "aligned to be accessed as a vector."));
-            }
-        }
-        return &(*it);
-    }
-
-    inline static auto size(const R& vector) {
         return rv::size(vector);
     }
 };

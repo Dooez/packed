@@ -2,7 +2,14 @@
 #define ELEMENT_ACCESS_HPP
 
 #include "types.hpp"
+
 namespace pcx {
+
+template<uZ PackSize>
+constexpr auto pidx(uZ idx) -> uZ {
+    return idx + idx / PackSize * PackSize;
+}
+
 namespace detail_ {
 template<typename T, bool Const, uZ PackSize>
 auto make_iterator(T* ptr, iZ index) noexcept;
@@ -272,7 +279,52 @@ template<typename T, bool Const, uZ PackSize>
 auto make_iterator(T* data_ptr, iZ index) noexcept {
     return iterator<T, Const, PackSize>(data_ptr, index);
 };
+
+template<typename T>
+struct is_pcx_iterator {
+    static constexpr bool value = false;
+};
+
+template<typename T, bool Const, uZ PackSize>
+struct is_pcx_iterator<iterator<T, Const, PackSize>> {
+    static constexpr bool value = true;
+};
 }    // namespace detail_
+
+template<typename R>
+    requires /**/ rv::range<R> && (detail_::is_pcx_iterator<rv::iterator_t<R>>::value)
+struct cx_vector_traits<R> {
+    using real_type               = typename rv::iterator_t<R>::real_type;
+    static constexpr uZ pack_size = rv::iterator_t<R>::pack_size;
+
+    inline static auto re_data(R& vector) {
+        auto it = vector.begin();
+         if constexpr (!always_aligned<R>) {
+            if (!it.aligned()) {
+                throw(
+                    std::invalid_argument("Packed complex range is not aligned. Packed complex range must be "
+                                          "aligned to be accessed as a vector."));
+            }
+        }
+        return &(*it);
+    }
+
+    inline static auto re_data(const R& vector) {
+        auto it = vector.begin();
+        if constexpr (!always_aligned<R>) {
+            if (!it.aligned()) {
+                throw(
+                    std::invalid_argument("Packed complex range is not aligned. Packed complex range must be "
+                                          "aligned to be accessed as a vector."));
+            }
+        }
+        return &(*it);
+    }
+
+    inline static auto size(const R& vector) {
+        return rv::size(vector);
+    }
+};
 
 namespace detail_ {
 template<typename T, bool Const, uZ PackSize>
