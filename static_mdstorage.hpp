@@ -229,6 +229,26 @@ constexpr auto storage_size() -> uZ {
     }
     return size;
 }
+template<auto Basis, meta::any_value_sequence ExcludedAxes, auto Axis, uZ Alignment, uZ PackSize>
+    requires /**/ (Basis.template contans<Axis>())
+[[nodiscard]] inline auto get_slice_offset(auto* ptr, uZ index) noexcept {
+    if constexpr (equal_values<Axis, Basis.inner_axis>) {
+        return ptr + pidx<PackSize>(index);
+    } else {
+        constexpr auto div = []<uZ I>(auto&& f, uZ_constant<I>) {
+            constexpr auto axis = Basis.template axis<I>();
+            if constexpr (equal_values<Axis, axis>) {
+                return Basis.template extent<axis>();
+            } else {
+                return Basis.template extent<axis>() * f(f, uZ_constant<I - 1>{});
+            }
+        };
+        constexpr uZ storage_size = detail_::storage_size<Basis, Alignment>();
+        constexpr uZ stride       = storage_size / div(div, uZ_constant<Basis.size - 1>{});
+
+        return ptr + stride * index;
+    }
+};
 };    // namespace detail_
 
 class iter_base {
@@ -399,26 +419,115 @@ private:
 
 template<auto Basis, meta::any_value_sequence ExcludedAxes, uZ Alignment, uZ PackSize>
 class static_slice_base {
-public:
+protected:
     template<auto Axis>
-    [[nodiscard]] inline auto get_slice_offset(auto* ptr, uZ index) const noexcept {
-        if constexpr (equal_values<Axis, Basis.inner_axis>) {
-            auto* n_ptr = ptr + pidx<PackSize>(index);
-        } else {
-            constexpr auto div = []<uZ I>(auto&& f, uZ_constant<I>) {
-                constexpr auto axis = Basis.template axis<I>();
-                if constexpr (equal_values<Axis, axis>) {
-                    return Basis.template extent<axis>();
-                } else {
-                    return Basis.template extent<axis>() * f(f, uZ_constant<I - 1>{});
-                }
-            };
-            constexpr uZ storage_size = detail_::storage_size<Basis, Alignment>();
-            constexpr uZ stride       = storage_size / div(div, uZ_constant<Basis.size - 1>{});
+    using subslice = static_slice_base<Basis,    //
+                                       meta::expand_value_sequence<ExcludedAxes, Axis>,
+                                       Alignment,
+                                       PackSize>;
 
-            auto* nptr = ptr + stride * index;
+    template<auto Axis>
+    static constexpr auto subslice_args() noexcept -> std::tuple<> {
+        return {};
+    };
+
+    template<auto Axis>
+    static constexpr auto get_slice_offset(auto* ptr, uZ index) noexcept {
+        return detail_::get_slice_offset<Basis, ExcludedAxes, Axis, Alignment, PackSize>(ptr, index);
+    }
+
+private:
+};
+
+class slice_base {
+protected:
+    template<auto Axis>
+    using subslice = slice_base;
+    template<auto Axis>
+    auto subslice_args() noexcept -> std::tuple<> {
+        return {};
+    };
+    template<auto Axis>
+    auto get_subslice_offset(auto* ptr, uZ index) noexcept {
+        return ptr;
+    }
+
+private:
+};
+template<bool Const, bool Contigious, auto Basis, typename T, uZ PackSize, typename Base>
+class sslice
+: public std::ranges::view_base
+, pcx::detail_::pack_aligned_base<Basis.size == 1 && Contigious>
+, slice_base {
+    using base = slice_base;
+
+    static constexpr bool vector_like = Basis.size == 1 && Contigious;
+
+    explicit constexpr sslice(T* start, auto&&... args)
+    : slice_base(std::forward(args...))
+    , m_start(start){};
+
+public:
+    sslice() = default;
+
+    sslice(const sslice&) noexcept = default;
+    sslice(sslice&&) noexcept      = default;
+
+    sslice& operator=(const sslice&) noexcept = default;
+    sslice& operator=(sslice&&) noexcept      = default;
+
+    ~sslice() = default;
+
+    template<auto Axis>
+        requires /**/ (Basis.template contains<Axis>)
+    [[nodiscard]] auto slice(uZ index) const noexcept {
+        using new_base  = subslice<Axis>;
+        using new_slice = sslice<Const, Contigious, Basis, T, PackSize, new_base>;
+        auto* new_start = get_subslice_offset<Axis>(m_start, index);
+        return new_slice(new_start, subslice_args<Axis>());
+    }
+
+    [[nodiscard]] auto operator[](uZ index) const noexcept {
+        return slice<Basis.outer_axis>(index);
+    }
+
+    // TODO: `at()`
+    // TODO: multidimensional slice and operator[]
+
+    [[nodiscard]] auto begin() const noexcept {
+        return detail_::md_make_iterator<T, PackSize, Basis, Const, Contigious>(
+            m_start, stride(), 0, m_extents);
+    }
+
+    [[nodiscard]] auto end() const noexcept {
+        return detail_::md_make_iterator<T, PackSize, Basis, Const, Contigious>(
+            m_start, stride(), size(), m_extents);
+    }
+
+    [[nodiscard]] auto size() const noexcept -> uZ {
+        return m_extents.back();
+    }
+
+    template<auto Axis>
+        requires /**/ (Basis::template contains<Axis>)
+    [[nodiscard]] auto extent() const noexcept -> uZ {
+        return m_extents[Basis::template index<Axis>];
+    }
+    [[nodiscard]] auto extents() const noexcept -> uZ {
+        return m_extents;
+    }
+
+private:
+    [[nodiscard]] auto stride() const noexcept -> uZ {
+        if constexpr (vector_like) {
+            return 1;
+        } else {
+            return m_stride;
         }
     }
+
+    using stride_type = std::conditional_t<vector_like, decltype([] {}), uZ>;
+    T* m_start{};
 };
 
 template<typename T, auto Basis, uZ PackSize, uZ DataAlignment, typename Allocator>
@@ -467,77 +576,6 @@ private:
 };
 
 template<typename T, uZ PackSize, md_basis Basis, typename Extents, bool Contigious, bool Const>
-class sslice
-: public std::ranges::view_base
-, pcx::detail_::pack_aligned_base<Basis::size == 1 && Contigious> {
-    static constexpr bool vector_like = Basis::size == 1 && Contigious;
-
-    // sslice(T* start, auto&&... args)
-    // :
-
-
-public:
-    sslice() = default;
-
-    sslice(const sslice&) noexcept = default;
-    sslice(sslice&&) noexcept      = default;
-
-    sslice& operator=(const sslice&) noexcept = default;
-    sslice& operator=(sslice&&) noexcept      = default;
-
-    ~sslice() = default;
-
-    template<auto Axis>
-        requires /**/ (Basis::template contains<Axis>)
-    [[nodiscard]] auto slice(uZ index) const noexcept {
-        return detail_::md_make_slice<T, PackSize, Basis, Axis, Const, Contigious>(
-            m_start, m_stride, index, m_extents);
-    }
-
-    [[nodiscard]] auto operator[](uZ index) const noexcept {
-        return slice<Basis::outer_axis>(index);
-    }
-
-    // TODO: `at()`
-    // TODO: multidimensional slice and operator[]
-
-    [[nodiscard]] auto begin() const noexcept {
-        return detail_::md_make_iterator<T, PackSize, Basis, Const, Contigious>(
-            m_start, stride(), 0, m_extents);
-    }
-
-    [[nodiscard]] auto end() const noexcept {
-        return detail_::md_make_iterator<T, PackSize, Basis, Const, Contigious>(
-            m_start, stride(), size(), m_extents);
-    }
-
-    [[nodiscard]] auto size() const noexcept -> uZ {
-        return m_extents.back();
-    }
-
-    template<auto Axis>
-        requires /**/ (Basis::template contains<Axis>)
-    [[nodiscard]] auto extent() const noexcept -> uZ {
-        return m_extents[Basis::template index<Axis>];
-    }
-    [[nodiscard]] auto extents() const noexcept -> uZ {
-        return m_extents;
-    }
-
-private:
-    [[nodiscard]] auto stride() const noexcept -> uZ {
-        if constexpr (vector_like) {
-            return 1;
-        } else {
-            return m_stride;
-        }
-    }
-
-    using stride_type = std::conditional_t<vector_like, decltype([] {}), uZ>;
-    T*           m_start{};
-    stride_type  m_stride{};
-    extents_type m_extents{};
-};
 }    // namespace md
 
 }    // namespace pcx
