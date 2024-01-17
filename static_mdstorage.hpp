@@ -7,7 +7,9 @@
 #include "meta.hpp"
 #include "types.hpp"
 
+#include <algorithm>
 #include <array>
+#include <bits/utility.h>
 #include <concepts>
 #include <numeric>
 
@@ -20,156 +22,214 @@ namespace detail_ {
 struct basis_base {};
 }    // namespace detail_
 
-template<auto... Axes>
+template<uZ Alignment, auto... Axes>
 class static_basis : detail_::basis_base {
+    template<typename>
+    struct basis_from_value_sequence;
+    template<auto... Vs>
+    struct basis_from_value_sequence<meta::value_sequence<Vs...>> {
+        using type = static_basis<Vs...>;
+    };
+
+    template<uZ... Is>
+    constexpr static_basis(auto&& extents, std::index_sequence<Is...>)
+    : m_extents{extents[Is]...} {};
+
 public:
     static constexpr uZ size = sizeof...(Axes);
 
     template<std::unsigned_integral... Us>
         requires /**/ (sizeof...(Us) == size)
     constexpr explicit static_basis(Us... extents) noexcept
-    : m_extents{extents...} {}
+    : m_extents{extents...} {};
 
     template<auto Axis>
+        requires meta::value_matched<Axis, Axes...>
     [[nodiscard]] static constexpr auto index() noexcept {
-        return 0;
+        return meta::find_first_in_values<Axis, Axes...>;
+    }
+
+    template<uZ Index>
+    [[nodiscard]] static constexpr auto axis() noexcept {
+        return meta::index_into_values<Index, Axes...>;
+    };
+
+    template<auto Axis>
+    [[nodiscard]] static constexpr bool contains() noexcept {
+        return meta::value_matched<Axis, Axes...>;
+    }
+
+    static constexpr auto inner_axis = axis<0>();
+    static constexpr auto outer_axis = axis<size - 1>();
+
+    template<auto Axis>
+        requires meta::value_matched<Axis, Axes...>
+    [[nodiscard]] consteval auto exclude() noexcept {
+        using new_basis_t =
+            basis_from_value_sequence<meta::filter_value_sequence<meta::value_sequence<Axes...>, Axis>>;
+
+        constexpr uZ index = meta::find_first_in_values<Axis, Axes...>;
+        using index_seq    = meta::index_to_value_sequence<std::make_index_sequence<size>>;
+        using filtered     = meta::value_to_index_sequence<meta::filter_value_sequence<index_seq, index>>;
+
+        return new_basis_t(m_extents, filtered{});
+    };
+
+    template<auto Axis>
+        requires meta::value_matched<Axis, Axes...>
+    [[nodiscard]] constexpr auto extent() noexcept {
+        constexpr uZ index = meta::find_first_in_values<Axis, Axes...>;
+        return m_extents[index];
     }
 
 private:
     std::array<uZ, size> m_extents;
 };
 
-/**
- * @brief Basis with left axis being most contigious in memory. Axis index increases left to right.
- * 
- * @tparam Axes 
- */
-template<auto... Axes>
-    requires(sizeof...(Axes) > 0, unique_values<Axes...>)
-struct left_first_basis : detail_::basis_base {
-private:
-    template<uZ I, auto Vmatch, auto V, auto... Vs>
-    struct idx_impl {
-        static constexpr uZ value = equal_values<Vmatch, V> ? I : idx_impl<I + 1, Vmatch, Vs...>::value;
-    };
-    template<uZ I, auto Vmatch, auto V>
-    struct idx_impl<I, Vmatch, V> {
-        static constexpr uZ value = I;
-    };
-
-    template<uZ I, uZ Imatch, auto V, auto... Vs>
-    struct value_impl {
-        static constexpr auto value = value_impl<I + 1, Imatch, Vs...>::value;
-    };
-    template<uZ Imatch, auto V, auto... Vs>
-    struct value_impl<Imatch, Imatch, V, Vs...> {
-        static constexpr auto value = V;
-    };
-
-    template<typename S>
-    struct basis_from_seq {};
-    template<auto... Vs>
-    struct basis_from_seq<detail_::value_sequence<Vs...>> {
-        using type = left_first_basis<Vs...>;
-    };
-    template<typename S>
-    using basis_from_seq_t = typename basis_from_seq<S>::type;
-
-public:
-    static constexpr uZ size = sizeof...(Axes);
-
-    static constexpr auto inner_axis = value_impl<0, 0, Axes...>::value;
-
-    static constexpr auto outer_axis = value_impl<0, size - 1, Axes...>::value;
-
-    /**
-     * @brief Index of the axis in basis.
-     * 
-     * @tparam Axis value representing the axis.
-     */
-    template<auto Axis>
-        requires value_matched<Axis, Axes...>
-    static constexpr uZ index = idx_impl<0, Axis, Axes...>::value;
-
-    template<uZ I>
-        requires /**/ (I < size)
-    static constexpr auto axis = value_impl<0, I, Axes...>::value;
-
-    template<auto Axis>
-        requires value_matched<Axis, Axes...>
-    using exclude = basis_from_seq_t<detail_::filter_value_sequence<detail_::value_sequence<Axes...>, Axis>>;
-
-    template<auto Axis>
-    static constexpr bool contains = value_matched<Axis, Axes...>;
-};
-
-/**
- * @brief Basis with right axis being most contigious in memory.
- * 
- * @tparam Axes 
- */
-template<auto... Axes>
-    requires(sizeof...(Axes) > 0, unique_values<Axes...>)
-struct right_first_basis : detail_::basis_base {
-private:
-    template<uZ I, auto Vmatch, auto V, auto... Vs>
-    struct idx_impl {
-        static constexpr uZ value = equal_values<Vmatch, V> ? I : idx_impl<I - 1, Vmatch, Vs...>::value;
-    };
-    template<uZ I, auto Vmatch, auto V>
-    struct idx_impl<I, Vmatch, V> {
-        static constexpr uZ value = I;
-    };
-
-    template<uZ I, uZ Imatch, auto V, auto... Vs>
-    struct value_impl {
-        static constexpr auto value = value_impl<I - 1, Imatch, Vs...>::value;
-    };
-    template<uZ Imatch, auto V, auto... Vs>
-    struct value_impl<Imatch, Imatch, V, Vs...> {
-        static constexpr auto value = V;
-    };
-
-    template<typename S>
-    struct basis_from_seq {};
-    template<auto... Vs>
-    struct basis_from_seq<detail_::value_sequence<Vs...>> {
-        using type = right_first_basis<Vs...>;
-    };
-
-    template<typename S>
-    using basis_from_seq_t = typename basis_from_seq<S>::type;
-
-public:
-    static constexpr uZ size = sizeof...(Axes);
-
-    static constexpr auto inner_axis = value_impl<size - 1, 0, Axes...>::value;
-
-    static constexpr auto outer_axis = value_impl<size - 1, size - 1, Axes...>::value;
-
-    template<auto Axis>
-    static constexpr bool contains = value_matched<Axis, Axes...>;
-
-    /**
-     * @brief Index of the axis in basis.
-     * 
-     * @tparam Axis value representing the axis.
-     */
-    template<auto Axis>
-        requires value_matched<Axis, Axes...>
-    static constexpr uZ index = idx_impl<size - 1, Axis, Axes...>::value;
-
-    template<uZ I>
-        requires /**/ (I < size)
-    static constexpr auto axis = value_impl<size - 1, I, Axes...>::value;
-
-    template<auto Axis>
-        requires value_matched<Axis, Axes...>
-    using exclude = basis_from_seq_t<detail_::filter_value_sequence<detail_::value_sequence<Axes...>, Axis>>;
-};
+// /**
+//  * @brief Basis with left axis being most contigious in memory. Axis index increases left to right.
+//  *
+//  * @tparam Axes
+//  */
+// template<auto... Axes>
+//     requires(sizeof...(Axes) > 0, unique_values<Axes...>)
+// struct left_first_basis : detail_::basis_base {
+// private:
+//     template<uZ I, auto Vmatch, auto V, auto... Vs>
+//     struct idx_impl {
+//         static constexpr uZ value = equal_values<Vmatch, V> ? I : idx_impl<I + 1, Vmatch, Vs...>::value;
+//     };
+//     template<uZ I, auto Vmatch, auto V>
+//     struct idx_impl<I, Vmatch, V> {
+//         static constexpr uZ value = I;
+//     };
+//
+//     template<uZ I, uZ Imatch, auto V, auto... Vs>
+//     struct value_impl {
+//         static constexpr auto value = value_impl<I + 1, Imatch, Vs...>::value;
+//     };
+//     template<uZ Imatch, auto V, auto... Vs>
+//     struct value_impl<Imatch, Imatch, V, Vs...> {
+//         static constexpr auto value = V;
+//     };
+//
+//     template<typename S>
+//     struct basis_from_seq {};
+//     template<auto... Vs>
+//     struct basis_from_seq<detail_::value_sequence<Vs...>> {
+//         using type = left_first_basis<Vs...>;
+//     };
+//     template<typename S>
+//     using basis_from_seq_t = typename basis_from_seq<S>::type;
+//
+// public:
+//     static constexpr uZ size = sizeof...(Axes);
+//
+//     static constexpr auto inner_axis = value_impl<0, 0, Axes...>::value;
+//
+//     static constexpr auto outer_axis = value_impl<0, size - 1, Axes...>::value;
+//
+//     /**
+//      * @brief Index of the axis in basis.
+//      *
+//      * @tparam Axis value representing the axis.
+//      */
+//     template<auto Axis>
+//         requires value_matched<Axis, Axes...>
+//     static constexpr uZ index = idx_impl<0, Axis, Axes...>::value;
+//
+//     template<uZ I>
+//         requires /**/ (I < size)
+//     static constexpr auto axis = value_impl<0, I, Axes...>::value;
+//
+//     template<auto Axis>
+//         requires value_matched<Axis, Axes...>
+//     using exclude = basis_from_seq_t<detail_::filter_value_sequence<detail_::value_sequence<Axes...>, Axis>>;
+//
+//     template<auto Axis>
+//     static constexpr bool contains = value_matched<Axis, Axes...>;
+// };
+//
+// /**
+//  * @brief Basis with right axis being most contigious in memory.
+//  *
+//  * @tparam Axes
+//  */
+// template<auto... Axes>
+//     requires(sizeof...(Axes) > 0, unique_values<Axes...>)
+// struct right_first_basis : detail_::basis_base {
+// private:
+//     template<uZ I, auto Vmatch, auto V, auto... Vs>
+//     struct idx_impl {
+//         static constexpr uZ value = equal_values<Vmatch, V> ? I : idx_impl<I - 1, Vmatch, Vs...>::value;
+//     };
+//     template<uZ I, auto Vmatch, auto V>
+//     struct idx_impl<I, Vmatch, V> {
+//         static constexpr uZ value = I;
+//     };
+//
+//     template<uZ I, uZ Imatch, auto V, auto... Vs>
+//     struct value_impl {
+//         static constexpr auto value = value_impl<I - 1, Imatch, Vs...>::value;
+//     };
+//     template<uZ Imatch, auto V, auto... Vs>
+//     struct value_impl<Imatch, Imatch, V, Vs...> {
+//         static constexpr auto value = V;
+//     };
+//
+//     template<typename S>
+//     struct basis_from_seq {};
+//     template<auto... Vs>
+//     struct basis_from_seq<detail_::value_sequence<Vs...>> {
+//         using type = right_first_basis<Vs...>;
+//     };
+//
+//     template<typename S>
+//     using basis_from_seq_t = typename basis_from_seq<S>::type;
+//
+// public:
+//     static constexpr uZ size = sizeof...(Axes);
+//
+//     static constexpr auto inner_axis = value_impl<size - 1, 0, Axes...>::value;
+//
+//     static constexpr auto outer_axis = value_impl<size - 1, size - 1, Axes...>::value;
+//
+//     template<auto Axis>
+//     static constexpr bool contains = value_matched<Axis, Axes...>;
+//
+//     /**
+//      * @brief Index of the axis in basis.
+//      *
+//      * @tparam Axis value representing the axis.
+//      */
+//     template<auto Axis>
+//         requires value_matched<Axis, Axes...>
+//     static constexpr uZ index = idx_impl<size - 1, Axis, Axes...>::value;
+//
+//     template<uZ I>
+//         requires /**/ (I < size)
+//     static constexpr auto axis = value_impl<size - 1, I, Axes...>::value;
+//
+//     template<auto Axis>
+//         requires value_matched<Axis, Axes...>
+//     using exclude = basis_from_seq_t<detail_::filter_value_sequence<detail_::value_sequence<Axes...>, Axis>>;
+// };
 
 template<typename T>
 concept md_basis = std::derived_from<T, detail_::basis_base>;
+
+namespace detail_ {
+template<auto Basis, uZ Alignment>
+constexpr auto storage_size() -> uZ {
+    constexpr uZ inner_extent = Basis.template extent<Basis.inner_axis>();
+
+    uZ size = (inner_extent * 2UL + Alignment - 1UL) / Alignment * Alignment;
+    for (uZ i = 1; i < Basis.size; ++i) {
+        size *= Basis.template extent<Basis.template axis<i>()>();
+    }
+    return size;
+}
+};    // namespace detail_
 
 class iter_base {
 public:
@@ -190,62 +250,75 @@ public:
 
 using dynamic_extents = extents<1>;
 
-template<uZ Alignment, uZ... Ns>
-    requires(sizeof...(Ns) > 0)
-struct extents<Alignment, Ns...> {
-    static constexpr uZ alignment = Alignment;
-    static constexpr uZ count     = sizeof...(Ns);
+// template<uZ Alignment, uZ... Ns>
+//     requires(sizeof...(Ns) > 0)
+// struct extents<Alignment, Ns...> {
+//     static constexpr uZ alignment = Alignment;
+//     static constexpr uZ count     = sizeof...(Ns);
+//
+//     template<uZ Index>
+//         requires /**/ (Index < count)
+//     static constexpr uZ extent =
+//         pcx::detail_::index_value_sequence_v<pcx::detail_::value_sequence<Ns...>, Index>;
+//
+//     static constexpr uZ outer_extent = extent<count - 1>;
+//     // static constexpr uZ inner_extent = detail_::index_value_sequence_v<detail_::value_sequence<Ns...>, 0>;
+//     static constexpr uZ inner_extent = extent<count - count>;
+//     // static constexpr uZ inner_extent = extent<0UL>;
+//
+//     template<uZ PackSize>
+//     static constexpr uZ storage_size = [] {
+//         constexpr uZ align    = std::lcm(Alignment, PackSize * 2);
+//         constexpr uZ misalign = (extent<0> * 2) % align;
+//         uZ           size     = extent<0> * 2 + (misalign > 0 ? align - misalign : 0);
+//         size *= []<uZ... Is>(std::index_sequence<Is...>) {
+//             return (extent<Is + 1> * ...);
+//         }(std::make_index_sequence<sizeof...(Ns) - 1>{});
+//         return size;
+//     }();
+//
+//     template<uZ PackSize, md_basis Basis, auto... Excluded>
+//     static consteval auto stride(pcx::detail_::value_sequence<Excluded...>) -> uZ {
+//         auto stride = storage_size<PackSize>;
+//         for (uZ i = 0; i < Basis::size; ++i) {}
+//         return 0;
+//     };
+// };
+// template<typename T>
+// struct is_extents : std::false_type {};
+// template<uZ... Ns>
+// struct is_extents<extents<Ns...>> : std::true_type {};
 
-    template<uZ Index>
-        requires /**/ (Index < count)
-    static constexpr uZ extent =
-        pcx::detail_::index_value_sequence_v<pcx::detail_::value_sequence<Ns...>, Index>;
-
-    static constexpr uZ outer_extent = extent<count - 1>;
-    // static constexpr uZ inner_extent = detail_::index_value_sequence_v<detail_::value_sequence<Ns...>, 0>;
-    static constexpr uZ inner_extent = extent<count - count>;
-    // static constexpr uZ inner_extent = extent<0UL>;
-
-    template<uZ PackSize>
-    static constexpr uZ storage_size = [] {
-        constexpr uZ align    = std::lcm(Alignment, PackSize * 2);
-        constexpr uZ misalign = (extent<0> * 2) % align;
-        uZ           size     = extent<0> * 2 + (misalign > 0 ? align - misalign : 0);
-        size *= []<uZ... Is>(std::index_sequence<Is...>) {
-            return (extent<Is + 1> * ...);
-        }(std::make_index_sequence<sizeof...(Ns) - 1>{});
-        return size;
-    }();
-
-    template<uZ PackSize, md_basis Basis, auto... Excluded>
-    static consteval auto stride(pcx::detail_::value_sequence<Excluded...>) -> uZ {
-        auto stride = storage_size<PackSize>;
-        for (uZ i = 0; i < Basis::size; ++i) {}
-        return 0;
-    };
-};
-template<typename T>
-struct is_extents : std::false_type {};
-template<uZ... Ns>
-struct is_extents<extents<Ns...>> : std::true_type {};
-
-template<md_basis Basis, typename Extents, typename ExcludeSeq, uZ PackSize, bool Const, bool Contigious>
-class iter_static_base {
+template<auto Basis, meta::any_value_sequence Excluded, uZ Alignment>
+class static_iter_base {
 public:
-    [[nodiscard]] auto stride() const noexcept -> uZ {
-        return 0;
+    [[nodiscard]] static constexpr auto stride() noexcept -> uZ {
+        constexpr auto denom = []<uZ I>(auto&& f, uZ_constant<I>) {
+            constexpr auto axis = Basis.template axis<I>();
+            if constexpr (meta::contains_value<Excluded, axis>) {
+                constexpr auto next_axis = Basis.template axis<I - 1>();
+                return Basis.template extent<next_axis>() * f(f, uZ_constant<I - 1>{});
+            } else {
+                return 1;
+            }
+        };
+        constexpr uZ d = denom(denom, uZ_constant<Basis.size - 1>{});
+
+        constexpr uZ inner_extent = Basis.template extent<Basis.inner_axis>();
+
+        uZ stride = (inner_extent * 2UL + Alignment - 1UL) / Alignment * Alignment;
+        for (uZ i = 1; i < Basis.size - 1; ++i) {
+            stride *= Basis.template extent<Basis.template axis<i>()>();
+        }
+        stride /= d;
+        return stride;
     };
-    [[nodiscard]] auto extents() const noexcept;
 
 protected:
-    [[nodiscard]] inline auto get(auto* ptr, uZ idx) const noexcept {
-        return ptr + stride() * idx;
-    }
-
 private:
 };
 
-template<typename T, md_basis Basis, uZ PackSize, bool Const, bool Contigious>
+template<bool Const, bool Contigious, typename T, uZ PackSize, typename Base = iter_base>
 class iterator : iter_base {
     using pointer = T*;
 
@@ -295,7 +368,7 @@ public:
 
     [[nodiscard]] inline friend auto operator+(const iterator& lhs, difference_type rhs) noexcept
         -> iterator {
-        return {lhs.m_ptr + rhs * lhs.stride(), lhs.stride(), lhs.m_extents};
+        return {lhs.m_ptr + rhs * lhs.stride(), static_cast<const Base&>(lhs)};
     };
     [[nodiscard]] inline friend auto operator+(difference_type lhs, const iterator& rhs) noexcept
         -> iterator {
@@ -324,6 +397,65 @@ private:
     pointer m_ptr{};
 };
 
+template<auto Basis, meta::any_value_sequence ExcludedAxes, uZ Alignment, uZ PackSize>
+class static_slice_base {
+public:
+    template<auto Axis>
+    [[nodiscard]] inline auto get_slice_offset(auto* ptr, uZ index) const noexcept {
+        if constexpr (equal_values<Axis, Basis.inner_axis>) {
+            auto* n_ptr = ptr + pidx<PackSize>(index);
+        } else {
+            constexpr auto div = []<uZ I>(auto&& f, uZ_constant<I>) {
+                constexpr auto axis = Basis.template axis<I>();
+                if constexpr (equal_values<Axis, axis>) {
+                    return Basis.template extent<axis>();
+                } else {
+                    return Basis.template extent<axis>() * f(f, uZ_constant<I - 1>{});
+                }
+            };
+            constexpr uZ storage_size = detail_::storage_size<Basis, Alignment>();
+            constexpr uZ stride       = storage_size / div(div, uZ_constant<Basis.size - 1>{});
+
+            auto* nptr = ptr + stride * index;
+        }
+    }
+};
+
+template<typename T, auto Basis, uZ PackSize, uZ DataAlignment, typename Allocator>
+class static_storage_base {
+    static constexpr uZ alignment    = std::lcm(PackSize, DataAlignment);
+    static constexpr uZ storage_size = detail_::storage_size<Basis, alignment>();
+
+public:
+    template<auto Axis>
+    auto slice(uZ index) {
+        if constexpr (equal_values<Axis, Basis.inner_axis>) {
+            auto* ptr = data() + pidx<PackSize>(index);
+        } else {
+            constexpr auto div = []<uZ I>(auto&& f, uZ_constant<I>) {
+                constexpr auto axis = Basis.template axis<I>();
+                if constexpr (equal_values<Axis, axis>) {
+                    return Basis.template extent<axis>();
+                } else {
+                    return Basis.template extent<axis>() * f(f, uZ_constant<I - 1>{});
+                }
+            };
+            constexpr uZ stride = storage_size / div(div, uZ_constant<Basis.size - 1>{});
+
+            auto* ptr = data() + stride * index;
+        }
+    }
+
+    auto begin(){};
+
+    [[nodiscard]] constexpr auto data() noexcept -> T* {
+        return m_data.data();
+    }
+
+private:
+    std::array<T, storage_size> m_data{};
+};
+
 class sslice_base {
     [[nodiscard]] auto stride() const noexcept -> uZ;
     [[nodiscard]] auto extents() const noexcept;
@@ -337,15 +469,15 @@ private:
 template<typename T, uZ PackSize, md_basis Basis, typename Extents, bool Contigious, bool Const>
 class sslice
 : public std::ranges::view_base
-, pcx::detail_::pack_aligned_base<Basis::size == 1 && Contigious>
-, {
+, pcx::detail_::pack_aligned_base<Basis::size == 1 && Contigious> {
     static constexpr bool vector_like = Basis::size == 1 && Contigious;
 
-    sslice(T* start, auto&&... args)
-    :
+    // sslice(T* start, auto&&... args)
+    // :
 
 
-        public : sslice() = default;
+public:
+    sslice() = default;
 
     sslice(const sslice&) noexcept = default;
     sslice(sslice&&) noexcept      = default;
