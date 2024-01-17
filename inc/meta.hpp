@@ -3,6 +3,8 @@
 
 #include "types.hpp"
 
+#include <type_traits>
+
 namespace pcx {
 
 namespace detail_ {
@@ -145,8 +147,138 @@ static constexpr auto index_value_sequence_v = index_value_sequence<Sequence, In
 }    // namespace detail_
 
 namespace meta {
+/**
+    template<auto... Vs>
+    concept equal_values;
+
+    template<auto... Vs>
+    concept unique_values;
+
+    template<auto V, auto... Vs>
+    concept value_matched;
+
+    template<auto... Values>
+    struct value_sequence{
+        static constexpr uZ size;
+    };
+
+    template<typename T>
+    concept any_value_sequence;
+
+    template<typename Sequence, auto... NewValues>
+    using expand_value_sequence;
+
+    template<typename Sequence1, typename Sequence2>
+    using concat_value_sequences;
+
+    template<typename Sequence, auto V>
+    concept contains_value;
+
+    template<auto V, auto... Vs>
+        requires value_matched<V, Vs...>
+    static constexpr uZ find_first_in_values;
+
+    template<uZ I, auto... Vs>
+        requires (I < sizeof...(Vs))
+    static constexpr auto index_into_values;
+
+    template<uZ I, any_value_sequene Sequence>
+        requires (I < Sequence::size)
+    static constexpr auto index_into_sequence;
+
+    template<auto V, any_value_sequence Sequence>
+        requires contains_value<Sequence, V>
+    static constexpr uZ find_first_in_sequence;
+
+    template<any_value_sequence Sequence, auto V>
+    using filter_value_sequence;
+ * 
+ * 
+ */
+
+namespace detail_ {
+template<auto... Vs>
+struct equal_impl {
+    static constexpr bool value = false;
+};
+template<auto V, auto... Vs>
+    requires(std::equality_comparable_with<decltype(V), decltype(Vs)> && ...)
+struct equal_impl<V, Vs...> {
+    static constexpr bool value = ((V == Vs) && ...) && equal_impl<Vs...>::value;
+};
+template<auto V>
+struct equal_impl<V> {
+    static constexpr bool value = true;
+};
+}    // namespace detail_
+
+/**
+ * @brief Checks if all template parameter values are equality comparible and equal.
+ * 
+ * @tparam Vs... Values to check the equality.
+ */
+template<auto... Vs>
+concept equal_values = detail_::equal_impl<Vs...>::value;
+
+namespace detail_ {
+template<auto... Vs>
+struct unique_values_impl {
+    static constexpr bool value = true;
+};
+template<auto V, auto... Vs>
+struct unique_values_impl<V, Vs...> {
+    static constexpr bool value = (!equal_values<V, Vs> && ...) && unique_values_impl<Vs...>::value;
+};
+}    // namespace detail_
+
+/**
+ * @brief Checks if template parameters Vs... do not contain repeating values.
+ * 
+ * @tparam Vs...
+ */
+template<auto... Vs>
+concept unique_values = detail_::unique_values_impl<Vs...>::value;
+
+/**
+ * @brief Checks if a value V matches any of the values in Vs...
+ * 
+ * @tparam V 
+ * @tparam Vs...
+ */
+template<auto V, auto... Vs>
+concept value_matched = (!unique_values<V, Vs...>);
 template<auto... Values>
-struct value_sequence {};
+struct value_sequence {
+    static constexpr uZ size = sizeof...(Values);
+};
+
+namespace detail_ {
+template<typename T>
+struct is_value_sequence : std::false_type {};
+template<auto... Values>
+struct is_value_sequence<value_sequence<Values...>> : std::true_type {};
+
+template<typename Sequence, auto... NewValues>
+struct expand_value_sequence_impl;
+template<auto... Values, auto... NewValues>
+struct expand_value_sequence_impl<value_sequence<Values...>, NewValues...> {
+    using type = value_sequence<Values..., NewValues...>;
+};
+template<typename, typename>
+struct concat_value_sequences_impl;
+template<auto... Values1, auto... Values2>
+struct concat_value_sequences_impl<value_sequence<Values1...>, value_sequence<Values2...>> {
+    using type = value_sequence<Values1..., Values2...>;
+};
+}    // namespace detail_
+template<typename T>
+concept any_value_sequence = detail_::is_value_sequence<T>::value;
+
+template<typename Sequence, auto... NewValues>
+using expand_value_sequence = typename detail_::expand_value_sequence_impl<Sequence, NewValues...>::type;
+
+template<typename Sequence1, typename Sequence2>
+using concat_value_sequences = typename detail_::concat_value_sequences_impl<Sequence1, Sequence2>::type;
 
 namespace detail_ {
 template<uZ I, auto Vmatch, auto V, auto... Vs>
@@ -167,19 +299,89 @@ template<auto Imatch, auto V, auto... Vs>
 struct index_into_impl<Imatch, Imatch, V, Vs...> {
     static constexpr auto value = V;
 };
+
+template<typename S, auto Vfilter, auto... Vs>
+struct filter_impl {
+    static_assert(sizeof...(Vs) == 0);
+    using type = S;
+};
+template<typename S, auto Vfilter, auto V, auto... Vs>
+struct filter_impl<S, Vfilter, V, Vs...> {
+    using type = std::conditional_t<equal_values<Vfilter, V>,
+                                    concat_value_sequences<S, filter_impl<value_sequence<>, Vfilter, Vs...>>,
+                                    typename filter_impl<expand_value_sequence<S, V>, Vfilter, Vs...>::type>;
+};
+// template<typename S, auto Vfilter>
+// struct filter_impl<S, Vfilter> {
+//     using type = S;
+// };
+template<typename S>
+struct sequence_adapter;
+
+template<auto... Vs>
+struct sequence_adapter<value_sequence<Vs...>> {
+    template<auto V>
+    struct matched {
+        static constexpr bool value = value_matched<V, Vs...>;
+    };
+    template<uZ I>
+    struct index_into {
+        static constexpr auto value = index_into_impl<0, I, Vs...>::value;
+    };
+    template<auto V>
+    struct find_first {
+        static constexpr uZ index = find_first_impl<0, V, Vs...>::value;
+    };
+    template<auto V>
+    struct filter {
+        using type = filter_impl<value_sequence<>, V, Vs...>;
+    };
+};
 }    // namespace detail_
+
+template<typename Sequence, auto V>
+concept contains_value = any_value_sequence<Sequence> &&    //
+                         detail_::sequence_adapter<Sequence>::template matched<V>::value;
 
 template<auto V, auto... Vs>
     requires value_matched<V, Vs...>
 static constexpr uZ find_first_in_values = detail_::find_first_impl<0, V, Vs...>::index;
 
 template<uZ I, auto... Vs>
-    requires /**/ (I <= sizeof...(Vs))
+    requires /**/ (I < sizeof...(Vs))
 static constexpr auto index_into_values = detail_::index_into_impl<0, I, Vs...>::value;
 
-template<uZ I, typename Sequence>
-static constexpr auto index_into_sequence = 0;
+template<uZ I, any_value_sequence Sequence>
+    requires /**/ (I < Sequence::size)
+static constexpr auto index_into_sequence =
+    detail_::sequence_adapter<Sequence>::template index_into<I>::value;
 
+template<auto V, any_value_sequence Sequence>
+    requires contains_value<Sequence, V>
+static constexpr uZ find_first_in_sequence =
+    detail_::sequence_adapter<Sequence>::template find_first<V>::index;
+
+template<any_value_sequence Sequence, auto V>
+using filter_value_sequence = typename detail_::sequence_adapter<Sequence>::template filter<V>::type;
+
+namespace detail_ {
+template<typename S>
+struct value_to_index_sequence_impl {};
+template<uZ... Is>
+struct value_to_index_sequence_impl<value_sequence<Is...>> {
+    using type = std::index_sequence<Is...>;
+};
+template<typename S>
+struct index_to_value_sequence_impl {};
+template<uZ... Is>
+struct index_to_value_sequence_impl<std::index_sequence<Is...>> {
+    using type = value_sequence<Is...>;
+};
+}    // namespace detail_
+template<typename S>
+using value_to_index_sequence = typename detail_::value_to_index_sequence_impl<S>::type;
+template<typename S>
+using index_to_value_sequence = typename detail_::index_to_value_sequence_impl<S>::type;
 }    // namespace meta
 
 }    // namespace pcx
