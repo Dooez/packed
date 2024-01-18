@@ -148,6 +148,11 @@ static constexpr auto index_value_sequence_v = index_value_sequence<Sequence, In
 
 namespace meta {
 /**
+    template<auto V>
+    struct value_constant{
+        static constexpr auto value = V;
+    };
+  
     template<auto... Vs>
     concept equal_values;
 
@@ -196,7 +201,13 @@ namespace meta {
  * 
  */
 
+template<auto V>
+struct value_constant {
+    static constexpr auto value = V;
+};
+
 namespace detail_ {
+
 template<auto... Vs>
 struct equal_impl {
     static constexpr bool value = false;
