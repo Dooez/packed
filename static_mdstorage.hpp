@@ -1,9 +1,9 @@
-#ifndef STATIC_MDSTORAGE_HPP
-#define STATIC_MDSTORAGE_HPP
+#ifndef STATIC_dynamic_storage_base_HPP
+#define STATIC_dynamic_storage_base_HPP
 
 #include "allocators.hpp"
+#include "dynamic_storage_base.hpp"
 #include "element_access.hpp"
-#include "mdstorage.hpp"
 #include "meta.hpp"
 #include "types.hpp"
 
@@ -12,6 +12,7 @@
 #include <bits/utility.h>
 #include <concepts>
 #include <numeric>
+#include <sstream>
 
 namespace pcx {
 
@@ -495,31 +496,13 @@ class static_storage_base {
 
 protected:
     using iterator_base = static_iter_base<Basis, meta::value_sequence<>, PackSize, Alignment>;
-    // using iterator = iterator<false, true, Basis, T, PackSize, iterator_base>;
 
-public:
     template<auto Axis>
-    auto slice(uZ index) {
-        if constexpr (equal_values<Axis, Basis.inner_axis>) {
-            auto* ptr = data() + pidx<PackSize>(index);
-        } else {
-            constexpr auto div = []<uZ I>(auto&& f, uZ_constant<I>) {
-                constexpr auto axis = Basis.template axis<I>();
-                if constexpr (equal_values<Axis, axis>) {
-                    return Basis.template extent<axis>();
-                } else {
-                    return Basis.template extent<axis>() * f(f, uZ_constant<I - 1>{});
-                }
-            };
-            constexpr uZ stride = storage_size / div(div, uZ_constant<Basis.size - 1>{});
+    using slice_base = detail_::static_slice_base<Basis, meta::value_sequence<Axis>, PackSize, Alignment>;
 
-            auto* ptr = data() + stride * index;
-        }
-    }
+    static constexpr void slice_base_args() noexcept {};
 
-    auto begin(){};
-
-    [[nodiscard]] constexpr auto data() noexcept -> T* {
+    [[nodiscard]] constexpr auto get_data() noexcept -> T* {
         return m_data.data();
     }
 
@@ -527,6 +510,104 @@ private:
     std::array<T, storage_size> m_data{};
 };
 
+template<typename T, auto Basis, uZ PackSize, uZ Alignment, typename Allocator>
+class dynamic_storage_base {
+    using extents_type    = detail_::dynamic_extents_info<Basis::size>;
+    using iterator_traits = std::iterator_traits<Allocator>;
+
+protected:
+    using iterator_base = dynamic_iter_base<Basis, meta::value_sequence<>, PackSize>;
+
+    template<auto Axis>
+    using slice_base = detail_::dynamic_slice_base<Basis, meta::value_sequence<>, PackSize>;
+
+    /**
+     * @brief Construct a new mdarray object.
+     * 
+     * @param extents   Extents of individual axes. `extents[i]` corresponds to `Basis::axis<i>`.
+     * @param alignment Contigious axis storage is padded to a multiple of the least common multiple of `alignment` and `PackSize`.
+     * @param allocator 
+     */
+    explicit dynamic_storage_base(const extents_type& extents, Allocator allocator = {})
+    : m_extents{.extents = extents, .stride = 0}
+    , m_allocator(allocator) {
+        uZ align    = std::lcm(Alignment, PackSize * 2);
+        uZ misalign = (extents[0] * 2) % align;
+        uZ size     = extents[0] * 2 + (misalign > 0 ? align - misalign : 0);
+        if constexpr (!vector_like) {
+            uZ stride = size;
+            for (uZ i = 1; i < Basis::size - 1; ++i) {
+                stride *= m_extents[i];
+            }
+            size     = stride * m_extents.back();
+            m_stride = stride;
+        }
+        m_ptr = allocator_traits::allocate(m_allocator, size);
+        std::memset(m_ptr, 0, size * sizeof(T));
+    };
+
+    explicit dynamic_storage_base() = default;
+
+    dynamic_storage_base(const dynamic_storage_base& other)            = delete;
+    dynamic_storage_base& operator=(const dynamic_storage_base& other) = delete;
+
+    dynamic_storage_base(dynamic_storage_base&& other) noexcept
+    : m_allocator(std::move(other.m_allocator))
+    , m_ptr(other.m_ptr)
+    , m_extents(other.m_extents) {
+        other.m_ptr     = nullptr;
+        other.m_extents = {};
+    };
+
+    dynamic_storage_base& operator=(dynamic_storage_base&& other) noexcept(
+        allocator_traits::propagate_on_container_move_assignment::value ||
+        allocator_traits::is_always_equal::value) {
+        using std::swap;
+        if constexpr (allocator_traits::propagate_on_container_move_assignment::value) {
+            if (m_allocator == other.m_allocator) {
+                m_allocator = std::move(other.m_allocator);
+                swap(m_ptr, other.m_ptr);
+                swap(m_extents, other.m_extents);
+            } else {
+                deallocate();
+                m_allocator     = std::move(other.m_allocator);
+                m_ptr           = other.m_ptr;
+                m_extents       = other.m_extents;
+                other.m_ptr     = nullptr;
+                other.m_extents = {};
+            }
+        } else if constexpr (allocator_traits::is_always_equal::value) {
+            swap(m_ptr, other.m_ptr);
+            swap(m_stride, other.n_stride);
+            swap(m_extents, other.m_extents);
+        } else {
+            if (m_allocator == other.m_allocator) {
+                swap(m_ptr, other.m_ptr);
+                swap(m_extents, other.m_extents);
+            } else {
+                auto size = other.m_stride * other.m_extents.back();
+                if (size != m_stride * m_extents.back()) {
+                    deallocate();
+                    m_ptr = allocator_traits::allocate(m_allocator, size);
+                }
+                m_extents = other.m_extents;
+                std::memcpy(m_ptr, other.m_ptr, size * sizeof(T));
+            }
+        }
+    }
+
+    ~dynamic_storage_base() noexcept {
+        deallocate();
+    }
+
+private:
+    void deallocate() noexcept {
+        iter_traits::deallocate(m_allocator, m_ptr, m_stride * m_extents.extents.back());
+    }
+
+    Allocator    m_allocator;
+    extents_type m_extents;
+};
 
 }    // namespace md
 
