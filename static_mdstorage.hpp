@@ -367,7 +367,6 @@ protected:
                                              PackSize,
                                              Alignment>;
 
-    template<auto Axis>
     static constexpr void new_slice_base_args(){};
 
     template<auto Axis>
@@ -403,10 +402,10 @@ protected:
     using new_slice_base =
         dynamic_slice_base<Basis, meta::expand_value_sequence<ExcludedAxes, Axis>, PackSize>;
 
-    template<auto Axis>
     auto new_slice_base_args() noexcept {
         return m_extents_ptr;
     }
+
     template<auto Axis>
     [[nodiscard]] auto new_slice_offset(uZ index) noexcept -> uZ {
         const auto& stride  = m_extents_ptr->stride;
@@ -457,7 +456,7 @@ public:
         using new_base  = Base::template new_slice_base<Axis>;
         using new_slice = sslice<Const, Contigious, Basis, T, PackSize, new_base>;
         auto* new_start = m_start + Base::template new_slice_offset<Axis>(index);
-        return new_slice(new_start, Base::template new_slice_base_args<Axis>());
+        return new_slice(new_start, Base::new_slice_base_args());
     }
 
     [[nodiscard]] auto operator[](uZ index) const noexcept {
@@ -497,10 +496,18 @@ class static_storage_base {
 protected:
     using iterator_base = static_iter_base<Basis, meta::value_sequence<>, PackSize, Alignment>;
 
+    static constexpr void iterator_base_args() noexcept {};
+
     template<auto Axis>
     using slice_base = detail_::static_slice_base<Basis, meta::value_sequence<Axis>, PackSize, Alignment>;
 
     static constexpr void slice_base_args() noexcept {};
+
+    template<auto Axis>
+    static constexpr auto slice_offset(uZ index) noexcept -> uZ {
+        return detail_::get_static_slice_offset<Basis, meta::value_sequence<>, Axis, Alignment, PackSize>(
+            index);
+    }
 
     [[nodiscard]] constexpr auto get_data() noexcept -> T* {
         return m_data.data();
@@ -518,9 +525,22 @@ class dynamic_storage_base {
 protected:
     using iterator_base = dynamic_iter_base<Basis, meta::value_sequence<>, PackSize>;
 
+    auto iterator_base_args() noexcept {
+        return &m_extents;
+    }
+
     template<auto Axis>
     using slice_base = detail_::dynamic_slice_base<Basis, meta::value_sequence<>, PackSize>;
 
+    auto slice_base_args() noexcept {
+        return &m_extents;
+    }
+
+    template<auto Axis>
+    [[nodiscard]] auto slice_offset(uZ offset) const noexcept -> uZ {
+        return detail_::get_dynamic_slice_offset<Basis, meta::value_sequence<>, Axis, uZ PackSize>(
+            m_extents.stride, m_extents.extents, index);
+    }
     /**
      * @brief Construct a new mdarray object.
      * 
@@ -546,7 +566,8 @@ protected:
         std::memset(m_ptr, 0, size * sizeof(T));
     };
 
-    explicit dynamic_storage_base() = default;
+    dynamic_storage_base() noexcept
+    : m_ptr(nullptr){};
 
     dynamic_storage_base(const dynamic_storage_base& other)            = delete;
     dynamic_storage_base& operator=(const dynamic_storage_base& other) = delete;
@@ -600,13 +621,52 @@ protected:
         deallocate();
     }
 
+    auto get_data() const noexcept -> T* {
+        return m_ptr;
+    }
+
 private:
     void deallocate() noexcept {
         iter_traits::deallocate(m_allocator, m_ptr, m_stride * m_extents.extents.back());
     }
 
-    Allocator    m_allocator;
-    extents_type m_extents;
+    [[no_unique_address]] Allocator m_allocator;
+    T*                              m_ptr;
+    extents_type                    m_extents;
+};
+
+template<typename T, auto Basis, uZ PackSize, uZ Agignment, typename Allocator, typename Base>
+class storage : Base {
+    using iterator       = iterator<false, true, Basis, T, PackSize, Base::iterator_base>;
+    using const_iterator = iterator<true, true, Basis, T, PackSize, Base::iterator_base>;
+
+public:
+    template<auto Axis>
+    [[nodiscard]] auto slice(uZ index) noexcept {
+        using slice_base = Base::template slice_base<Axis>;
+        using slice_type =
+            sslice<false, (!meta::equal_values<Axis, Basis::inner_axis>), Basis, T, PackSize, slice_base>;
+
+        auto* slice_start = data() + Base::template slice_offset<Axis>(index);
+        return slice_type(slice_start, Base::slice_base_args());
+    }
+
+    template<auto Axis>
+    [[nodiscard]] auto slice(uZ index) const noexcept {
+        using slice_base = Base::template slice_base<Axis>;
+        using slice_type =
+            sslice<true, (!meta::equal_values<Axis, Basis::inner_axis>), Basis, T, PackSize, slice_base>;
+
+        auto* slice_start = data() + Base::template slice_offset<Axis>(index);
+        return slice_type(slice_start, Base::slice_base_args());
+    }
+
+    [[nodiscard]] auto data() noexcept -> T* {
+        return Base::get_data();
+    }
+    [[nodiscard]] auto data() const noexcept -> const T* {
+        return Base::get_data();
+    }
 };
 
 }    // namespace md
