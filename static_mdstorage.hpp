@@ -175,7 +175,7 @@ template<auto Basis, meta::any_value_sequence ExcludedAxes, uZ PackSize>
 class dynamic_slice_base;
 };    // namespace detail_
 
-template<bool Const, bool Contigious, auto Basis, typename T, uZ PackSize, typename Base>
+template<bool Const,  auto Basis, typename T, uZ PackSize, typename Base>
 class sslice;
 
 template<auto Basis, meta::any_value_sequence ExcludedAxes, uZ PackSize, uZ Alignment>
@@ -260,8 +260,10 @@ private:
     extents_type* m_extents_ptr{};
 };
 
-template<bool Const, bool Contigious, auto Basis, typename T, uZ PackSize, typename Base>
+template<bool Const, auto Basis, typename T, uZ PackSize, typename Base>
 class iterator : Base {
+    static constexpr bool contigious = !meta::contains_value<typename Base::excluded_axes, Basis.inner_axis>;
+
     using pointer = T*;
 
     template<bool, bool, auto, typename, uZ, typename>
@@ -271,7 +273,7 @@ class iterator : Base {
     : Base(std::forward(other...))
     , m_ptr(ptr){};
 
-    using sslice = sslice<Const, Contigious, Basis, T, PackSize, typename Base::slice_base>;
+    using sslice = sslice<Const, Basis, T, PackSize, typename Base::slice_base>;
 
 public:
     iterator()                                    = default;
@@ -389,6 +391,8 @@ class dynamic_slice_base {
     using extents_type = detail_::dynamic_extents_info<Basis.size>;
 
 protected:
+    using excluded_axes = ExcludedAxes;
+
     dynamic_slice_base() = default;
 
     explicit dynamic_slice_base(extents_type* extents_ptr) noexcept
@@ -422,17 +426,19 @@ private:
 };
 }    // namespace detail_
 
-template<bool Const, bool Contigious, auto Basis, typename T, uZ PackSize, typename Base>
+template<bool Const, auto Basis, typename T, uZ PackSize, typename Base>
 class sslice
 : public std::ranges::view_base
 , pcx::detail_::pack_aligned_base<Basis.size == 1 && Contigious>
 , Base {
+    static constexpr bool contigious  = !meta::contains_value<Base::excluded_axes, Basis.outer_axisc>;
+    static constexpr bool vector_like = Basis.size == 1 && contigious;
+
     template<bool, bool, typename, uZ, typename>
     friend class iterator;
 
     using iterator = iterator<Const, Contigious, Basis, T, PackSize, typename Base::iterator_base>;
 
-    static constexpr bool vector_like = Basis.size == 1 && Contigious;
 
     explicit constexpr sslice(T* start, auto&&... args)
     : Base(std::forward(args...))
@@ -454,7 +460,7 @@ public:
         requires /**/ (Basis.template contains<Axis>)
     [[nodiscard]] auto slice(uZ index) const noexcept {
         using new_base  = Base::template new_slice_base<Axis>;
-        using new_slice = sslice<Const, Contigious, Basis, T, PackSize, new_base>;
+        using new_slice = sslice<Const, contigious, Basis, T, PackSize, new_base>;
         auto* new_start = m_start + Base::template new_slice_offset<Axis>(index);
         return new_slice(new_start, Base::new_slice_base_args());
     }
