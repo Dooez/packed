@@ -2,7 +2,6 @@
 #define STATIC_dynamic_storage_base_HPP
 
 #include "allocators.hpp"
-#include "dynamic_storage_base.hpp"
 #include "element_access.hpp"
 #include "meta.hpp"
 #include "types.hpp"
@@ -11,6 +10,8 @@
 #include <array>
 #include <bits/utility.h>
 #include <concepts>
+#include <cstring>
+#include <memory>
 #include <numeric>
 #include <sstream>
 
@@ -22,8 +23,8 @@ namespace detail_ {
 struct basis_base {};
 }    // namespace detail_
 
-template<uZ Alignment, auto... Axes>
-class static_basis : detail_::basis_base {
+template<auto... Axes>
+class static_basis : public detail_::basis_base {
     template<typename>
     struct basis_from_value_sequence;
     template<auto... Vs>
@@ -48,7 +49,7 @@ class static_basis : detail_::basis_base {
 
     template<uZ... Is>
     constexpr static_basis(auto&& extents, std::index_sequence<Is...>)
-    : m_extents{extents[Is]...} {};
+    : extents{extents[Is]...} {};
 
 public:
     static constexpr uZ size = sizeof...(Axes);
@@ -56,7 +57,7 @@ public:
     template<std::unsigned_integral... Us>
         requires /**/ (sizeof...(Us) == size)
     constexpr explicit static_basis(Us... extents) noexcept
-    : m_extents{extents...} {};
+    : extents{extents...} {};
 
     template<auto Axis>
         requires meta::value_matched<Axis, Axes...>
@@ -87,14 +88,14 @@ public:
         using index_seq    = meta::index_to_value_sequence<std::make_index_sequence<size>>;
         using filtered     = meta::value_to_index_sequence<meta::filter_value_sequence<index_seq, index>>;
 
-        return new_basis_t(m_extents, filtered{});
+        return new_basis_t(extents, filtered{});
     };
 
     template<auto Axis>
         requires meta::value_matched<Axis, Axes...>
     [[nodiscard]] constexpr auto extent() noexcept {
         constexpr uZ index = meta::find_first_in_values<Axis, Axes...>;
-        return m_extents[index];
+        return extents[index];
     }
 
     template<meta::any_value_sequence Excluded>
@@ -103,8 +104,9 @@ public:
     template<meta::any_value_sequence Excluded>
     static constexpr auto inner_axis_remaining = outer_remaining_impl<0, Excluded>::value;
 
+    std::array<uZ, size> extents;
+
 private:
-    std::array<uZ, size> m_extents;
 };
 
 template<typename T>
@@ -175,14 +177,17 @@ template<auto Basis, meta::any_value_sequence ExcludedAxes, uZ PackSize>
 class dynamic_slice_base;
 };    // namespace detail_
 
-template<bool Const,  auto Basis, typename T, uZ PackSize, typename Base>
+template<bool Const, auto Basis, typename T, uZ PackSize, typename Base>
 class sslice;
 
 template<auto Basis, meta::any_value_sequence ExcludedAxes, uZ PackSize, uZ Alignment>
 class static_iter_base {
     static constexpr auto outer_axis = Basis.template outer_axis_remaining<ExcludedAxes>;
 
+
 protected:
+    using excluded_axes = ExcludedAxes;
+
     using slice_base = detail_::
         static_slice_base<Basis, meta::expand_value_sequence<ExcludedAxes, outer_axis>, PackSize, Alignment>;
 
@@ -225,6 +230,8 @@ class dynamic_iter_base {
     using extents_type = detail_::dynamic_extents_info<Basis.size>;
 
 protected:
+    using excluded_axes = ExcludedAxes;
+
     using slice_base =
         detail_::dynamic_slice_base<Basis, meta::expand_value_sequence<ExcludedAxes, outer_axis>, PackSize>;
 
@@ -356,6 +363,8 @@ class static_slice_base {
     static constexpr auto outer_axis = Basis.template outer_axis_remaining<ExcludedAxes>;
 
 protected:
+    using excluded_axes = ExcludedAxes;
+
     static_slice_base() = default;
 
     using iterator_base =
@@ -429,16 +438,16 @@ private:
 template<bool Const, auto Basis, typename T, uZ PackSize, typename Base>
 class sslice
 : public std::ranges::view_base
-, pcx::detail_::pack_aligned_base<Basis.size == 1 && Contigious>
+, pcx::detail_::pack_aligned_base<Basis.size == 1 &&
+                                  !meta::contains_value<typename Base::excluded_axes, Basis.outer_axisc>>
 , Base {
-    static constexpr bool contigious  = !meta::contains_value<Base::excluded_axes, Basis.outer_axisc>;
+    static constexpr bool contigious = !meta::contains_value<typename Base::excluded_axes, Basis.outer_axisc>;
     static constexpr bool vector_like = Basis.size == 1 && contigious;
 
     template<bool, bool, typename, uZ, typename>
     friend class iterator;
 
-    using iterator = iterator<Const, Contigious, Basis, T, PackSize, typename Base::iterator_base>;
-
+    using iterator = iterator<Const, Basis, T, PackSize, typename Base::iterator_base>;
 
     explicit constexpr sslice(T* start, auto&&... args)
     : Base(std::forward(args...))
@@ -460,7 +469,7 @@ public:
         requires /**/ (Basis.template contains<Axis>)
     [[nodiscard]] auto slice(uZ index) const noexcept {
         using new_base  = Base::template new_slice_base<Axis>;
-        using new_slice = sslice<Const, contigious, Basis, T, PackSize, new_base>;
+        using new_slice = sslice<Const, Basis, T, PackSize, new_base>;
         auto* new_start = m_start + Base::template new_slice_offset<Axis>(index);
         return new_slice(new_start, Base::new_slice_base_args());
     }
@@ -525,8 +534,8 @@ private:
 
 template<typename T, auto Basis, uZ PackSize, uZ Alignment, typename Allocator>
 class dynamic_storage_base {
-    using extents_type    = detail_::dynamic_extents_info<Basis::size>;
-    using iterator_traits = std::iterator_traits<Allocator>;
+    using extents_type     = detail_::dynamic_extents_info<Basis.size>;
+    using allocator_traits = std::allocator_traits<Allocator>;
 
 protected:
     using iterator_base = dynamic_iter_base<Basis, meta::value_sequence<>, PackSize>;
@@ -544,8 +553,8 @@ protected:
 
     template<auto Axis>
     [[nodiscard]] auto slice_offset(uZ offset) const noexcept -> uZ {
-        return detail_::get_dynamic_slice_offset<Basis, meta::value_sequence<>, Axis, uZ PackSize>(
-            m_extents.stride, m_extents.extents, index);
+        return detail_::get_dynamic_slice_offset<Basis, meta::value_sequence<>, Axis, PackSize>(
+            m_extents.stride, m_extents.extents, offset);
     }
     /**
      * @brief Construct a new mdarray object.
@@ -560,13 +569,13 @@ protected:
         uZ align    = std::lcm(Alignment, PackSize * 2);
         uZ misalign = (extents[0] * 2) % align;
         uZ size     = extents[0] * 2 + (misalign > 0 ? align - misalign : 0);
-        if constexpr (!vector_like) {
+        if constexpr (Basis.size > 1) {
             uZ stride = size;
-            for (uZ i = 1; i < Basis::size - 1; ++i) {
+            for (uZ i = 1; i < Basis.size - 1; ++i) {
                 stride *= m_extents[i];
             }
-            size     = stride * m_extents.back();
-            m_stride = stride;
+            size             = stride * m_extents.back();
+            m_extents.stride = stride;
         }
         m_ptr = allocator_traits::allocate(m_allocator, size);
         std::memset(m_ptr, 0, size * sizeof(T));
@@ -605,15 +614,14 @@ protected:
             }
         } else if constexpr (allocator_traits::is_always_equal::value) {
             swap(m_ptr, other.m_ptr);
-            swap(m_stride, other.n_stride);
             swap(m_extents, other.m_extents);
         } else {
             if (m_allocator == other.m_allocator) {
                 swap(m_ptr, other.m_ptr);
                 swap(m_extents, other.m_extents);
             } else {
-                auto size = other.m_stride * other.m_extents.back();
-                if (size != m_stride * m_extents.back()) {
+                auto size = other.stride() * other.get_size();
+                if (size != stride() * m_extents.get_size()) {
                     deallocate();
                     m_ptr = allocator_traits::allocate(m_allocator, size);
                 }
@@ -632,8 +640,17 @@ protected:
     }
 
 private:
+    [[nodiscard]] auto stride() const noexcept -> uZ {
+        return m_extents.stride;
+    }
+
+    [[nodiscard]] auto get_size() const noexcept -> uZ {
+        return m_extents.extents.back();
+    }
+
+
     void deallocate() noexcept {
-        iter_traits::deallocate(m_allocator, m_ptr, m_stride * m_extents.extents.back());
+        allocator_traits::deallocate(m_allocator, m_ptr, stride() * get_size());
     }
 
     [[no_unique_address]] Allocator m_allocator;
@@ -643,15 +660,14 @@ private:
 
 template<typename T, auto Basis, uZ PackSize, uZ Agignment, typename Allocator, typename Base>
 class storage : Base {
-    using iterator       = iterator<false, true, Basis, T, PackSize, Base::iterator_base>;
-    using const_iterator = iterator<true, true, Basis, T, PackSize, Base::iterator_base>;
+    using iterator       = md::iterator<false, Basis, T, PackSize, typename Base::iterator_base>;
+    using const_iterator = md::iterator<true, Basis, T, PackSize, typename Base::iterator_base>;
 
 public:
     template<auto Axis>
     [[nodiscard]] auto slice(uZ index) noexcept {
         using slice_base = Base::template slice_base<Axis>;
-        using slice_type =
-            sslice<false, (!meta::equal_values<Axis, Basis::inner_axis>), Basis, T, PackSize, slice_base>;
+        using slice_type = sslice<false, Basis, T, PackSize, slice_base>;
 
         auto* slice_start = data() + Base::template slice_offset<Axis>(index);
         return slice_type(slice_start, Base::slice_base_args());
@@ -660,8 +676,7 @@ public:
     template<auto Axis>
     [[nodiscard]] auto slice(uZ index) const noexcept {
         using slice_base = Base::template slice_base<Axis>;
-        using slice_type =
-            sslice<true, (!meta::equal_values<Axis, Basis::inner_axis>), Basis, T, PackSize, slice_base>;
+        using slice_type = sslice<true, Basis, T, PackSize, slice_base>;
 
         auto* slice_start = data() + Base::template slice_offset<Axis>(index);
         return slice_type(slice_start, Base::slice_base_args());
