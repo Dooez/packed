@@ -294,12 +294,13 @@ using concat_value_sequences = typename detail_::concat_value_sequences_impl<Seq
 namespace detail_ {
 template<uZ I, auto Vmatch, auto V, auto... Vs>
 struct find_first_impl {
-    static constexpr uZ index = equal_values<Vmatch, V> ? I : find_first_impl<I + 1, Vmatch, Vs...>::index;
+    static constexpr uZ value = std::
+        conditional_t<equal_values<Vmatch, V>, uZ_constant<I>, find_first_impl<I + 1, Vmatch, Vs...>>::value;
 };
 template<uZ I, auto Vmatch, auto V>
 struct find_first_impl<I, Vmatch, V> {
     static_assert(equal_values<Vmatch, V>);
-    static constexpr uZ index = I;
+    static constexpr uZ value = I;
 };
 
 template<uZ I, auto Imatch, auto V, auto... Vs>
@@ -356,7 +357,7 @@ concept contains_value = any_value_sequence<Sequence> &&    //
 
 template<auto V, auto... Vs>
     requires value_matched<V, Vs...>
-static constexpr uZ find_first_in_values = detail_::find_first_impl<0, V, Vs...>::index;
+static constexpr uZ find_first_in_values = detail_::find_first_impl<0, V, Vs...>::value;
 
 template<uZ I, auto... Vs>
     requires /**/ (I < sizeof...(Vs))
@@ -370,7 +371,7 @@ static constexpr auto index_into_sequence =
 template<auto V, any_value_sequence Sequence>
     requires contains_value<Sequence, V>
 static constexpr uZ find_first_in_sequence =
-    detail_::sequence_adapter<Sequence>::template find_first<V>::index;
+    detail_::sequence_adapter<Sequence>::template find_first<V>::value;
 
 template<any_value_sequence Sequence, auto V>
 using filter_value_sequence = typename detail_::sequence_adapter<Sequence>::template filter<V>::type;

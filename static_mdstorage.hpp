@@ -93,7 +93,7 @@ public:
 
     template<auto Axis>
         requires meta::value_matched<Axis, Axes...>
-    [[nodiscard]] constexpr auto extent() noexcept {
+    [[nodiscard]] constexpr auto extent() const noexcept -> uZ {
         constexpr uZ index = meta::find_first_in_values<Axis, Axes...>;
         return extents[index];
     }
@@ -124,9 +124,18 @@ constexpr auto storage_size() -> uZ {
     constexpr uZ inner_extent = Basis.template extent<Basis.inner_axis>();
 
     uZ size = (inner_extent * 2UL + Alignment - 1UL) / Alignment * Alignment;
-    for (uZ i = 1; i < Basis.size; ++i) {
-        size *= Basis.template extent<Basis.template axis<i>()>();
-    }
+
+    constexpr auto f = []<uZ I>(auto&& f, uZ size, uZ_constant<I>) {
+        constexpr auto axis = Basis.template axis<I>();
+        if constexpr (Basis.size == 1) {
+            return size;
+        } else if constexpr (I == Basis.size - 1) {
+            return size *= Basis.template extent<axis>();
+        } else {
+            return f(f, size *= Basis.template extent<axis>(), uZ_constant<I + 1>{});
+        }
+    };
+    size = f(f, size, uZ_constant<1>{});
     return size;
 }
 template<auto Basis, meta::any_value_sequence ExcludedAxes, auto Axis, uZ Alignment, uZ PackSize>
@@ -584,9 +593,11 @@ protected:
     dynamic_storage_base() noexcept
     : m_ptr(nullptr){};
 
+public:
     dynamic_storage_base(const dynamic_storage_base& other)            = delete;
     dynamic_storage_base& operator=(const dynamic_storage_base& other) = delete;
 
+protected:
     dynamic_storage_base(dynamic_storage_base&& other) noexcept
     : m_allocator(std::move(other.m_allocator))
     , m_ptr(other.m_ptr)

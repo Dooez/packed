@@ -88,13 +88,15 @@ int main() {
     // //     static_assert(!pcx::complex_vector_of<float, z_slice
     //
     using enum ax1;
-    static constexpr auto basis = pcx::md::static_basis<x, y, z>{8u, 16u, 32u};
-    pcx::md::storage<float,
-                     basis,
-                     8,
-                     16,
-                     pcx::aligned_allocator<float>,
-                     pcx::md::static_storage_base<float, basis, 8, 16>>;
+    static constexpr auto static_basis = pcx::md::static_basis<x, y, z>{8U, 16U, 32U};
+    using static_stoarge_type          = pcx::md::storage<float,
+                                                 static_basis,
+                                                 8,
+                                                 16,
+                                                 pcx::aligned_allocator<float>,
+                                                 pcx::md::static_storage_base<float, static_basis, 8, 16>>;
+
+    auto static_stoarge = static_stoarge_type{};
 
     return 0;
 }
