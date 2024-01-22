@@ -89,14 +89,17 @@ int main() {
     //
     using enum ax1;
     static constexpr auto static_basis = pcx::md::static_basis<x, y, z>{8U, 16U, 32U};
-    using static_stoarge_type          = pcx::md::storage<float,
+    using static_stoarge_type          = pcx::md::storage<float,    //
                                                  static_basis,
                                                  8,
                                                  16,
-                                                 pcx::aligned_allocator<float>,
                                                  pcx::md::static_storage_base<float, static_basis, 8, 16>>;
 
-    auto static_stoarge = static_stoarge_type{};
-
+    using dynamic_base =
+        pcx::md::dynamic_storage_base<float, static_basis, 8, 16, pcx::aligned_allocator<float>>;
+    using dynamic_storage_type = pcx::md::storage<float, static_basis, 8, 16, dynamic_base>;
+    auto static_stoarge        = static_stoarge_type{};
+    auto dynamic_storage       = dynamic_storage_type(std::array<pcx::uZ, 3>{8, 16, 32});
+    static_assert(std::allocator_traits<pcx::aligned_allocator<float>>::is_always_equal::value);
     return 0;
 }

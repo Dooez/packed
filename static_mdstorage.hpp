@@ -9,11 +9,10 @@
 #include <algorithm>
 #include <array>
 #include <bits/utility.h>
-#include <concepts>
 #include <cstring>
 #include <memory>
 #include <numeric>
-#include <sstream>
+#include <utility>
 
 namespace pcx {
 
@@ -572,8 +571,8 @@ protected:
      * @param alignment Contigious axis storage is padded to a multiple of the least common multiple of `alignment` and `PackSize`.
      * @param allocator 
      */
-    explicit dynamic_storage_base(const extents_type& extents, Allocator allocator = {})
-    : m_extents{.extents = extents, .stride = 0}
+    explicit dynamic_storage_base(const std::array<uZ, Basis.size>& extents, Allocator allocator = {})
+    : m_extents{.stride = 0, .extents = extents}
     , m_allocator(allocator) {
         uZ align    = std::lcm(Alignment, PackSize * 2);
         uZ misalign = (extents[0] * 2) % align;
@@ -581,9 +580,9 @@ protected:
         if constexpr (Basis.size > 1) {
             uZ stride = size;
             for (uZ i = 1; i < Basis.size - 1; ++i) {
-                stride *= m_extents[i];
+                stride *= m_extents.extents[i];
             }
-            size             = stride * m_extents.back();
+            size             = stride * m_extents.extents.back();
             m_extents.stride = stride;
         }
         m_ptr = allocator_traits::allocate(m_allocator, size);
@@ -611,7 +610,7 @@ protected:
         allocator_traits::is_always_equal::value) {
         using std::swap;
         if constexpr (allocator_traits::propagate_on_container_move_assignment::value) {
-            if (m_allocator == other.m_allocator) {
+            if (allocator_traits::is_always_equal::value || m_allocator == other.m_allocator) {
                 m_allocator = std::move(other.m_allocator);
                 swap(m_ptr, other.m_ptr);
                 swap(m_extents, other.m_extents);
@@ -669,12 +668,16 @@ private:
     extents_type                    m_extents;
 };
 
-template<typename T, auto Basis, uZ PackSize, uZ Agignment, typename Allocator, typename Base>
+template<typename T, auto Basis, uZ PackSize, uZ Agignment, typename Base>
 class storage : Base {
     using iterator       = md::iterator<false, Basis, T, PackSize, typename Base::iterator_base>;
     using const_iterator = md::iterator<true, Basis, T, PackSize, typename Base::iterator_base>;
 
 public:
+    template<typename... U>
+    explicit storage(U&&... args)
+    : Base(std::forward<U>(args)...){};
+
     template<auto Axis>
     [[nodiscard]] auto slice(uZ index) noexcept {
         using slice_base = Base::template slice_base<Axis>;
