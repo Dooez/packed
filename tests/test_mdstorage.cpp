@@ -100,6 +100,14 @@ int main() {
     using dynamic_storage_type = pcx::md::storage<float, static_basis, 8, 16, dynamic_base>;
     auto static_stoarge        = static_stoarge_type{};
     auto dynamic_storage       = dynamic_storage_type(std::array<pcx::uZ, 3>{8, 16, 32});
+
+    auto sx  = static_stoarge.slice<x>(0);
+    auto sxy = sx.slice<y>(0);
+
+    (void)test_ranges<decltype(static_stoarge)>();
+    (void)test_ranges<decltype(sx)>();
+    (void)test_ranges<decltype(sxy)>();
+
     static_assert(std::allocator_traits<pcx::aligned_allocator<float>>::is_always_equal::value);
     return 0;
 }

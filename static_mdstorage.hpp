@@ -14,9 +14,7 @@
 #include <numeric>
 #include <utility>
 
-namespace pcx {
-
-namespace md {
+namespace pcx::md {
 
 namespace detail_ {
 struct basis_base {};
@@ -38,6 +36,11 @@ class static_basis : public detail_::basis_base {
                                outer_remaining_impl<I - 1, Excluded>,
                                meta::value_constant<meta::index_into_values<I, Axes...>>>::value;
     };
+    template<typename Excluded>
+    struct outer_remaining_impl<0, Excluded> {
+        static constexpr auto value = meta::index_into_values<0, Axes...>;
+    };
+
     template<uZ I, typename Excluded>
     struct inner_remaining_impl {
         static constexpr auto value =
@@ -138,7 +141,7 @@ constexpr auto storage_size() -> uZ {
     return size;
 }
 template<auto Basis, meta::any_value_sequence ExcludedAxes, auto Axis, uZ Alignment, uZ PackSize>
-    requires /**/ (Basis.template contans<Axis>())
+    requires /**/ (Basis.template contains<Axis>())
 [[nodiscard]] inline auto get_static_slice_offset(uZ index) noexcept -> uZ {
     if constexpr (equal_values<Axis, Basis.inner_axis>) {
         return pidx<PackSize>(index);
@@ -188,6 +191,8 @@ class dynamic_slice_base;
 template<bool Const, auto Basis, typename T, uZ PackSize, typename Base>
 class sslice;
 
+template<typename T, auto Basis, uZ PackSize, uZ Agignment, typename Base>
+class storage;
 template<auto Basis, meta::any_value_sequence ExcludedAxes, uZ PackSize, uZ Alignment>
 class static_iter_base {
     static constexpr auto outer_axis = Basis.template outer_axis_remaining<ExcludedAxes>;
@@ -199,10 +204,18 @@ protected:
     using slice_base = detail_::
         static_slice_base<Basis, meta::expand_value_sequence<ExcludedAxes, outer_axis>, PackSize, Alignment>;
 
-    static constexpr void slice_base_args() noexcept {};
+    static constexpr auto slice_base_args() noexcept {
+        return 0;
+    };
 
     static_iter_base() = default;
+    explicit static_iter_base(auto) noexcept {};
 
+    static_iter_base(const static_iter_base&) noexcept            = default;
+    static_iter_base(static_iter_base&&) noexcept                 = default;
+    static_iter_base& operator=(const static_iter_base&) noexcept = default;
+    static_iter_base& operator=(static_iter_base&&) noexcept      = default;
+    ~static_iter_base() noexcept                                  = default;
     [[nodiscard]] static constexpr auto stride() noexcept -> uZ {
         return s_stride;
     };
@@ -222,10 +235,17 @@ private:
 
         constexpr uZ inner_extent = Basis.template extent<Basis.inner_axis>();
 
+        auto f = []<uZ I>(auto&& f, uZ_constant<I>) {
+            constexpr auto axis = Basis.template axis<I>();
+            if constexpr (I < Basis.size - 2) {
+                return Basis.template extent<axis>() * f(f, uZ_constant<I + 1>{});
+            } else {
+                return Basis.template extent<axis>();
+            }
+        };
+
         uZ stride = (inner_extent * 2UL + Alignment - 1UL) / Alignment * Alignment;
-        for (uZ i = 1; i < Basis.size - 1; ++i) {
-            stride *= Basis.template extent<Basis.template axis<i>()>();
-        }
+        stride *= f(f, uZ_constant<0>{});
         stride /= d;
         return stride;
     }();
@@ -281,11 +301,15 @@ class iterator : Base {
 
     using pointer = T*;
 
-    template<bool, bool, auto, typename, uZ, typename>
+    template<bool, auto, typename, uZ, typename>
     friend class sslice;
 
-    explicit iterator(pointer ptr, auto&&... other) noexcept
-    : Base(std::forward(other...))
+    template<typename, auto, uZ, uZ, typename>
+    friend class storage;
+
+    template<typename... U>
+    explicit iterator(pointer ptr, U&&... other) noexcept
+    : Base(std::forward<U>(other)...)
     , m_ptr(ptr){};
 
     using sslice = sslice<Const, Basis, T, PackSize, typename Base::slice_base>;
@@ -304,6 +328,9 @@ public:
 
     [[nodiscard]] inline auto operator*() const noexcept {
         return sslice(m_ptr, Base::slice_base_args());
+    }
+    [[nodiscard]] auto operator[](uZ index) const noexcept {
+        return sslice(m_ptr + Base::stride() * index, Base::slice_base_args());
     }
 
     inline auto operator+=(difference_type n) noexcept -> iterator& {
@@ -336,7 +363,7 @@ public:
 
     [[nodiscard]] inline friend auto operator+(const iterator& lhs, difference_type rhs) noexcept
         -> iterator {
-        return {lhs.m_ptr + rhs * lhs.stride(), static_cast<const Base&>(lhs)};
+        return iterator{lhs.m_ptr + rhs * lhs.stride(), static_cast<const Base&>(lhs)};
     };
     [[nodiscard]] inline friend auto operator+(difference_type lhs, const iterator& rhs) noexcept
         -> iterator {
@@ -368,17 +395,22 @@ private:
 namespace detail_ {
 template<auto Basis, meta::any_value_sequence ExcludedAxes, uZ PackSize, uZ Alignment>
 class static_slice_base {
-    static constexpr auto outer_axis = Basis.template outer_axis_remaining<ExcludedAxes>;
+public:
+    using excluded_axes = ExcludedAxes;
+    static constexpr bool vector_like =
+        ExcludedAxes::size == Basis.size - 1 && !meta::contains_value<ExcludedAxes, Basis.inner_axis>;
 
 protected:
-    using excluded_axes = ExcludedAxes;
+    static constexpr auto outer_axis = Basis.template outer_axis_remaining<ExcludedAxes>;
+    static_slice_base() noexcept     = default;
 
-    static_slice_base() = default;
+    explicit static_slice_base(auto) noexcept {};
 
-    using iterator_base =
-        static_iter_base<Basis, meta::expand_value_sequence<ExcludedAxes, outer_axis>, PackSize, Alignment>;
+    using iterator_base = static_iter_base<Basis, ExcludedAxes, PackSize, Alignment>;
 
-    static constexpr void iterator_base_args() noexcept {};
+    static constexpr auto iterator_base_args() noexcept {
+        return 0;
+    };
 
     template<auto Axis>
     using new_slice_base = static_slice_base<Basis,    //
@@ -386,7 +418,9 @@ protected:
                                              PackSize,
                                              Alignment>;
 
-    static constexpr void new_slice_base_args(){};
+    static constexpr auto new_slice_base_args() {
+        return 0;
+    };
 
     template<auto Axis>
     static constexpr auto new_slice_offset(uZ index) noexcept {
@@ -395,7 +429,7 @@ protected:
 
     template<auto Axis>
     static constexpr auto get_extent() noexcept -> uZ {
-        return Basis.template extent<Axis>;
+        return Basis.template extent<Axis>();
     }
 
 private:
@@ -446,19 +480,27 @@ private:
 template<bool Const, auto Basis, typename T, uZ PackSize, typename Base>
 class sslice
 : public std::ranges::view_base
-, pcx::detail_::pack_aligned_base<Basis.size == 1 &&
-                                  !meta::contains_value<typename Base::excluded_axes, Basis.outer_axisc>>
+, pcx::detail_::pack_aligned_base<Base::vector_like &&
+                                  !meta::contains_value<typename Base::excluded_axes, Basis.outer_axis>>
 , Base {
-    static constexpr bool contigious = !meta::contains_value<typename Base::excluded_axes, Basis.outer_axisc>;
-    static constexpr bool vector_like = Basis.size == 1 && contigious;
+    static constexpr bool contigious = !meta::contains_value<typename Base::excluded_axes, Basis.outer_axis>;
 
-    template<bool, bool, typename, uZ, typename>
+    template<bool, auto, typename, uZ, typename>
     friend class iterator;
 
-    using iterator = iterator<Const, Basis, T, PackSize, typename Base::iterator_base>;
+    template<typename, auto, uZ, uZ, typename>
+    friend class storage;
 
-    explicit constexpr sslice(T* start, auto&&... args)
-    : Base(std::forward(args...))
+    using iterator = std::conditional_t<Base::vector_like,
+                                        pcx::iterator<T, Const, PackSize>,
+                                        iterator<Const, Basis, T, PackSize, typename Base::iterator_base>>;
+
+    template<bool, auto, typename, uZ, typename>
+    friend class sslice;
+
+    template<typename... U>
+    explicit constexpr sslice(T* start, U&&... args)
+    : Base(std::forward<U>(args)...)
     , m_start(start){};
 
 public:
@@ -474,9 +516,9 @@ public:
     ~sslice() = default;
 
     template<auto Axis>
-        requires /**/ (Basis.template contains<Axis>)
+        requires /**/ (Basis.template contains<Axis>())
     [[nodiscard]] auto slice(uZ index) const noexcept {
-        using new_base  = Base::template new_slice_base<Axis>;
+        using new_base  = typename Base::template new_slice_base<Axis>;
         using new_slice = sslice<Const, Basis, T, PackSize, new_base>;
         auto* new_start = m_start + Base::template new_slice_offset<Axis>(index);
         return new_slice(new_start, Base::new_slice_base_args());
@@ -504,7 +546,7 @@ public:
     template<auto Axis>
     // requires /**/ (Basis.template contains<Axis>)
     [[nodiscard]] auto extent() const noexcept -> uZ {
-        return get_extent<Axis>();
+        return Base::template get_extent<Axis>();
     }
 
 private:
@@ -519,12 +561,16 @@ class static_storage_base {
 protected:
     using iterator_base = static_iter_base<Basis, meta::value_sequence<>, PackSize, Alignment>;
 
-    static constexpr void iterator_base_args() noexcept {};
+    static constexpr auto iterator_base_args() noexcept {
+        return 0;
+    };
 
     template<auto Axis>
     using slice_base = detail_::static_slice_base<Basis, meta::value_sequence<Axis>, PackSize, Alignment>;
 
-    static constexpr void slice_base_args() noexcept {};
+    static constexpr auto slice_base_args() noexcept {
+        return 0;
+    };
 
     template<auto Axis>
     static constexpr auto slice_offset(uZ index) noexcept -> uZ {
@@ -534,6 +580,10 @@ protected:
 
     [[nodiscard]] constexpr auto get_data() noexcept -> T* {
         return m_data.data();
+    }
+
+    [[nodiscard]] static constexpr auto get_size() noexcept -> uZ {
+        return Basis.template extent<Basis.outer_axis>();
     }
 
 private:
@@ -649,13 +699,13 @@ protected:
         return m_ptr;
     }
 
+    [[nodiscard]] auto get_size() const noexcept -> uZ {
+        return m_extents.extents.back();
+    }
+
 private:
     [[nodiscard]] auto stride() const noexcept -> uZ {
         return m_extents.stride;
-    }
-
-    [[nodiscard]] auto get_size() const noexcept -> uZ {
-        return m_extents.extents.back();
     }
 
 
@@ -678,9 +728,16 @@ public:
     explicit storage(U&&... args)
     : Base(std::forward<U>(args)...){};
 
+    auto begin() noexcept {
+        return iterator(data(), Base::iterator_base_args());
+    }
+    auto end() noexcept {
+        return begin() + size();
+    }
+
     template<auto Axis>
     [[nodiscard]] auto slice(uZ index) noexcept {
-        using slice_base = Base::template slice_base<Axis>;
+        using slice_base = typename Base::template slice_base<Axis>;
         using slice_type = sslice<false, Basis, T, PackSize, slice_base>;
 
         auto* slice_start = data() + Base::template slice_offset<Axis>(index);
@@ -689,11 +746,18 @@ public:
 
     template<auto Axis>
     [[nodiscard]] auto slice(uZ index) const noexcept {
-        using slice_base = Base::template slice_base<Axis>;
+        using slice_base = typename Base::template slice_base<Axis>;
         using slice_type = sslice<true, Basis, T, PackSize, slice_base>;
 
         auto* slice_start = data() + Base::template slice_offset<Axis>(index);
         return slice_type(slice_start, Base::slice_base_args());
+    }
+
+    [[nodiscard]] auto operator[](uZ index) noexcept {
+        return slice<Basis.outer_axis>(index);
+    }
+    [[nodiscard]] auto operator[](uZ index) const noexcept {
+        return slice<Basis.outer_axis>(index);
     }
 
     [[nodiscard]] auto data() noexcept -> T* {
@@ -702,11 +766,12 @@ public:
     [[nodiscard]] auto data() const noexcept -> const T* {
         return Base::get_data();
     }
+    [[nodiscard]] auto size() const noexcept -> uZ {
+        return Base::get_size();
+    }
 };
 
-}    // namespace md
-
-}    // namespace pcx
+}    // namespace pcx::md
 
 
 #endif

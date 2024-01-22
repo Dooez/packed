@@ -35,7 +35,7 @@ if( CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR )
     set_target_properties(test_avx512 PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED True)
 
     target_compile_options(test_vector PRIVATE -save-temps -march=native)
-    target_compile_options(test_mdstorage PRIVATE -save-temps -march=native)
+    target_compile_options(test_mdstorage PRIVATE -save-temps -march=native -ftemplate-backtrace-limit=0)
     target_compile_options(test_op PRIVATE -save-temps -march=native)
     target_compile_options(test_fft PRIVATE -save-temps -march=native)
     target_compile_options(test_fxcorr PRIVATE -save-temps -march=native)

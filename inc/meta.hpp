@@ -61,7 +61,9 @@ concept value_matched = (!unique_values<V, Vs...>);
 
 namespace detail_ {
 template<auto... Values>
-struct value_sequence {};
+struct value_sequence {
+    static constexpr uZ size = sizeof...(Values);
+};
 
 template<typename Sequence, auto... NewValues>
 struct expand_value_sequence_impl;
