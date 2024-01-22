@@ -518,10 +518,14 @@ public:
     template<auto Axis>
         requires /**/ (Basis.template contains<Axis>())
     [[nodiscard]] auto slice(uZ index) const noexcept {
-        using new_base  = typename Base::template new_slice_base<Axis>;
-        using new_slice = sslice<Const, Basis, T, PackSize, new_base>;
         auto* new_start = m_start + Base::template new_slice_offset<Axis>(index);
-        return new_slice(new_start, Base::new_slice_base_args());
+        if constexpr (Basis.size - Base::excluded_axes::size == 1) {
+            return cx_ref<T, Const, PackSize>(new_start, index);
+        } else {
+            using new_base  = typename Base::template new_slice_base<Axis>;
+            using new_slice = sslice<Const, Basis, T, PackSize, new_base>;
+            return new_slice(new_start, Base::new_slice_base_args());
+        }
     }
 
     [[nodiscard]] auto operator[](uZ index) const noexcept {
