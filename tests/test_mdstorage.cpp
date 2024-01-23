@@ -92,22 +92,24 @@ int main() {
     //
     using enum ax1;
     static constexpr auto static_basis = pcx::md::static_basis<x, y, z>{8U, 16U, 32U};
-    using static_stoarge_type          = pcx::md::storage<float,    //
-                                                 static_basis,
-                                                 8,
-                                                 16,
-                                                 pcx::md::static_storage_base<float, static_basis, 8, 16>>;
+    using static_stoarge_type =
+        pcx::md::storage<float,    //
+                         static_basis,
+                         8,
+                         16,
+                         pcx::md::detail_::static_::storage_base<float, static_basis, 8, 16>>;
 
     using dynamic_base =
-        pcx::md::dynamic_storage_base<float, static_basis, 8, 16, pcx::aligned_allocator<float>>;
+        pcx::md::detail_::dynamic::storage_base<float, static_basis, 8, 16, pcx::aligned_allocator<float>>;
     using dynamic_storage_type = pcx::md::storage<float, static_basis, 8, 16, dynamic_base>;
     auto static_stoarge        = static_stoarge_type{};
     auto dynamic_storage       = dynamic_storage_type(std::array<pcx::uZ, 3>{8, 16, 32});
 
-    auto sx  = static_stoarge.slice<x>(0);
-    auto sxy = sx.slice<y>(0);
-    auto sy  = static_stoarge.slice<y>(0);
-    auto syz = sy.slice<z>(0);
+    auto sx   = static_stoarge.slice<x>(0);
+    auto sxy  = sx.slice<y>(0);
+    auto sy   = static_stoarge.slice<y>(0);
+    auto syz  = sy.slice<z>(0);
+    auto syzx = syz.slice<x>(0);
 
     (void)test_ranges<decltype(static_stoarge)>();
     (void)test_ranges<decltype(sx)>();
@@ -116,7 +118,6 @@ int main() {
     using sxy_it_t = pcx::rv::iterator_t<decltype(sxy)>;
     using syz_it_t = pcx::rv::iterator_t<decltype(syz)>;
 
-    constexpr auto in = static_basis.inner_axis;
 
     static_assert(!pcx::complex_vector_of<float, decltype(sxy)>);
     static_assert(pcx::complex_vector_of<float, decltype(syz)>);
