@@ -111,9 +111,19 @@ int main() {
     auto syz  = sy.slice<z>(0);
     auto syzx = syz.slice<x>(0);
 
+    static constexpr auto vector_basis = pcx::md::static_basis<x>{8u};
+    using vector_storage_type =
+        pcx::md::storage<float,
+                         vector_basis,
+                         8,
+                         16,
+                         pcx::md::detail_::static_::storage_base<float, vector_basis, 8, 16>>;
+
+
     (void)test_ranges<decltype(static_stoarge)>();
     (void)test_ranges<decltype(sx)>();
     (void)test_ranges<decltype(sxy)>();
+    (void)test_ranges<vector_storage_type>();
 
     using sxy_it_t = pcx::rv::iterator_t<decltype(sxy)>;
     using syz_it_t = pcx::rv::iterator_t<decltype(syz)>;
@@ -121,6 +131,9 @@ int main() {
 
     static_assert(!pcx::complex_vector_of<float, decltype(sxy)>);
     static_assert(pcx::complex_vector_of<float, decltype(syz)>);
+    static_assert(pcx::complex_vector_of<float, vector_storage_type>);
+
+    auto ds = pcx::md::d_stoarge<float, static_basis, 8, 16>();
 
     static_assert(std::allocator_traits<pcx::aligned_allocator<float>>::is_always_equal::value);
     return 0;
