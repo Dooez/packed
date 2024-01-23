@@ -1,6 +1,9 @@
 // #include "mdstorage.hpp"
 #include "allocators.hpp"
 #include "static_mdstorage.hpp"
+#include "types.hpp"
+
+#include <bits/ranges_base.h>
 
 enum class ax1 {
     x = 0,
@@ -103,10 +106,20 @@ int main() {
 
     auto sx  = static_stoarge.slice<x>(0);
     auto sxy = sx.slice<y>(0);
+    auto sy  = static_stoarge.slice<y>(0);
+    auto syz = sy.slice<z>(0);
 
     (void)test_ranges<decltype(static_stoarge)>();
     (void)test_ranges<decltype(sx)>();
     (void)test_ranges<decltype(sxy)>();
+
+    using sxy_it_t = pcx::rv::iterator_t<decltype(sxy)>;
+    using syz_it_t = pcx::rv::iterator_t<decltype(syz)>;
+
+    constexpr auto in = static_basis.inner_axis;
+
+    static_assert(!pcx::complex_vector_of<float, decltype(sxy)>);
+    static_assert(pcx::complex_vector_of<float, decltype(syz)>);
 
     static_assert(std::allocator_traits<pcx::aligned_allocator<float>>::is_always_equal::value);
     return 0;

@@ -20,6 +20,7 @@ class iterator {
     template<typename VT, uZ VPackSize, typename>
         requires packed_floating_point<VT, VPackSize>
     friend class vector;
+
     friend class iterator<T, true, PackSize>;
 
     friend auto detail_::make_iterator<T, Const, PackSize>(T* ptr, iZ index) noexcept;
@@ -299,7 +300,7 @@ struct cx_vector_traits<R> {
 
     inline static auto re_data(R& vector) {
         auto it = vector.begin();
-         if constexpr (!always_aligned<R>) {
+        if constexpr (!always_aligned<R>) {
             if (!it.aligned()) {
                 throw(
                     std::invalid_argument("Packed complex range is not aligned. Packed complex range must be "
