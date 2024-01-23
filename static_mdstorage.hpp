@@ -12,6 +12,7 @@
 #include <cstring>
 #include <memory>
 #include <numeric>
+#include <type_traits>
 #include <utility>
 
 namespace pcx::md {
@@ -190,14 +191,18 @@ class iter_base;
 template<typename T, auto Basis, uZ PackSize, uZ Alignment>
 class storage_base;
 };    // namespace static_
+namespace dynamic {
 template<auto Basis, meta::any_value_sequence ExcludedAxes, uZ PackSize>
 class slice_base;
-
+template<auto Basis, meta::any_value_sequence ExcludedAxes, uZ PackSize>
+class iter_base;
+template<typename T, auto Basis, uZ PackSize, uZ Alignment, typename Allocator>
+class storage_base;
+};    // namespace dynamic
 };    // namespace detail_
 
 template<bool Const, auto Basis, typename T, uZ PackSize, typename Base>
 class sslice;
-
 template<typename T, auto Basis, uZ PackSize, uZ Agignment, typename Base>
 class storage;
 
@@ -207,6 +212,15 @@ class iter_base {
     static constexpr auto outer_axis = Basis.template outer_axis_remaining<ExcludedAxes>;
 
 protected:
+    explicit iter_base(auto) noexcept {};
+
+    iter_base() noexcept                            = default;
+    iter_base(const iter_base&) noexcept            = default;
+    iter_base(iter_base&&) noexcept                 = default;
+    iter_base& operator=(const iter_base&) noexcept = default;
+    iter_base& operator=(iter_base&&) noexcept      = default;
+    ~iter_base() noexcept                           = default;
+
     using excluded_axes = ExcludedAxes;
 
     using slice_base = slice_base<Basis,    //
@@ -217,15 +231,6 @@ protected:
     static constexpr auto slice_base_args() noexcept {
         return 0;
     };
-
-    explicit iter_base(auto) noexcept {};
-
-    iter_base() noexcept                            = default;
-    iter_base(const iter_base&) noexcept            = default;
-    iter_base(iter_base&&) noexcept                 = default;
-    iter_base& operator=(const iter_base&) noexcept = default;
-    iter_base& operator=(iter_base&&) noexcept      = default;
-    ~iter_base() noexcept                           = default;
 
     [[nodiscard]] static constexpr auto stride() noexcept -> uZ {
         return s_stride;
@@ -299,7 +304,7 @@ protected:
 
     template<auto Axis>
     static constexpr auto new_slice_offset(uZ index) noexcept {
-        return detail_::get_static_slice_offset<Basis, ExcludedAxes, Axis, PackSize, Alignment>(index);
+        return get_static_slice_offset<Basis, ExcludedAxes, Axis, PackSize, Alignment>(index);
     }
 
     template<auto Axis>
@@ -364,8 +369,7 @@ class iter_base {
 protected:
     using excluded_axes = ExcludedAxes;
 
-    using slice_base =
-        detail_::slice_base<Basis, meta::expand_value_sequence<ExcludedAxes, outer_axis>, PackSize>;
+    using slice_base = slice_base<Basis, meta::expand_value_sequence<ExcludedAxes, outer_axis>, PackSize>;
 
     [[nodiscard]] auto slice_base_args() const noexcept {
         return m_extents_ptr;
@@ -541,7 +545,7 @@ protected:
     }
 
     template<auto Axis>
-    using slice_base = detail_::slice_base<Basis, meta::value_sequence<>, PackSize>;
+    using slice_base = slice_base<Basis, meta::value_sequence<>, PackSize>;
 
     auto slice_base_args() noexcept {
         return &m_extents;
@@ -549,7 +553,7 @@ protected:
 
     template<auto Axis>
     [[nodiscard]] auto slice_offset(uZ offset) const noexcept -> uZ {
-        return detail_::get_dynamic_slice_offset<Basis, meta::value_sequence<>, Axis, PackSize>(
+        return get_dynamic_slice_offset<Basis, meta::value_sequence<>, Axis, PackSize>(
             m_extents.stride, m_extents.extents, offset);
     }
     auto get_data() const noexcept -> T* {
@@ -753,38 +757,79 @@ private:
 };
 
 template<typename T, auto Basis, uZ PackSize, uZ Agignment, typename Base>
-class storage : Base {
-    using iterator       = md::iterator<false, Basis, T, PackSize, typename Base::iterator_base>;
-    using const_iterator = md::iterator<true, Basis, T, PackSize, typename Base::iterator_base>;
+class storage
+: Base
+, pcx::detail_::pack_aligned_base<Basis.size == 1> {
+    static constexpr bool vector_like = Basis.size == 1;
+    using iterator =
+        std::conditional_t<vector_like,
+                           pcx::iterator<T, false, PackSize>,
+                           md::iterator<false, Basis, T, PackSize, typename Base::iterator_base>>;
+    using const_iterator =
+        std::conditional_t<vector_like,
+                           pcx::iterator<T, true, PackSize>,
+                           md::iterator<true, Basis, T, PackSize, typename Base::iterator_base>>;
+    ;
 
 public:
     template<typename... U>
     explicit storage(U&&... args)
     : Base(std::forward<U>(args)...){};
 
-    auto begin() noexcept {
-        return iterator(data(), Base::iterator_base_args());
+    [[nodiscard]] auto begin() noexcept -> iterator {
+        if constexpr (vector_like) {
+            return iterator(data(), 0);
+        } else {
+            return iterator(data(), Base::iterator_base_args());
+        }
     }
-    auto end() noexcept {
+    [[nodiscard]] auto begin() const noexcept -> const_iterator {
+        return cbegin();
+    }
+    [[nodiscard]] auto cbegin() const noexcept -> const_iterator {
+        if constexpr (vector_like) {
+            return const_iterator(data(), 0);
+        } else {
+            return const_iterator(data(), Base::iterator_base_args());
+        }
+    }
+    [[nodiscard]] auto end() noexcept -> iterator {
         return begin() + size();
+    }
+    [[nodiscard]] auto end() const noexcept -> const_iterator {
+        return cend();
+    }
+    [[nodiscard]] auto cend() const noexcept -> const_iterator {
+        return cbegin() + size();
     }
 
     template<auto Axis>
     [[nodiscard]] auto slice(uZ index) noexcept {
-        using slice_base = typename Base::template slice_base<Axis>;
-        using slice_type = sslice<false, Basis, T, PackSize, slice_base>;
+        if constexpr (vector_like) {
+            return pcx::detail_::make_cx_ref<T, false, PackSize>(data() + pcx::pidx<PackSize>(index));
+        } else {
+            using slice_base = typename Base::template slice_base<Axis>;
+            using slice_type = sslice<false, Basis, T, PackSize, slice_base>;
 
-        auto* slice_start = data() + Base::template slice_offset<Axis>(index);
-        return slice_type(slice_start, Base::slice_base_args());
+            auto* slice_start = data() + Base::template slice_offset<Axis>(index);
+            return slice_type(slice_start, Base::slice_base_args());
+        }
     }
-
     template<auto Axis>
     [[nodiscard]] auto slice(uZ index) const noexcept {
-        using slice_base = typename Base::template slice_base<Axis>;
-        using slice_type = sslice<true, Basis, T, PackSize, slice_base>;
+        return cslice<Axis>(index);
+    }
+    template<auto Axis>
+    [[nodiscard]] auto cslice(uZ index) const noexcept {
+        if constexpr (vector_like) {
+            return pcx::detail_::make_cx_ref<T, true, PackSize>(data() + pcx::pidx<PackSize>(index));
+        } else {
+            using slice_base = typename Base::template slice_base<Axis>;
+            using slice_type = sslice<true, Basis, T, PackSize, slice_base>;
 
-        auto* slice_start = data() + Base::template slice_offset<Axis>(index);
-        return slice_type(slice_start, Base::slice_base_args());
+            auto* slice_start = data() + Base::template slice_offset<Axis>(index);
+            return slice_type(slice_start, Base::slice_base_args());
+        }
     }
 
     [[nodiscard]] auto operator[](uZ index) noexcept {
