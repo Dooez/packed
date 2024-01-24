@@ -121,11 +121,9 @@ namespace detail_ {
 template<uZ Size>
 struct dynamic_extents_info {
 private:
-    using stride_type = std::conditional_t < Size<2, decltype([] {}), uZ>;
-
 public:
-    [[no_unique_address]] stride_type stride;
-    std::array<uZ, Size>              extents;
+    std::array<uZ, Size> extents;
+    uZ                   storage_size;
 };
 
 template<auto Basis, uZ Alignment>
@@ -171,7 +169,7 @@ _NDINLINE_ constexpr auto get_static_slice_offset(uZ index) noexcept -> uZ {
 };
 template<auto Basis, meta::any_value_sequence ExcludedAxes, auto Axis, uZ PackSize>
     requires /**/ (Basis.template contans<Axis>())
-_NDINLINE_ constexpr auto get_dynamic_slice_offset(uZ                                start_stride,
+_NDINLINE_ constexpr auto get_dynamic_slice_offset(uZ                                storage_size,
                                                    const std::array<uZ, Basis.size>& extents,
                                                    uZ                                index) noexcept -> uZ {
     if constexpr (equal_values<Axis, Basis.inner_axis>) {
@@ -185,7 +183,7 @@ _NDINLINE_ constexpr auto get_dynamic_slice_offset(uZ                           
                 return extents[I] * f(f, extents, uZ_constant<I - 1>{});
             }
         };
-        constexpr uZ stride = start_stride / div(div, extents, uZ_constant<Basis.size - 2>{});
+        constexpr uZ stride = storage_size / div(div, extents, uZ_constant<Basis.size - 1>{});
 
         return stride * index;
     }
@@ -406,17 +404,17 @@ protected:
 
 private:
     _NDINLINE_ static auto calc_stride(extents_type* extents_ptr) noexcept {
-        auto stride = extents_ptr->stride;
+        auto stride = extents_ptr->storage_size;
 
-        auto f = []<uZ I>(auto&& f, auto& extents, uZ_constant<I>) {
+        auto f = []<typename F, uZ I>(F&& f, auto& extents, uZ_constant<I>) {
             constexpr auto axis = Basis.template axis<I>();
             if constexpr (equal_values<outer_axis, axis>) {
                 return extents[I];
             } else {
-                return extents[I] * f(f, extents, uZ_constant<I - 1>{});
+                return extents[I] * f(std::forward<F>(f), extents, uZ_constant<I - 1>{});
             }
         };
-        auto div = f(f, extents_ptr->extents, uZ_constant<Basis.size() - 2>{});
+        auto div = f(f, extents_ptr->extents, uZ_constant<Basis.size() - 1>{});
         return stride / div;
     }
 
@@ -461,9 +459,10 @@ protected:
 
     template<auto Axis>
     _NDINLINE_ auto new_slice_offset(uZ index) noexcept -> uZ {
-        const auto& stride  = m_extents_ptr->stride;
-        const auto& extents = m_extents_ptr->extents;
-        return detail_::get_dynamic_slice_offset<Basis, ExcludedAxes, Axis, PackSize>(stride, extents, index);
+        const auto& storage_size = m_extents_ptr->storage_size;
+        const auto& extents      = m_extents_ptr->extents;
+        return detail_::get_dynamic_slice_offset<Basis, ExcludedAxes, Axis, PackSize>(
+            storage_size, extents, index);
     }
 
     template<auto Axis>
@@ -485,10 +484,14 @@ class storage_base {
     storage_base(std::index_sequence<Is...>, auto... extents)
     : m_extents{.stride{}, .extents{std::get<Is>(std::make_tuple(extents...))...}} {
         if constexpr (Basis.size > 1) {
-            auto stride = calc_stride(storage_size, m_extents.extents);
+            auto stride = calc_stride(m_extents.extents);
             auto size   = stride * m_extents.extents.back();
-            m_ptr       = allocator_traits::allocate(m_allocator, storage_size);
-            std::memset(m_ptr, 0, storage_size * sizeof(T));
+            m_ptr       = allocator_traits::allocate(m_allocator, size);
+            std::memset(m_ptr, 0, size * sizeof(T));
+        } else {
+            auto size = (m_extents.extents.front() + alignment - 1) / alignment * alignment;
+            m_ptr     = allocator_traits::allocate(m_allocator, size);
+            std::memset(m_ptr, 0, size * sizeof(T));
         }
     }
 
@@ -540,8 +543,8 @@ protected:
                 swap(m_ptr, other.m_ptr);
                 swap(m_extents, other.m_extents);
             } else {
-                auto size = other.stride() * other.get_size();
-                if (size != stride() * m_extents.get_size()) {
+                auto size = other.storage_size();
+                if (storage_size() != size) {
                     deallocate();
                     m_ptr = allocator_traits::allocate(m_allocator, size);
                 }
@@ -575,7 +578,7 @@ protected:
     template<auto Axis>
     _NDINLINE_ auto slice_offset(uZ offset) const noexcept -> uZ {
         return get_dynamic_slice_offset<Basis, meta::value_sequence<>, Axis, PackSize>(
-            m_extents.stride, m_extents.extents, offset);
+            m_extents.storage_size, m_extents.extents, offset);
     }
 
     auto get_data() const noexcept -> T* {
@@ -587,6 +590,12 @@ protected:
     }
 
 private:
+    _NDINLINE_ static auto calc_storage_size(const std::array<uZ, Basis.size>& extents) noexcept -> uZ {
+        auto size = (extents.front() + alignment - 1) / alignment * alignment;
+        for (uZ i = 1; i < Basis.size; ++i) {
+            size *= extents[i];
+        }
+    }
     _NDINLINE_ auto calc_stride(const std::array<uZ, Basis.size>& extents) const noexcept -> uZ {
         auto inner_storage_size = (extents.front() + alignment - 1) / alignment * alignment;
 
@@ -597,12 +606,12 @@ private:
         return stride;
     }
 
-    _NDINLINE_ auto stride() const noexcept -> uZ {
-        return m_extents.stride;
+    _NDINLINE_ auto storage_size() const noexcept -> uZ {
+        return m_extents.storage_size;
     }
 
     _INLINE_ void deallocate() noexcept {
-        allocator_traits::deallocate(m_allocator, m_ptr, stride() * get_size());
+        allocator_traits::deallocate(m_allocator, m_ptr, storage_size());
     }
 
     [[no_unique_address]] Allocator m_allocator{};
