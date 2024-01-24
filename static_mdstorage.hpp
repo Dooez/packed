@@ -9,9 +9,11 @@
 #include <algorithm>
 #include <array>
 #include <bits/utility.h>
+#include <concepts>
 #include <cstring>
 #include <memory>
 #include <numeric>
+#include <tuple>
 #include <type_traits>
 #include <utility>
 
@@ -110,8 +112,6 @@ public:
     static constexpr auto inner_axis_remaining = outer_remaining_impl<0, Excluded>::value;
 
     std::array<uZ, size> extents;
-
-private:
 };
 
 template<typename T>
@@ -120,8 +120,12 @@ concept md_basis = std::derived_from<T, detail_::basis_base>;
 namespace detail_ {
 template<uZ Size>
 struct dynamic_extents_info {
-    uZ                   stride;
-    std::array<uZ, Size> extents;
+private:
+    using stride_type = std::conditional_t < Size<2, decltype([] {}), uZ>;
+
+public:
+    [[no_unique_address]] stride_type stride;
+    std::array<uZ, Size>              extents;
 };
 
 template<auto Basis, uZ Alignment>
@@ -227,10 +231,10 @@ protected:
 
     using excluded_axes = ExcludedAxes;
 
-    using slice_base = slice_base<Basis,    //
-                                  meta::expand_value_sequence<ExcludedAxes, outer_axis>,
-                                  PackSize,
-                                  Alignment>;
+    using slice_base = static_::slice_base<Basis,    //
+                                           meta::expand_value_sequence<ExcludedAxes, outer_axis>,
+                                           PackSize,
+                                           Alignment>;
 
     _NDINLINE_ static constexpr auto slice_base_args() noexcept {
         return 0;
@@ -331,6 +335,10 @@ protected:
     storage_base& operator=(storage_base&&) noexcept      = default;
     ~storage_base() noexcept                              = default;
 
+    static constexpr bool dynamic = false;
+
+    using allocator = pcx::null_allocator<T>;
+
     using iterator_base = iter_base<Basis, meta::value_sequence<>, PackSize, Alignment>;
 
     _NDINLINE_ static constexpr auto iterator_base_args() noexcept {
@@ -373,7 +381,9 @@ class iter_base {
 protected:
     using excluded_axes = ExcludedAxes;
 
-    using slice_base = slice_base<Basis, meta::expand_value_sequence<ExcludedAxes, outer_axis>, PackSize>;
+    using slice_base = dynamic::slice_base<Basis,    //
+                                           meta::expand_value_sequence<ExcludedAxes, outer_axis>,
+                                           PackSize>;
 
     _NDINLINE_ auto slice_base_args() const noexcept {
         return m_extents_ptr;
@@ -466,30 +476,31 @@ private:
 };
 template<typename T, auto Basis, uZ PackSize, uZ Alignment, typename Allocator>
 class storage_base {
+    static constexpr uZ alignment = std::lcm(PackSize * 2, Alignment);
+
     using extents_type     = detail_::dynamic_extents_info<Basis.size>;
     using allocator_traits = std::allocator_traits<Allocator>;
+
+    template<uZ... Is>
+    storage_base(std::index_sequence<Is...>, auto... extents)
+    : m_extents{.stride{}, .extents{std::get<Is>(std::make_tuple(extents...))...}} {
+        if constexpr (Basis.size > 1) {
+            auto stride = calc_stride(storage_size, m_extents.extents);
+            auto size   = stride * m_extents.extents.back();
+            m_ptr       = allocator_traits::allocate(m_allocator, storage_size);
+            std::memset(m_ptr, 0, storage_size * sizeof(T));
+        }
+    }
+
+    using axis_order = std::index_sequence<Basis.size>;
 
 protected:
     storage_base() noexcept
     : m_ptr(nullptr){};
 
-    explicit storage_base(const std::array<uZ, Basis.size>& extents, Allocator allocator = {})
-    : m_extents{.stride = 0, .extents = extents}
-    , m_allocator(allocator) {
-        uZ align    = std::lcm(Alignment, PackSize * 2);
-        uZ misalign = (extents[0] * 2) % align;
-        uZ size     = extents[0] * 2 + (misalign > 0 ? align - misalign : 0);
-        if constexpr (Basis.size > 1) {
-            uZ stride = size;
-            for (uZ i = 1; i < Basis.size - 1; ++i) {
-                stride *= m_extents.extents[i];
-            }
-            size             = stride * m_extents.extents.back();
-            m_extents.stride = stride;
-        }
-        m_ptr = allocator_traits::allocate(m_allocator, size);
-        std::memset(m_ptr, 0, size * sizeof(T));
-    };
+    template<std::unsigned_integral... U>
+    explicit storage_base(U... extents)
+    : storage_base(axis_order{}, extents...){};
 
 public:
     storage_base(const storage_base& other)            = delete;
@@ -544,6 +555,10 @@ protected:
         deallocate();
     }
 
+    static constexpr bool dynamic = true;
+
+    using allocator = Allocator;
+
     using iterator_base = iter_base<Basis, meta::value_sequence<>, PackSize>;
 
     _NDINLINE_ auto iterator_base_args() noexcept {
@@ -562,6 +577,7 @@ protected:
         return get_dynamic_slice_offset<Basis, meta::value_sequence<>, Axis, PackSize>(
             m_extents.stride, m_extents.extents, offset);
     }
+
     auto get_data() const noexcept -> T* {
         return m_ptr;
     }
@@ -571,6 +587,16 @@ protected:
     }
 
 private:
+    _NDINLINE_ auto calc_stride(const std::array<uZ, Basis.size>& extents) const noexcept -> uZ {
+        auto inner_storage_size = (extents.front() + alignment - 1) / alignment * alignment;
+
+        auto stride = inner_storage_size;
+        for (uZ i = 1; i < Basis.size - 1; ++i) {
+            stride *= extents[i];
+        }
+        return stride;
+    }
+
     _NDINLINE_ auto stride() const noexcept -> uZ {
         return m_extents.stride;
     }
@@ -601,7 +627,7 @@ class iterator : Base {
     : Base(std::forward<U>(other)...)
     , m_ptr(ptr){};
 
-    using sslice = sslice<Const, Basis, T, PackSize, typename Base::slice_base>;
+    using sslice = md::sslice<Const, Basis, T, PackSize, typename Base::slice_base>;
 
 public:
     iterator() noexcept                           = default;
@@ -687,14 +713,15 @@ class sslice
 
 private:
     template<bool, auto, typename, uZ, typename>
-    friend class iterator;
+    friend class md::iterator;
 
     template<typename, auto, uZ, uZ, typename>
     friend class storage;
 
-    using iterator = std::conditional_t<Base::vector_like,
-                                        pcx::iterator<T, Const, PackSize>,
-                                        iterator<Const, Basis, T, PackSize, typename Base::iterator_base>>;
+    using iterator =
+        std::conditional_t<Base::vector_like,
+                           pcx::iterator<T, Const, PackSize>,
+                           md::iterator<Const, Basis, T, PackSize, typename Base::iterator_base>>;
 
     template<bool, auto, typename, uZ, typename>
     friend class sslice;
@@ -764,6 +791,8 @@ class storage
 : Base
 , pcx::detail_::pack_aligned_base<Basis.size == 1> {
     static constexpr bool vector_like = Basis.size == 1;
+    static constexpr bool dynamic     = Base::dynamic;
+
     using iterator =
         std::conditional_t<vector_like,
                            pcx::iterator<T, false, PackSize>,
@@ -772,14 +801,18 @@ class storage
         std::conditional_t<vector_like,
                            pcx::iterator<T, true, PackSize>,
                            md::iterator<true, Basis, T, PackSize, typename Base::iterator_base>>;
-    ;
 
 public:
-    storage() = default;
+    template<std::unsigned_integral... U>
+    explicit storage(Base::allocator allocator, U... extents)
+        requires(dynamic && sizeof...(U) == Basis.size)
+    {}
+    template<std::unsigned_integral... U>
+    explicit storage(U... extents)
+        requires(dynamic && sizeof...(U) == Basis.size)
+    {}
 
-    template<typename... U>
-    explicit storage(U&&... args)
-    : Base(std::forward<U>(args)...){};
+    storage() = default;
 
     [[nodiscard]] auto begin() noexcept -> iterator {
         if constexpr (vector_like) {
