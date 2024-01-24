@@ -178,6 +178,9 @@ namespace meta {
     template<typename Sequence1, typename Sequence2>
     using concat_value_sequences;
 
+    template<typename Sequence>
+    using reverse_value_sequence;
+
     template<typename Sequence, auto V>
     concept contains_value;
 
@@ -283,6 +286,16 @@ template<auto... Values1, auto... Values2>
 struct concat_value_sequences_impl<value_sequence<Values1...>, value_sequence<Values2...>> {
     using type = value_sequence<Values1..., Values2...>;
 };
+template<typename Sequence>
+struct reverse_value_sequence_impl {
+    using type = Sequence;
+};
+template<auto V, auto... Vs>
+struct reverse_value_sequence_impl<value_sequence<V, Vs...>> {
+    using type = expand_value_sequence_impl<typename reverse_value_sequence_impl<value_sequence<Vs...>>::type,
+                                            V>::type;
+};
+
 }    // namespace detail_
 template<typename T>
 concept any_value_sequence = detail_::is_value_sequence<T>::value;
@@ -292,6 +305,9 @@ using expand_value_sequence = typename detail_::expand_value_sequence_impl<Seque
 
 template<typename Sequence1, typename Sequence2>
 using concat_value_sequences = typename detail_::concat_value_sequences_impl<Sequence1, Sequence2>::type;
+
+template<typename Sequence>
+using reverse_value_sequence = typename detail_::reverse_value_sequence_impl<Sequence>;
 
 namespace detail_ {
 template<uZ I, auto Vmatch, auto V, auto... Vs>

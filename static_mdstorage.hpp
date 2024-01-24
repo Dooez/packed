@@ -481,8 +481,8 @@ class storage_base {
     using allocator_traits = std::allocator_traits<Allocator>;
 
     template<uZ... Is>
-    storage_base(std::index_sequence<Is...>, auto... extents)
-    : m_extents{.stride{}, .extents{std::get<Is>(std::make_tuple(extents...))...}} {
+    explicit storage_base(std::index_sequence<Is...>, auto... extents)
+    : m_extents{.extents{std::get<Is>(std::make_tuple(extents...))...}} {
         if constexpr (Basis.size > 1) {
             auto stride = calc_stride(m_extents.extents);
             auto size   = stride * m_extents.extents.back();
@@ -495,7 +495,13 @@ class storage_base {
         }
     }
 
-    using axis_order = std::index_sequence<Basis.size>;
+    using axis_order    = std::index_sequence<Basis.size>;
+    using reverse_order =                                   //
+        meta::value_to_index_sequence<                      //
+            meta::reverse_value_sequence<                   //
+                meta::index_to_value_sequence<              //
+                    std::make_index_sequence<Basis.size>    //
+                    >>>;
 
 protected:
     storage_base() noexcept
