@@ -27,13 +27,6 @@ struct basis_base {};
 
 template<auto... Axes>
 class static_basis : public detail_::basis_base {
-    template<typename>
-    struct basis_from_value_sequence;
-    template<auto... Vs>
-    struct basis_from_value_sequence<meta::value_sequence<Vs...>> {
-        using type = static_basis<Vs...>;
-    };
-
     template<uZ I, typename Excluded>
     struct outer_remaining_impl {
         static constexpr auto value =
@@ -54,57 +47,76 @@ class static_basis : public detail_::basis_base {
                                meta::value_constant<meta::index_into_values<I, Axes...>>>::value;
     };
 
-    template<uZ... Is>
-    constexpr static_basis(auto&& extents, std::index_sequence<Is...>)
-    : extents{extents[Is]...} {};
-
 public:
     static constexpr uZ size = sizeof...(Axes);
 
+    using axis_order = std::make_index_sequence<size>;
+
+private:
+    using axis_order_as_vseq = meta::index_to_value_sequence<axis_order>;
+
+    template<uZ... Is>
+    constexpr explicit static_basis(std::index_sequence<Is...>, auto... extents)
+    : extents{std::get<Is>(std::make_tuple(extents...))...} {};
+
+public:
     template<std::unsigned_integral... Us>
         requires /**/ (sizeof...(Us) == size)
     constexpr explicit static_basis(Us... extents) noexcept
-    : extents{extents...} {};
+    : static_basis(axis_order{}, extents...){};
 
-    template<auto Axis>
-        requires meta::value_matched<Axis, Axes...>
-    _NDINLINE_ static constexpr auto index() noexcept {
-        return meta::find_first_in_values<Axis, Axes...>;
-    }
-
+    /**
+     * @brief Returns the axis identifier 0-indexed from inner to outer axis.
+     * 
+     * @tparam Index 0 corresponds to inner axis.c
+     */
     template<uZ Index>
+        requires /**/ (Index < size)
     _NDINLINE_ static constexpr auto axis() noexcept {
-        return meta::index_into_values<Index, Axes...>;
+        constexpr uZ real_index = meta::index_into_sequence<Index, axis_order_as_vseq>;
+        return meta::index_into_values<real_index, Axes...>;
     };
 
-    template<auto Axis>
-    _NDINLINE_ static constexpr bool contains() noexcept {
-        return meta::value_matched<Axis, Axes...>;
+    static consteval auto contains(auto axis) -> bool {
+        constexpr auto cmp_equal = [](auto a, auto b) {
+            if constexpr (std::equality_comparable_with<decltype(a), decltype(b)>) {
+                return a == b;
+            } else {
+                return false;
+            }
+        };
+        return (cmp_equal(axis, Axes) || ...);
     }
 
-    static constexpr auto inner_axis = axis<0>();
-    static constexpr auto outer_axis = axis<size - 1>();
-
-    template<auto Axis>
-        requires meta::value_matched<Axis, Axes...>
-    consteval auto exclude() noexcept {
-        using new_basis_t =
-            basis_from_value_sequence<meta::filter_value_sequence<meta::value_sequence<Axes...>, Axis>>;
-
-        constexpr uZ index = meta::find_first_in_values<Axis, Axes...>;
-        using index_seq    = meta::index_to_value_sequence<std::make_index_sequence<size>>;
-        using filtered     = meta::value_to_index_sequence<meta::filter_value_sequence<index_seq, index>>;
-
-        return new_basis_t(extents, filtered{});
-    };
-
-    template<auto Axis>
-        requires meta::value_matched<Axis, Axes...>
-    _NDINLINE_ constexpr auto extent() const noexcept -> uZ {
-        constexpr uZ index = meta::find_first_in_values<Axis, Axes...>;
-        return extents[index];
+    static consteval auto index_of(auto axis) -> uZ {
+        assert(contains(axis));
+        auto f = [axis]<uZ I>(auto&& f, uZ_constant<I>) {
+            if constexpr (I == size - 1) {
+                constexpr uZ Index = meta::index_into_sequence<I, axis_order_as_vseq>;
+                return Index;
+            } else {
+                constexpr auto ith_axis = meta::index_into_values<I, Axes...>;
+                if constexpr (std::equality_comparable_with<decltype(axis), decltype(ith_axis)>) {
+                    if (axis == ith_axis) {
+                        constexpr uZ Index = meta::index_into_sequence<I, axis_order_as_vseq>;
+                        return Index;
+                    }
+                }
+                return f(f, uZ_constant<I + 1>{});
+            }
+        };
+        return f(f, uZ_constant<0>{});
     }
 
+    consteval auto extent(auto axis) const -> uZ {
+        assert(contains(axis));
+        return extents[index_of(axis)];
+    }
+
+    static constexpr auto inner_axis = axis<meta::index_into_sequence<0, axis_order_as_vseq>>();
+    static constexpr auto outer_axis = axis<meta::index_into_sequence<size - 1, axis_order_as_vseq>>();
+
+    //TODO(Timofey): include axis_order
     template<meta::any_value_sequence Excluded>
     static constexpr auto outer_axis_remaining = outer_remaining_impl<size - 1, Excluded>::value;
 
@@ -128,7 +140,7 @@ public:
 
 template<auto Basis, uZ Alignment>
 constexpr auto storage_size() -> uZ {
-    constexpr uZ inner_extent = Basis.template extent<Basis.inner_axis>();
+    constexpr uZ inner_extent = Basis.extent(Basis.inner_axis);
 
     uZ size = (inner_extent * 2UL + Alignment - 1UL) / Alignment * Alignment;
 
@@ -138,9 +150,9 @@ constexpr auto storage_size() -> uZ {
             if constexpr (Basis.size == 1) {
                 return size;
             } else if constexpr (I == Basis.size - 1) {
-                return size *= Basis.template extent<axis>();
+                return size *= Basis.extent(axis);
             } else {
-                return f(f, size *= Basis.template extent<axis>(), uZ_constant<I + 1>{});
+                return f(f, size *= Basis.extent(axis), uZ_constant<I + 1>{});
             }
         };
         size = f(f, size, uZ_constant<1>{});
@@ -148,17 +160,17 @@ constexpr auto storage_size() -> uZ {
     return size;
 }
 template<auto Basis, meta::any_value_sequence ExcludedAxes, auto Axis, uZ Alignment, uZ PackSize>
-    requires /**/ (Basis.template contains<Axis>())
+    requires /**/ (Basis.contains(Axis))
 _NDINLINE_ constexpr auto get_static_slice_offset(uZ index) noexcept -> uZ {
     if constexpr (equal_values<Axis, Basis.inner_axis>) {
         return pidx<PackSize>(index);
     } else {
-        constexpr auto div = []<uZ I>(auto&& f, uZ_constant<I>) {
+        constexpr auto div = []<uZ I>(auto&& f, uZ_constant<I>) constexpr {
             constexpr auto axis = Basis.template axis<I>();
             if constexpr (equal_values<Axis, axis>) {
-                return Basis.template extent<axis>();
+                return Basis.extent(axis);
             } else {
-                return Basis.template extent<axis>() * f(f, uZ_constant<I - 1>{});
+                return Basis.extent(axis) * f(f, uZ_constant<I - 1>{});
             }
         };
         constexpr uZ storage_size = detail_::storage_size<Basis, Alignment>();
@@ -168,7 +180,7 @@ _NDINLINE_ constexpr auto get_static_slice_offset(uZ index) noexcept -> uZ {
     }
 };
 template<auto Basis, meta::any_value_sequence ExcludedAxes, auto Axis, uZ PackSize>
-    requires /**/ (Basis.template contans<Axis>())
+    requires /**/ (Basis.contains(Axis))
 _NDINLINE_ constexpr auto get_dynamic_slice_offset(uZ                                storage_size,
                                                    const std::array<uZ, Basis.size>& extents,
                                                    uZ                                index) noexcept -> uZ {
@@ -255,14 +267,14 @@ private:
         };
         constexpr uZ d = denom(denom, uZ_constant<Basis.size - 1>{});
 
-        constexpr uZ inner_extent = Basis.template extent<Basis.inner_axis>();
+        constexpr uZ inner_extent = Basis.extent(Basis.inner_axis);
 
         auto f = []<uZ I>(auto&& f, uZ_constant<I>) {
             constexpr auto axis = Basis.template axis<I>();
             if constexpr (I < Basis.size - 2) {
-                return Basis.template extent<axis>() * f(f, uZ_constant<I + 1>{});
+                return Basis.extent(axis) * f(f, uZ_constant<I + 1>{});
             } else {
-                return Basis.template extent<axis>();
+                return Basis.extent(axis);
             }
         };
 
@@ -315,7 +327,7 @@ protected:
 
     template<auto Axis>
     _NDINLINE_ static constexpr auto get_extent() noexcept -> uZ {
-        return Basis.template extent<Axis>();
+        return Basis.extent(Axis);
     }
 
 private:
@@ -361,7 +373,7 @@ protected:
     }
 
     _NDINLINE_ static constexpr auto get_size() noexcept -> uZ {
-        return Basis.template extent<Basis.outer_axis>();
+        return Basis.extent(Basis.outer_axis);
     }
 
 private:
@@ -467,7 +479,7 @@ protected:
 
     template<auto Axis>
     _NDINLINE_ auto get_extent() const noexcept -> uZ {
-        return m_extents_ptr->extents[Basis.template index<Axis>()];
+        return m_extents_ptr->extents[Basis.index_of(Axis)];
     }
 
 private:
@@ -757,7 +769,7 @@ public:
     ~sslice()                                 = default;
 
     template<auto Axis>
-        requires /**/ (Basis.template contains<Axis>())
+        requires /**/ (Basis.contains(Axis))
     [[nodiscard]] auto slice(uZ index) const noexcept {
         auto* new_start = m_start + Base::template new_slice_offset<Axis>(index);
         if constexpr (Basis.size - Base::excluded_axes::size == 1) {
@@ -819,7 +831,7 @@ class storage
 
 public:
     template<std::unsigned_integral... U>
-    explicit storage(Base::allocator allocator, U... extents)
+    explicit storage(typename Base::allocator allocator, U... extents)
         requires(dynamic && sizeof...(U) == Basis.size)
     {}
     template<std::unsigned_integral... U>

@@ -292,7 +292,8 @@ struct reverse_value_sequence_impl {
 };
 template<auto V, auto... Vs>
 struct reverse_value_sequence_impl<value_sequence<V, Vs...>> {
-    using type = expand_value_sequence_impl<typename reverse_value_sequence_impl<value_sequence<Vs...>>::type,
+    using type =
+        typename expand_value_sequence_impl<typename reverse_value_sequence_impl<value_sequence<Vs...>>::type,
                                             V>::type;
 };
 
@@ -307,7 +308,7 @@ template<typename Sequence1, typename Sequence2>
 using concat_value_sequences = typename detail_::concat_value_sequences_impl<Sequence1, Sequence2>::type;
 
 template<typename Sequence>
-using reverse_value_sequence = typename detail_::reverse_value_sequence_impl<Sequence>;
+using reverse_value_sequence = typename detail_::reverse_value_sequence_impl<Sequence>::type;
 
 namespace detail_ {
 template<uZ I, auto Vmatch, auto V, auto... Vs>
@@ -396,13 +397,13 @@ using filter_value_sequence = typename detail_::sequence_adapter<Sequence>::temp
 
 namespace detail_ {
 template<typename S>
-struct value_to_index_sequence_impl {};
+struct value_to_index_sequence_impl;
 template<uZ... Is>
 struct value_to_index_sequence_impl<value_sequence<Is...>> {
     using type = std::index_sequence<Is...>;
 };
 template<typename S>
-struct index_to_value_sequence_impl {};
+struct index_to_value_sequence_impl;
 template<uZ... Is>
 struct index_to_value_sequence_impl<std::index_sequence<Is...>> {
     using type = value_sequence<Is...>;
