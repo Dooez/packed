@@ -24,7 +24,21 @@ namespace pcx::md {
 namespace detail_ {
 struct basis_base {};
 }    // namespace detail_
-
+/**
+ * @brief Helper class for defining multidimentional storage with static extents.
+ *
+ * @tparam Axes... Identifiers of axes. 
+ * Each axis identifier is a compile time constant of an arbitrary type.
+ * Axis identifier type must be equality comparible with itself to be used
+ * with methods that require axis identifiers.
+ *
+ * There are two ways to order axes: declaration order and layout order, generating
+ * declaration indexes and layout indexes respectively.
+ * In layot order, axis most contigious in memory has the index 0.
+ * For left layout declaration order and layout order are euqal.
+ * For right layout declaration order and layout order are reversals of each other. 
+ *
+ */
 template<auto... Axes>
 class static_basis : public detail_::basis_base {
     template<uZ I, typename Excluded>
@@ -48,8 +62,15 @@ class static_basis : public detail_::basis_base {
     };
 
 public:
+    /**
+     * @brief The number of axes in basis.
+     */
     static constexpr uZ size = sizeof...(Axes);
-
+    /**
+     * @brief The sequence of axis declaration indexes in layout order.
+     * For left layout declaration order and layout order are the same.
+     * For right layout declaration order and layout order are inversed.
+     */
     using axis_order = std::make_index_sequence<size>;
 
 private:
@@ -60,15 +81,30 @@ private:
     : extents{std::get<Is>(std::make_tuple(extents...))...} {};
 
 public:
-    template<std::unsigned_integral... Us>
-        requires /**/ (sizeof...(Us) == size)
-    constexpr explicit static_basis(Us... extents) noexcept
+    /**
+     * @brief Constructs a new multidimentional storage basis with static extents.
+     * 
+     * @param extents... N unsigned integers, where N is the number of basis axes. `extents` are provided in the axes declaration order.
+     *   
+     * Example:
+     * after executing
+     ``` c++
+        constexpr auto basis = static_basis<x, y, z>(2U, 4UL, 8U);
+        constexpr auto x_extent = basis.extent(x);
+        constexpr auto y_extent = basis.extent(y);
+     ```
+     * x_extent is std::size_t and equals 2, and y_extent is std::size_t and equals 4.
+     */
+    template<std::unsigned_integral... Unsigned>
+        requires /**/ (sizeof...(Unsigned) == size)
+    constexpr explicit static_basis(Unsigned... extents) noexcept
     : static_basis(axis_order{}, extents...){};
 
     /**
-     * @brief Returns the axis identifier 0-indexed from inner to outer axis.
+     * @brief Returns the axis identifier in layout order.
+     * Index 0 corresponds to the most contigious (inner) axis.
      * 
-     * @tparam Index 0 corresponds to inner axis.c
+     * @tparam Index Layout index. 
      */
     template<uZ Index>
         requires /**/ (Index < size)
@@ -77,6 +113,13 @@ public:
         return meta::index_into_values<real_index, Axes...>;
     };
 
+    /**
+     * @brief Checks if the axis is contained in the basis.
+     * 
+     * @param axis      Axis identifier.
+     * @return true     Axis is a part of the basis. 
+     * @return false    Axis is not a part of the basis. 
+     */
     static consteval auto contains(auto axis) -> bool {
         constexpr auto cmp_equal = [](auto a, auto b) {
             if constexpr (std::equality_comparable_with<decltype(a), decltype(b)>) {
@@ -88,6 +131,13 @@ public:
         return (cmp_equal(axis, Axes) || ...);
     }
 
+    /**
+     * @brief Returns the axis layout index 0-indexed from inner to outer axis. 
+     * Index 0 corresponds to the most contigious (inner) axis.
+     * 
+     * @param axis      Axis identifier.
+     * @return uZ       Axis layout index.
+     */
     static consteval auto index_of(auto axis) -> uZ {
         assert(contains(axis));
         auto f = [axis]<uZ I>(auto&& f, uZ_constant<I>) {
@@ -108,12 +158,24 @@ public:
         return f(f, uZ_constant<0>{});
     }
 
+    /**
+     * @brief Returns the extents of the axis.
+     * 
+     * @param axis  Axis identifier.
+     * @return uZ   Axis extents.
+     */
     consteval auto extent(auto axis) const -> uZ {
         assert(contains(axis));
         return extents[index_of(axis)];
     }
 
+    /**
+     * @brief Identifier of the most contigious axis.
+     */
     static constexpr auto inner_axis = axis<meta::index_into_sequence<0, axis_order_as_vseq>>();
+    /**
+     * @brief Identifier of the least contigious axis.
+     */
     static constexpr auto outer_axis = axis<meta::index_into_sequence<size - 1, axis_order_as_vseq>>();
 
     //TODO(Timofey): include axis_order
@@ -123,6 +185,10 @@ public:
     template<meta::any_value_sequence Excluded>
     static constexpr auto inner_axis_remaining = outer_remaining_impl<0, Excluded>::value;
 
+    /**
+     * @brief Axis extents in layout order.
+     * 
+     */
     std::array<uZ, size> extents;
 };
 
