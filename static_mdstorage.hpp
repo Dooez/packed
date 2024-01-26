@@ -959,8 +959,8 @@ public:
         return slice<Basis.outer_axis>(index);
     }
 
-    // TODO: `at()`
-    // TODO: multidimensional slice and operator[]
+    // TODO(timofey): `at()`
+    // TODO(timofey): multidimensional slice and operator[]
 
     [[nodiscard]] auto begin() const noexcept -> iterator {
         if constexpr (Base::vector_like) {
@@ -983,6 +983,7 @@ public:
      * @brief Returns the extent of the `Axis`.
      */
     template<auto Axis>
+        requires /**/ (Basis.contains(Axis) && !sliced(Axis))
     [[nodiscard]] auto extent() const noexcept -> uZ {
         return Base::template get_extent<Axis>();
     }
@@ -991,6 +992,24 @@ private:
     T* m_start{};
 };
 
+/**
+ * @brief Multidimentional storage with either static or dynamic extents.
+ * This class provides common interface for both static and dynamic storage.
+ * Do not instantiate this class directly.
+ * Use `static_storage` and `dynamic_storage` for initialization.
+ * 
+ * @tparam T            Real type of complex data.
+ * @tparam Basis        Contains axis identifiers and optionally static extents. 
+ * @tparam PackSize     Pack size of packed complex data. 
+ * @tparam Alignment    Data alignment.
+ * @tparam Base         
+ *
+ * `storage` can be viewed as a range of slices from the outermost axis.
+ * `storage` satisfies following concepts:
+ * TODO: add list of concepts
+ *
+ * If `Basis.size` equals 1, the storage satisfies `pcx::complex_vector_t<T>`.
+ */
 template<typename T, auto Basis, uZ PackSize, uZ Alignment, typename Base>
     requires detail_::md_basis<decltype(Basis)>
 class storage
@@ -1009,10 +1028,30 @@ class storage
                            md::iterator<true, Basis, T, PackSize, typename Base::iterator_base>>;
 
 public:
+    /**
+     * @brief Constructs dynamic storage using `allocator` for memory allocation.
+     * 
+     * @param extents Axis extents in the basis axis declaration order. See `storage(U... extents)`.
+     */
     template<std::unsigned_integral... U>
     explicit storage(typename Base::allocator allocator, U... extents)
         requires(dynamic && sizeof...(U) == Basis.size)
     {}
+    /**
+     * @brief Constructs dynamic storage.
+     * 
+     * @param extents Axis extents in the basis axis declaration order.
+     * 
+     * Example:
+     * after executing
+     ``` c++
+        constexpr auto basis    = pcx::md::left_basis<x, y, z>;
+        auto           storage  = dynamic_storage<float, basis>(2U, 4UL, 8U);
+        auto           x_extent = storage.extent<x>();
+        auto           y_extent = storage.extent<y>();
+     ```
+     * x_extent is std::size_t and equals 2, and y_extent is std::size_t and equals 4.
+     */
     template<std::unsigned_integral... U>
     explicit storage(U... extents)
         requires(dynamic && sizeof...(U) == Basis.size)
@@ -1046,8 +1085,12 @@ public:
     [[nodiscard]] auto cend() const noexcept -> const_iterator {
         return cbegin() + size();
     }
-
+    /**
+     * @brief Returns a sub-slice from `Axis` at `index`.
+     * If `Basis.size` equals 1 the returned slice type is `pcx::cx_ref`.
+     */
     template<auto Axis>
+        requires /**/ (Basis.contains(Axis))
     [[nodiscard]] auto slice(uZ index) noexcept {
         if constexpr (vector_like) {
             return pcx::detail_::make_cx_ref<T, false, PackSize>(data() + pcx::pidx<PackSize>(index));
@@ -1059,11 +1102,21 @@ public:
             return slice_type(slice_start, Base::slice_base_args());
         }
     }
+    /**
+     * @brief Returns a read-only sub-slice from `Axis` at `index`.
+     * If `Basis.size` equals 1 the returned slice type is `pcx::cx_ref`.
+     */
     template<auto Axis>
+        requires /**/ (Basis.contains(Axis))
     [[nodiscard]] auto slice(uZ index) const noexcept {
         return cslice<Axis>(index);
     }
+    /**
+     * @brief Returns a read-only sub-slice from `Axis` at `index`.
+     * If `Basis.size` equals 1 the returned slice type is `pcx::cx_ref`.
+     */
     template<auto Axis>
+        requires /**/ (Basis.contains(Axis))
     [[nodiscard]] auto cslice(uZ index) const noexcept {
         if constexpr (vector_like) {
             return pcx::detail_::make_cx_ref<T, true, PackSize>(data() + pcx::pidx<PackSize>(index));
@@ -1094,19 +1147,26 @@ public:
     }
 };
 
-template<typename T, auto Basis, uZ PackSize, uZ Alignment>
+template<typename T,
+         auto Basis,
+         uZ   PackSize  = pcx::default_pack_size<T>,
+         uZ   Alignment = pcx::default_pack_size<T>>
 using static_stoarge = storage<T,    //
                                Basis,
                                PackSize,
                                Alignment,
                                detail_::static_::storage_base<T, Basis, PackSize, Alignment>>;
 
-template<typename T, auto Basis, uZ PackSize, uZ Alignment, typename Allocator = pcx::aligned_allocator<T>>
-using d_stoarge = storage<T,    //
-                          Basis,
-                          PackSize,
-                          Alignment,
-                          detail_::dynamic::storage_base<T, Basis, PackSize, Alignment, Allocator>>;
+template<typename T,
+         auto Basis,
+         uZ   PackSize      = pcx::default_pack_size<T>,
+         uZ   Alignment     = pcx::default_pack_size<T>,
+         typename Allocator = pcx::aligned_allocator<T>>
+using dynamic_stoarge = storage<T,    //
+                                Basis,
+                                PackSize,
+                                Alignment,
+                                detail_::dynamic::storage_base<T, Basis, PackSize, Alignment, Allocator>>;
 }    // namespace pcx::md
 #undef _INLINE_
 #undef _NDINLINE_

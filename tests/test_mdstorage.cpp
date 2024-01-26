@@ -133,7 +133,7 @@ int main() {
     static_assert(pcx::complex_vector_of<float, decltype(syz)>);
     static_assert(pcx::complex_vector_of<float, vector_storage_type>);
 
-    auto ds = pcx::md::d_stoarge<float, static_basis, 8, 16>(pcx::aligned_allocator<float>{}, 3u, 4u, 5u);
+    auto ds = pcx::md::dynamic_stoarge<float, static_basis, 8, 16>(pcx::aligned_allocator<float>{}, 3u, 4u, 5u);
 
     auto ss = pcx::md::static_stoarge<float, static_basis, 8, 16>();
 
