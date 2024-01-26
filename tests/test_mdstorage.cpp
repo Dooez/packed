@@ -91,7 +91,7 @@ int main() {
     // //     static_assert(!pcx::complex_vector_of<float, z_slice
     //
     using enum ax1;
-    static constexpr auto static_basis = pcx::md::static_basis<x, y, z>{8U, 16U, 32U};
+    static constexpr auto static_basis = pcx::md::left_basis<x, y, z>{8U, 16U, 32U};
     using static_stoarge_type =
         pcx::md::storage<float,    //
                          static_basis,
@@ -111,7 +111,7 @@ int main() {
     auto syz  = sy.slice<z>(0);
     auto syzx = syz.slice<x>(0);
 
-    static constexpr auto vector_basis = pcx::md::static_basis<x>{8u};
+    static constexpr auto vector_basis = pcx::md::left_basis<x>{8u};
     using vector_storage_type =
         pcx::md::storage<float,
                          vector_basis,

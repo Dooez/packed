@@ -24,10 +24,28 @@ namespace pcx::md {
 namespace detail_ {
 struct basis_base {};
 }    // namespace detail_
+
+/**
+ * @brief Identifies layout mapping of `basis` class template.
+ * `left` layout results in leftmost axis (first declared axis) being most contigious in memory.
+ * `right` layout results in rightmost axis (last declared axis) being most contigious in memory.
+ *
+ */
+enum class layout {
+    left,
+    right
+};
+
 /**
  * @brief Helper class for defining multidimentional storage with static extents.
  *
- * @tparam Axes... Identifiers of axes. 
+ * @tparam Layout   Controls which axis is the most contigious in memory.
+ * @tparam Axes...  Identifiers of axes. 
+ * 
+ * In `left` layout the first identifier in `Axes...` identifies the axis most contigious in memory.
+ * In `right` layout the last identifier in `Axes...` identifies the axis most contigious in memory.
+ * Helper aliases `left_basis` and `right_basis` are provided for each layout respectively.
+ * 
  * Each axis identifier is a compile time constant of an arbitrary type.
  * Axis identifier type must be equality comparible with itself to be used
  * with methods that require axis identifiers.
@@ -35,32 +53,12 @@ struct basis_base {};
  * There are two ways to order axes: declaration order and layout order, generating
  * declaration indexes and layout indexes respectively.
  * In layot order, axis most contigious in memory has the index 0.
- * For left layout declaration order and layout order are euqal.
- * For right layout declaration order and layout order are reversals of each other. 
+ * For `left` layout declaration order and layout order are equal.
+ * For `right` layout declaration order and layout order are reversals of each other. 
  *
  */
-template<auto... Axes>
-class static_basis : public detail_::basis_base {
-    template<uZ I, typename Excluded>
-    struct outer_remaining_impl {
-        static constexpr auto value =
-            std::conditional_t<meta::contains_value<Excluded, meta::index_into_values<I, Axes...>>,
-                               outer_remaining_impl<I - 1, Excluded>,
-                               meta::value_constant<meta::index_into_values<I, Axes...>>>::value;
-    };
-    template<typename Excluded>
-    struct outer_remaining_impl<0, Excluded> {
-        static constexpr auto value = meta::index_into_values<0, Axes...>;
-    };
-
-    template<uZ I, typename Excluded>
-    struct inner_remaining_impl {
-        static constexpr auto value =
-            std::conditional_t<meta::contains_value<Excluded, meta::index_into_values<I, Axes...>>,
-                               inner_remaining_impl<I + 1, Excluded>,
-                               meta::value_constant<meta::index_into_values<I, Axes...>>>::value;
-    };
-
+template<layout Layout = layout::left, auto... Axes>
+class basis : public detail_::basis_base {
 public:
     /**
      * @brief The number of axes in basis.
@@ -77,8 +75,36 @@ private:
     using axis_order_as_vseq = meta::index_to_value_sequence<axis_order>;
 
     template<uZ... Is>
-    constexpr explicit static_basis(std::index_sequence<Is...>, auto... extents)
+    constexpr explicit basis(std::index_sequence<Is...>, auto... extents)
     : extents{std::get<Is>(std::make_tuple(extents...))...} {};
+
+    template<uZ LayoutIndex, typename Sliced>
+    struct outer_remaining_impl {
+        static constexpr auto decl_index = meta::index_into_sequence<LayoutIndex, axis_order_as_vseq>;
+        static constexpr auto value =
+            std::conditional_t<meta::contains_value<Sliced, meta::index_into_values<decl_index, Axes...>>,
+                               outer_remaining_impl<LayoutIndex - 1, Sliced>,
+                               meta::value_constant<meta::index_into_values<decl_index, Axes...>>>::value;
+    };
+    template<typename Sliced>
+    struct outer_remaining_impl<0, Sliced> {
+        static constexpr auto decl_index = meta::index_into_sequence<0, axis_order_as_vseq>;
+        static constexpr auto value      = meta::index_into_values<decl_index, Axes...>;
+    };
+
+    template<uZ LayoutIndex, typename Sliced>
+    struct inner_remaining_impl {
+        static constexpr auto decl_index = meta::index_into_sequence<LayoutIndex, axis_order_as_vseq>;
+        static constexpr auto value =
+            std::conditional_t<meta::contains_value<Sliced, meta::index_into_values<decl_index, Axes...>>,
+                               inner_remaining_impl<LayoutIndex + 1, Sliced>,
+                               meta::value_constant<meta::index_into_values<decl_index, Axes...>>>::value;
+    };
+    template<typename Sliced>
+    struct inner_remaining_impl<size - 1, Sliced> {
+        static constexpr auto decl_index = meta::index_into_sequence<size - 1, axis_order_as_vseq>;
+        static constexpr auto value      = meta::index_into_values<decl_index, Axes...>;
+    };
 
 public:
     /**
@@ -89,7 +115,7 @@ public:
      * Example:
      * after executing
      ``` c++
-        constexpr auto basis = static_basis<x, y, z>(2U, 4UL, 8U);
+        constexpr auto basis    = pcx::md::left_basis<x, y, z>(2U, 4UL, 8U);
         constexpr auto x_extent = basis.extent(x);
         constexpr auto y_extent = basis.extent(y);
      ```
@@ -97,8 +123,8 @@ public:
      */
     template<std::unsigned_integral... Unsigned>
         requires /**/ (sizeof...(Unsigned) == size)
-    constexpr explicit static_basis(Unsigned... extents) noexcept
-    : static_basis(axis_order{}, extents...){};
+    constexpr explicit basis(Unsigned... extents) noexcept
+    : basis(axis_order{}, extents...){};
 
     /**
      * @brief Returns the axis identifier in layout order.
@@ -178,12 +204,20 @@ public:
      */
     static constexpr auto outer_axis = axis<meta::index_into_sequence<size - 1, axis_order_as_vseq>>();
 
-    //TODO(Timofey): include axis_order
-    template<meta::any_value_sequence Excluded>
-    static constexpr auto outer_axis_remaining = outer_remaining_impl<size - 1, Excluded>::value;
-
-    template<meta::any_value_sequence Excluded>
-    static constexpr auto inner_axis_remaining = outer_remaining_impl<0, Excluded>::value;
+    /**
+     * @brief Identifier of the most contigious axis after making a slice from all of the axes in `Sliced`.
+     * 
+     * @tparam Sliced Sequence of identifiers of axis that were taken a slice from.
+     */
+    template<meta::any_value_sequence Sliced>
+    static constexpr auto inner_axis_remaining = outer_remaining_impl<0, Sliced>::value;
+    /**
+     * @brief Identifier of the least contigious axis after making a slice from all of the axes in `Sliced`.
+     * 
+     * @tparam Sliced Sequence of identifiers of axis that were taken a slice from.
+     */
+    template<meta::any_value_sequence Sliced>
+    static constexpr auto outer_axis_remaining = outer_remaining_impl<size - 1, Sliced>::value;
 
     /**
      * @brief Axis extents in layout order.
@@ -192,10 +226,22 @@ public:
     std::array<uZ, size> extents;
 };
 
+/**
+ * @brief Alias for consice declaration. See `basis`.
+ */
+template<auto... Axes>
+using left_basis = basis<layout::left, Axes...>;
+/**
+ * @brief Alias for consice declaration. See `basis`.
+ */
+template<auto... Axes>
+using right_basis = basis<layout::right, Axes...>;
+
+
+namespace detail_ {
 template<typename T>
 concept md_basis = std::derived_from<T, detail_::basis_base>;
 
-namespace detail_ {
 template<uZ Size>
 struct dynamic_extents_info {
 private:
@@ -225,7 +271,7 @@ constexpr auto storage_size() -> uZ {
     }
     return size;
 }
-template<auto Basis, meta::any_value_sequence ExcludedAxes, auto Axis, uZ Alignment, uZ PackSize>
+template<auto Basis, meta::any_value_sequence SlicedAxes, auto Axis, uZ Alignment, uZ PackSize>
     requires /**/ (Basis.contains(Axis))
 _NDINLINE_ constexpr auto get_static_slice_offset(uZ index) noexcept -> uZ {
     if constexpr (equal_values<Axis, Basis.inner_axis>) {
@@ -245,7 +291,7 @@ _NDINLINE_ constexpr auto get_static_slice_offset(uZ index) noexcept -> uZ {
         return stride * index;
     }
 };
-template<auto Basis, meta::any_value_sequence ExcludedAxes, auto Axis, uZ PackSize>
+template<auto Basis, meta::any_value_sequence SlicedAxes, auto Axis, uZ PackSize>
     requires /**/ (Basis.contains(Axis))
 _NDINLINE_ constexpr auto get_dynamic_slice_offset(uZ                                storage_size,
                                                    const std::array<uZ, Basis.size>& extents,
@@ -268,17 +314,17 @@ _NDINLINE_ constexpr auto get_dynamic_slice_offset(uZ                           
 };
 
 namespace static_ {
-template<auto Basis, meta::any_value_sequence ExcludedAxes, uZ PackSize, uZ Alignment>
+template<auto Basis, meta::any_value_sequence SlicedAxes, uZ PackSize, uZ Alignment>
 class slice_base;
-template<auto Basis, meta::any_value_sequence ExcludedAxes, uZ PackSize, uZ Alignment>
+template<auto Basis, meta::any_value_sequence SlicedAxes, uZ PackSize, uZ Alignment>
 class iter_base;
 template<typename T, auto Basis, uZ PackSize, uZ Alignment>
 class storage_base;
 };    // namespace static_
 namespace dynamic {
-template<auto Basis, meta::any_value_sequence ExcludedAxes, uZ PackSize>
+template<auto Basis, meta::any_value_sequence SlicedAxes, uZ PackSize>
 class slice_base;
-template<auto Basis, meta::any_value_sequence ExcludedAxes, uZ PackSize>
+template<auto Basis, meta::any_value_sequence SlicedAxes, uZ PackSize>
 class iter_base;
 template<typename T, auto Basis, uZ PackSize, uZ Alignment, typename Allocator>
 class storage_base;
@@ -288,12 +334,13 @@ class storage_base;
 template<bool Const, auto Basis, typename T, uZ PackSize, typename Base>
 class sslice;
 template<typename T, auto Basis, uZ PackSize, uZ Agignment, typename Base>
+    requires detail_::md_basis<decltype(Basis)>
 class storage;
 
 namespace detail_::static_ {
-template<auto Basis, meta::any_value_sequence ExcludedAxes, uZ PackSize, uZ Alignment>
+template<auto Basis, meta::any_value_sequence SlicedAxes, uZ PackSize, uZ Alignment>
 class iter_base {
-    static constexpr auto outer_axis = Basis.template outer_axis_remaining<ExcludedAxes>;
+    static constexpr auto outer_axis = Basis.template outer_axis_remaining<SlicedAxes>;
 
 protected:
     explicit iter_base(auto) noexcept {};
@@ -305,10 +352,8 @@ protected:
     iter_base& operator=(iter_base&&) noexcept      = default;
     ~iter_base() noexcept                           = default;
 
-    using excluded_axes = ExcludedAxes;
-
     using slice_base = static_::slice_base<Basis,    //
-                                           meta::expand_value_sequence<ExcludedAxes, outer_axis>,
+                                           meta::expand_value_sequence<SlicedAxes, outer_axis>,
                                            PackSize,
                                            Alignment>;
 
@@ -324,7 +369,7 @@ private:
     static constexpr uZ s_stride = [] {
         constexpr auto denom = []<uZ I>(auto&& f, uZ_constant<I>) {
             constexpr auto axis = Basis.template axis<I>();
-            if constexpr (meta::contains_value<ExcludedAxes, axis>) {
+            if constexpr (meta::contains_value<SlicedAxes, axis>) {
                 constexpr auto next_axis = Basis.template axis<I - 1>();
                 return Basis.template extent<next_axis>() * f(f, uZ_constant<I - 1>{});
             } else {
@@ -350,11 +395,11 @@ private:
         return stride;
     }();
 };
-template<auto Basis, meta::any_value_sequence ExcludedAxes, uZ PackSize, uZ Alignment>
+template<auto Basis, meta::any_value_sequence SlicedAxes, uZ PackSize, uZ Alignment>
 class slice_base {
 public:
-    static constexpr bool vector_like = (ExcludedAxes::size == Basis.size - 1)    //
-                                        && !meta::contains_value<ExcludedAxes, Basis.inner_axis>;
+    static constexpr bool vector_like = (SlicedAxes::size == Basis.size - 1)    //
+                                        && !meta::contains_value<SlicedAxes, Basis.inner_axis>;
 
 protected:
     explicit slice_base(auto) noexcept {};
@@ -366,11 +411,11 @@ protected:
     slice_base& operator=(slice_base&&) noexcept      = default;
     ~slice_base() noexcept                            = default;
 
-    using excluded_axes = ExcludedAxes;
+    using sliced_axes = SlicedAxes;
 
-    static constexpr auto outer_axis = Basis.template outer_axis_remaining<ExcludedAxes>;
+    static constexpr auto outer_axis = Basis.template outer_axis_remaining<SlicedAxes>;
 
-    using iterator_base = iter_base<Basis, ExcludedAxes, PackSize, Alignment>;
+    using iterator_base = iter_base<Basis, SlicedAxes, PackSize, Alignment>;
 
     _NDINLINE_ static constexpr auto iterator_base_args() noexcept {
         return 0;
@@ -378,7 +423,7 @@ protected:
 
     template<auto Axis>
     using new_slice_base = slice_base<Basis,    //
-                                      meta::expand_value_sequence<ExcludedAxes, Axis>,
+                                      meta::expand_value_sequence<SlicedAxes, Axis>,
                                       PackSize,
                                       Alignment>;
 
@@ -388,7 +433,7 @@ protected:
 
     template<auto Axis>
     _NDINLINE_ static constexpr auto new_slice_offset(uZ index) noexcept {
-        return get_static_slice_offset<Basis, ExcludedAxes, Axis, PackSize, Alignment>(index);
+        return get_static_slice_offset<Basis, SlicedAxes, Axis, PackSize, Alignment>(index);
     }
 
     template<auto Axis>
@@ -448,17 +493,22 @@ private:
 }    // namespace detail_::static_
 
 namespace detail_::dynamic {
-template<auto Basis, meta::any_value_sequence ExcludedAxes, uZ PackSize>
+template<auto Basis, meta::any_value_sequence SlicedAxes, uZ PackSize>
 class iter_base {
-    static constexpr auto outer_axis = Basis.template outer_axis_remaining<ExcludedAxes>;
+    static constexpr auto outer_axis = Basis.template outer_axis_remaining<SlicedAxes>;
 
     using extents_type = detail_::dynamic_extents_info<Basis.size>;
 
 protected:
-    using excluded_axes = ExcludedAxes;
+    iter_base() noexcept                            = default;
+    iter_base(const iter_base&) noexcept            = default;
+    iter_base(iter_base&&) noexcept                 = default;
+    iter_base& operator=(const iter_base&) noexcept = default;
+    iter_base& operator=(iter_base&&) noexcept      = default;
+    ~iter_base() noexcept                           = default;
 
     using slice_base = dynamic::slice_base<Basis,    //
-                                           meta::expand_value_sequence<ExcludedAxes, outer_axis>,
+                                           meta::expand_value_sequence<SlicedAxes, outer_axis>,
                                            PackSize>;
 
     _NDINLINE_ auto slice_base_args() const noexcept {
@@ -469,12 +519,6 @@ protected:
     : m_stride(calc_stride(extents_ptr))
     , m_extents_ptr(extents_ptr){};
 
-    iter_base() noexcept                            = default;
-    iter_base(const iter_base&) noexcept            = default;
-    iter_base(iter_base&&) noexcept                 = default;
-    iter_base& operator=(const iter_base&) noexcept = default;
-    iter_base& operator=(iter_base&&) noexcept      = default;
-    ~iter_base() noexcept                           = default;
 
     _NDINLINE_ auto stride() const noexcept -> uZ {
         return m_stride;
@@ -499,13 +543,13 @@ private:
     uZ            m_stride{};
     extents_type* m_extents_ptr{};
 };
-template<auto Basis, meta::any_value_sequence ExcludedAxes, uZ PackSize>
+template<auto Basis, meta::any_value_sequence SlicedAxes, uZ PackSize>
 class slice_base {
     using extents_type = detail_::dynamic_extents_info<Basis.size>;
 
 public:
-    static constexpr bool vector_like = (ExcludedAxes::size == Basis.size - 1)    //
-                                        && !meta::contains_value<ExcludedAxes, Basis.inner_axis>;
+    static constexpr bool vector_like = (SlicedAxes::size == Basis.size - 1)    //
+                                        && !meta::contains_value<SlicedAxes, Basis.inner_axis>;
 
 protected:
     explicit slice_base(extents_type* extents_ptr) noexcept
@@ -518,18 +562,18 @@ protected:
     slice_base& operator=(slice_base&&) noexcept      = default;
     ~slice_base() noexcept                            = default;
 
-    using excluded_axes = ExcludedAxes;
+    using sliced_axes = SlicedAxes;
 
-    static constexpr auto outer_axis = Basis.template outer_axis_remaining<ExcludedAxes>;
+    static constexpr auto outer_axis = Basis.template outer_axis_remaining<SlicedAxes>;
 
-    using iterator_base = iter_base<Basis, ExcludedAxes, PackSize>;
+    using iterator_base = iter_base<Basis, SlicedAxes, PackSize>;
 
     _NDINLINE_ auto iterator_base_args() const noexcept {
         return m_extents_ptr;
     }
 
     template<auto Axis>
-    using new_slice_base = slice_base<Basis, meta::expand_value_sequence<ExcludedAxes, Axis>, PackSize>;
+    using new_slice_base = slice_base<Basis, meta::expand_value_sequence<SlicedAxes, Axis>, PackSize>;
 
     _NDINLINE_ auto new_slice_base_args() noexcept {
         return m_extents_ptr;
@@ -539,7 +583,7 @@ protected:
     _NDINLINE_ auto new_slice_offset(uZ index) noexcept -> uZ {
         const auto& storage_size = m_extents_ptr->storage_size;
         const auto& extents      = m_extents_ptr->extents;
-        return detail_::get_dynamic_slice_offset<Basis, ExcludedAxes, Axis, PackSize>(
+        return detail_::get_dynamic_slice_offset<Basis, SlicedAxes, Axis, PackSize>(
             storage_size, extents, index);
     }
 
@@ -704,7 +748,18 @@ private:
 };
 }    // namespace detail_::dynamic
 
-
+/**
+ * @brief Iterator over slices from one axis of multidimensional packed complex data.
+ * 
+ * @tparam Const    If true, underlying data cannot be changed through iterator.
+ * @tparam Basis    `basis` object of the whole storage of data.
+ * @tparam T        Real type of data.
+ * @tparam PackSize Pack size of complex data.
+ * @tparam Base     Depends on whether the extents and storage are static or dynamic.
+ *
+ * Iterator satisfies following concepts: 
+ * TODO(Timofey): Add iterator concept list
+ */
 template<bool Const, auto Basis, typename T, uZ PackSize, typename Base>
 class iterator : Base {
     using pointer = T*;
@@ -712,13 +767,22 @@ class iterator : Base {
     template<bool, auto, typename, uZ, typename>
     friend class sslice;
 
-    template<typename, auto, uZ, uZ, typename>
+    template<typename, auto Basis_, uZ, uZ, typename>
+        requires detail_::md_basis<decltype(Basis_)>
     friend class storage;
+
+    friend class iterator<false, Basis, T, PackSize, Base>;
 
     template<typename... U>
     explicit iterator(pointer ptr, U&&... other) noexcept
     : Base(std::forward<U>(other)...)
     , m_ptr(ptr){};
+
+    // NOLINTNEXTLINE(*explicit*)
+    iterator(const iterator<true, Basis, T, PackSize, Base>& other)
+        requires /**/ (Const)
+    : Base(static_cast<const Base&>(other))
+    , m_ptr(other.m_ptr) {}
 
     using sslice = md::sslice<Const, Basis, T, PackSize, typename Base::slice_base>;
 
@@ -737,8 +801,8 @@ public:
     [[nodiscard]] auto operator*() const noexcept {
         return sslice(m_ptr, Base::slice_base_args());
     }
-    [[nodiscard]] auto operator[](uZ index) const noexcept {
-        return sslice(m_ptr + Base::stride() * index, Base::slice_base_args());
+    [[nodiscard]] auto operator[](uZ offset) const noexcept {
+        return sslice(m_ptr + Base::stride() * offset, Base::slice_base_args());
     }
 
     [[nodiscard]] auto operator+=(difference_type n) noexcept -> iterator& {
@@ -788,8 +852,14 @@ public:
     [[nodiscard]] auto operator<=>(const iterator& other) const noexcept {
         return m_ptr <=> other.m_ptr;
     };
+    [[nodiscard]] auto operator<=>(const iterator<!Const, Basis, T, PackSize, Base>& other) const noexcept {
+        return m_ptr <=> other.m_ptr;
+    };
 
     [[nodiscard]] auto operator==(const iterator& other) const noexcept {
+        return m_ptr == other.m_ptr;
+    };
+    [[nodiscard]] auto operator==(const iterator<!Const, Basis, T, PackSize, Base>& other) const noexcept {
         return m_ptr == other.m_ptr;
     };
 
@@ -797,18 +867,35 @@ private:
     pointer m_ptr{};
 };
 
+/**
+ * @brief Non-owning slice of multidimensional packed complex data.
+ * Models a view over slices of outer (least contigious) non-sliced axis of `Basis`.
+ * 
+ * @tparam Const    If true, referenced data cannot be changed throough slice. 
+ * @tparam Basis    `basis` object of the whole storage of data.
+ * @tparam T        Real data type.
+ * @tparam PackSize Pack size of complex data.
+ * @tparam Base     Depends on whether the extents and storage are static or dynamic.  
+ *
+ * sslice satisfies following concepts:
+ * - TODO: Add concept list
+ *
+ * If the `Basis.inner_axis` is the only non-sliced axis, 
+ * `sslice` satisfiest `pcx::complex_vector_of<T>` concept.
+ */
 template<bool Const, auto Basis, typename T, uZ PackSize, typename Base>
 class sslice
 : public std::ranges::view_base
 , pcx::detail_::pack_aligned_base<Base::vector_like>
 , Base {
-    static constexpr bool contigious = !meta::contains_value<typename Base::excluded_axes, Basis.inner_axis>;
+    static constexpr bool contigious = !meta::contains_value<typename Base::sliced_axes, Basis.inner_axis>;
 
 private:
     template<bool, auto, typename, uZ, typename>
     friend class md::iterator;
 
-    template<typename, auto, uZ, uZ, typename>
+    template<typename, auto Basis_, uZ, uZ, typename>
+        requires detail_::md_basis<decltype(Basis_)>
     friend class storage;
 
     using iterator =
@@ -824,6 +911,21 @@ private:
     : Base(std::forward<U>(args)...)
     , m_start(start){};
 
+    static consteval auto sliced(auto Axis) -> bool {
+        using sliced_axes = Base::slice_axes;
+        return []<uZ... Is>(std::index_sequence<Is...>, auto Axis) {
+            constexpr auto match = []<uZ I>(uZ_constant<I>, auto Axis) {
+                constexpr auto basis_axis = meta::index_into_sequence<I, sliced_axes>;
+                if constexpr (std::equality_comparable_with<decltype(basis_axis), decltype(Axis)>) {
+                    return Axis == basis_axis;
+                } else {
+                    return false;
+                }
+            };
+            return (match(uZ_constant<Is>{}, Axis) || ...);
+        }(std::make_index_sequence<sliced_axes::size>{}, Axis);
+    }
+
 public:
     sslice()
     : Base(){};
@@ -834,11 +936,18 @@ public:
     sslice& operator=(sslice&&) noexcept      = default;
     ~sslice()                                 = default;
 
+    /**
+     * @brief Returns a sub-slice of the data from `Axis` at position `index`. 
+     * If there is only one axis remaining, the resulting slice is of type `pcx::cx_ref`.
+     * 
+     * @tparam Axis 
+     * @param index
+     */
     template<auto Axis>
-        requires /**/ (Basis.contains(Axis))
+        requires /**/ (Basis.contains(Axis) && !sliced(Axis))
     [[nodiscard]] auto slice(uZ index) const noexcept {
         auto* new_start = m_start + Base::template new_slice_offset<Axis>(index);
-        if constexpr (Basis.size - Base::excluded_axes::size == 1) {
+        if constexpr (Basis.size - Base::sliced_axes::size == 1) {
             return pcx::detail_::make_cx_ref<T, Const, PackSize>(new_start);
         } else {
             using new_base  = typename Base::template new_slice_base<Axis>;
@@ -846,7 +955,9 @@ public:
             return new_slice(new_start, Base::new_slice_base_args());
         }
     }
-
+    /**
+     * @brief Returns a sub-slice of the data from the outer (least contigious) non-sliced axis.
+     */
     [[nodiscard]] auto operator[](uZ index) const noexcept {
         return slice<Basis.outer_axis>(index);
     }
@@ -865,11 +976,15 @@ public:
     [[nodiscard]] auto end() const noexcept {
         return begin() += size();
     }
-
+    /**
+     * @brief Return the extent of the outer (leat contigious) non-slicesd axis.
+     */
     [[nodiscard]] auto size() const noexcept -> uZ {
         return extent<Base::outer_axis>();
     }
-
+    /**
+     * @brief Returns the extent of the `Axis`.
+     */
     template<auto Axis>
     [[nodiscard]] auto extent() const noexcept -> uZ {
         return Base::template get_extent<Axis>();
@@ -880,6 +995,7 @@ private:
 };
 
 template<typename T, auto Basis, uZ PackSize, uZ Alignment, typename Base>
+    requires detail_::md_basis<decltype(Basis)>
 class storage
 : Base
 , pcx::detail_::pack_aligned_base<Basis.size == 1> {
