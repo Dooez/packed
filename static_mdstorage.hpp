@@ -166,22 +166,19 @@ public:
      */
     static consteval auto index_of(auto axis) -> uZ {
         assert(contains(axis));
-        auto f = [axis]<uZ I>(auto&& f, uZ_constant<I>) {
-            if constexpr (I == size - 1) {
-                constexpr uZ Index = meta::index_into_sequence<I, axis_order_as_vseq>;
-                return Index;
-            } else {
-                constexpr auto ith_axis = meta::index_into_values<I, Axes...>;
-                if constexpr (std::equality_comparable_with<decltype(axis), decltype(ith_axis)>) {
-                    if (axis == ith_axis) {
-                        constexpr uZ Index = meta::index_into_sequence<I, axis_order_as_vseq>;
-                        return Index;
-                    }
+        return []<uZ... Is>(auto axis) {
+            uZ             index = 0;
+            constexpr auto match = []<uZ I>(uZ_constant<I>, auto axis) {
+                constexpr auto basis_axis = meta::index_into_values<I, Axes...>;
+                if constexpr (std::equality_comparable_with<decltype(axis), decltype(basis_axis)>) {
+                    return axis == basis_axis;
+                } else {
+                    return false;
                 }
-                return f(f, uZ_constant<I + 1>{});
-            }
-        };
-        return f(f, uZ_constant<0>{});
+            };
+            (void)((index = Is, match(uZ_constant<Is>{}, axis)) || ...);
+            return index;
+        }(std::make_index_sequence<size>{});
     }
 
     /**
@@ -912,7 +909,7 @@ private:
     , m_start(start){};
 
     static consteval auto sliced(auto Axis) -> bool {
-        using sliced_axes = Base::slice_axes;
+        using sliced_axes = typename Base::sliced_axes;
         return []<uZ... Is>(std::index_sequence<Is...>, auto Axis) {
             constexpr auto match = []<uZ I>(uZ_constant<I>, auto Axis) {
                 constexpr auto basis_axis = meta::index_into_sequence<I, sliced_axes>;
