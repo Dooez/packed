@@ -9,7 +9,7 @@
 #include <algorithm>
 #include <array>
 #include <bits/utility.h>
-#include <concepts>
+#include <cstddef>
 #include <cstring>
 #include <memory>
 #include <numeric>
@@ -107,6 +107,8 @@ private:
     };
 
 public:
+    consteval basis() = default;
+
     /**
      * @brief Constructs a new multidimentional storage basis with static extents.
      * 
@@ -123,9 +125,24 @@ public:
      */
     template<std::unsigned_integral... Unsigned>
         requires /**/ (sizeof...(Unsigned) == size)
-    constexpr explicit basis(Unsigned... extents) noexcept
-    : basis(axis_order{}, extents...){};
+    consteval explicit basis(Unsigned... extents) noexcept
+    : basis(axis_order{}, extents...) {
+        for (auto e: basis::extents) {
+            assert(e != 0);
+        }
+    };
 
+    /**
+     * @brief Checks if the basis has exntents info.
+     */
+    consteval auto has_extents() const -> bool {
+        for (auto e: extents) {
+            if (e == std::size_t{0}) {
+                return false;
+            };
+        }
+        return true;
+    }
     /**
      * @brief Returns the axis identifier in layout order.
      * Index 0 corresponds to the most contigious (inner) axis.
@@ -134,7 +151,7 @@ public:
      */
     template<uZ Index>
         requires /**/ (Index < size)
-    _NDINLINE_ static constexpr auto axis() noexcept {
+    static consteval auto axis() {
         constexpr uZ real_index = meta::index_into_sequence<Index, axis_order_as_vseq>;
         return meta::index_into_values<real_index, Axes...>;
     };
@@ -189,6 +206,7 @@ public:
      */
     consteval auto extent(auto axis) const -> uZ {
         assert(contains(axis));
+        assert(has_extents());
         return extents[index_of(axis)];
     }
 
@@ -220,7 +238,7 @@ public:
      * @brief Axis extents in layout order.
      * 
      */
-    std::array<uZ, size> extents;
+    std::array<uZ, size> extents{};
 };
 
 /**
@@ -316,6 +334,7 @@ class slice_base;
 template<auto Basis, meta::any_value_sequence SlicedAxes, uZ PackSize, uZ Alignment>
 class iter_base;
 template<typename T, auto Basis, uZ PackSize, uZ Alignment>
+    requires /**/ (Basis.has_extents())
 class storage_base;
 };    // namespace static_
 namespace dynamic {
@@ -441,6 +460,7 @@ protected:
 private:
 };
 template<typename T, auto Basis, uZ PackSize, uZ Alignment>
+    requires /**/ (Basis.has_extents())
 class storage_base {
     static constexpr uZ alignment    = std::lcm(PackSize, Alignment);
     static constexpr uZ storage_size = detail_::storage_size<Basis, alignment>();
@@ -1151,6 +1171,7 @@ template<typename T,
          auto Basis,
          uZ   PackSize  = pcx::default_pack_size<T>,
          uZ   Alignment = pcx::default_pack_size<T>>
+    requires /**/ (Basis.has_extents())
 using static_stoarge = storage<T,    //
                                Basis,
                                PackSize,
@@ -1162,7 +1183,7 @@ template<typename T,
          uZ   PackSize      = pcx::default_pack_size<T>,
          uZ   Alignment     = pcx::default_pack_size<T>,
          typename Allocator = pcx::aligned_allocator<T>>
-using dynamic_stoarge = storage<T,    //
+using dynamic_storage = storage<T,    //
                                 Basis,
                                 PackSize,
                                 Alignment,

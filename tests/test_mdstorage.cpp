@@ -32,18 +32,12 @@ struct test_ranges {
 int main() {
     using enum ax1;
     static constexpr auto static_basis = pcx::md::left_basis<x, y, z>{8U, 16U, 32U};
-    using static_stoarge_type =
-        pcx::md::storage<float,    //
-                         static_basis,
-                         8,
-                         16,
-                         pcx::md::detail_::static_::storage_base<float, static_basis, 8, 16>>;
+    using static_stoarge_type          = pcx::md::static_stoarge<float, static_basis>;
 
-    using dynamic_base =
-        pcx::md::detail_::dynamic::storage_base<float, static_basis, 8, 16, pcx::aligned_allocator<float>>;
-    using dynamic_storage_type = pcx::md::storage<float, static_basis, 8, 16, dynamic_base>;
+    using dynamic_storage_type = pcx::md::dynamic_storage<float, static_basis>;
     auto static_stoarge        = static_stoarge_type{};
-    // auto dynamic_storage       = dynamic_storage_type(std::array<pcx::uZ, 3>{8, 16, 32});
+
+    auto dynamic_storage = dynamic_storage_type{8U, 16U, 32U};
 
     auto sx   = static_stoarge.slice<x>(0);
     auto sxy  = sx.slice<y>(0);
@@ -73,7 +67,8 @@ int main() {
     static_assert(pcx::complex_vector_of<float, decltype(syz)>);
     static_assert(pcx::complex_vector_of<float, vector_storage_type>);
 
-    auto ds = pcx::md::dynamic_stoarge<float, static_basis, 8, 16>(pcx::aligned_allocator<float>{}, 3u, 4u, 5u);
+    auto ds =
+        pcx::md::dynamic_storage<float, static_basis, 8, 16>(pcx::aligned_allocator<float>{}, 3u, 4u, 5u);
 
     auto ss = pcx::md::static_stoarge<float, static_basis, 8, 16>();
 
