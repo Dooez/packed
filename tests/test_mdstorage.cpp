@@ -1,7 +1,7 @@
 
 #include "allocators.hpp"
 #include "mdstorage.hpp"
-#include "types.hpp"
+#include "meta.hpp"
 
 #include <bits/ranges_base.h>
 
@@ -29,49 +29,62 @@ struct test_ranges {
     static_assert(std::ranges::viewable_range<T>);
 };
 
-int main() {
+template<pcx::md::layout Layout = pcx::md::layout::left>
+auto test_xyz_storage(auto&& storage) {
     using enum ax1;
-    static constexpr auto static_basis = pcx::md::left_basis<x, y, z>{8U, 16U, 32U};
-    using static_stoarge_type          = pcx::md::static_stoarge<float, static_basis>;
 
-    using dynamic_storage_type = pcx::md::dynamic_storage<float, static_basis>;
-    auto static_stoarge        = static_stoarge_type{};
+    auto sx   = storage.template slice<x>(0);
+    auto sxy  = sx.template slice<y>(0);
+    auto sxyz = sxy.template slice<z>(0);
+    auto sy   = storage.template slice<y>(0);
+    auto syz  = sy.template slice<z>(0);
+    auto syzx = syz.template slice<x>(0);
+    auto sz   = storage.template slice<z>(0);
+    auto szx  = sz.template slice<x>(0);
+    auto szxy = szx.template slice<y>(0);
 
-    auto dynamic_storage = dynamic_storage_type{8U, 16U, 32U};
-
-    auto sx   = static_stoarge.slice<x>(0);
-    auto sxy  = sx.slice<y>(0);
-    auto sy   = static_stoarge.slice<y>(0);
-    auto syz  = sy.slice<z>(0);
-    auto syzx = syz.slice<x>(0);
-
-    static constexpr auto vector_basis = pcx::md::left_basis<x>{8u};
-    using vector_storage_type =
-        pcx::md::storage<float,
-                         vector_basis,
-                         8,
-                         16,
-                         pcx::md::detail_::static_::storage_base<float, vector_basis, 8, 16>>;
-
-
-    (void)test_ranges<decltype(static_stoarge)>();
+    (void)test_ranges<decltype(storage)>();
     (void)test_ranges<decltype(sx)>();
     (void)test_ranges<decltype(sxy)>();
-    (void)test_ranges<vector_storage_type>();
+    (void)test_ranges<decltype(sy)>();
+    (void)test_ranges<decltype(syz)>();
+    (void)test_ranges<decltype(sz)>();
+    (void)test_ranges<decltype(szx)>();
 
-    using sxy_it_t = pcx::rv::iterator_t<decltype(sxy)>;
-    using syz_it_t = pcx::rv::iterator_t<decltype(syz)>;
+    static_assert(!pcx::complex_vector_of<float, decltype(storage)>);
+    static_assert(!pcx::complex_vector_of<float, decltype(sx)>);
+    static_assert(!pcx::complex_vector_of<float, decltype(sy)>);
+    static_assert(!pcx::complex_vector_of<float, decltype(sy)>);
+    static_assert(!pcx::complex_vector_of<float, decltype(szx)>);
+    using enum pcx::md::layout;
+    if constexpr (Layout == left) {
+        static_assert(!pcx::complex_vector_of<float, decltype(sxy)>);
+        static_assert(pcx::complex_vector_of<float, decltype(syz)>);
+    } else if constexpr (Layout == right) {
+        static_assert(pcx::complex_vector_of<float, decltype(sxy)>);
+        static_assert(!pcx::complex_vector_of<float, decltype(syz)>);
+    }
+}
 
+int main() {
+    using enum ax1;
+    static constexpr auto left_basis = pcx::md::left_basis<x, y, z>{8U, 16U, 32U};
 
-    static_assert(!pcx::complex_vector_of<float, decltype(sxy)>);
-    static_assert(pcx::complex_vector_of<float, decltype(syz)>);
+    auto static_stoarge_l  = pcx::md::static_stoarge<float, left_basis>{};
+    auto dynamic_storage_l = pcx::md::dynamic_storage<float, left_basis>{8U, 16U, 32U};
+    test_xyz_storage(static_stoarge_l);
+    test_xyz_storage(dynamic_storage_l);
+
+    static constexpr auto right_basis = pcx::md::left_basis<x, y, z>{8U, 16U, 32U};
+
+    auto static_stoarge_r  = pcx::md::static_stoarge<float, right_basis>{};
+    auto dynamic_storage_r = pcx::md::dynamic_storage<float, right_basis>{8U, 16U, 32U};
+    test_xyz_storage(static_stoarge_l);
+
+    test_xyz_storage(dynamic_storage_l);
+
+    static constexpr auto vector_basis = pcx::md::left_basis<x>{8U};
+    using vector_storage_type          = pcx::md::static_stoarge<float, vector_basis>;
     static_assert(pcx::complex_vector_of<float, vector_storage_type>);
-
-    auto ds =
-        pcx::md::dynamic_storage<float, static_basis, 8, 16>(pcx::aligned_allocator<float>{}, 3u, 4u, 5u);
-
-    auto ss = pcx::md::static_stoarge<float, static_basis, 8, 16>();
-
-    static_assert(std::allocator_traits<pcx::aligned_allocator<float>>::is_always_equal::value);
     return 0;
 }

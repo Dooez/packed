@@ -69,10 +69,10 @@ public:
      * For left layout declaration order and layout order are the same.
      * For right layout declaration order and layout order are inversed.
      */
-    using axis_order = std::make_index_sequence<size>;
+    using layout_order = std::make_index_sequence<size>;
 
 private:
-    using axis_order_as_vseq = meta::index_to_value_sequence<axis_order>;
+    using layout_order_as_vseq = meta::index_to_value_sequence<layout_order>;
 
     template<uZ... Is>
     constexpr explicit basis(std::index_sequence<Is...>, auto... extents)
@@ -80,7 +80,7 @@ private:
 
     template<uZ LayoutIndex, typename Sliced>
     struct outer_remaining_impl {
-        static constexpr auto decl_index = meta::index_into_sequence<LayoutIndex, axis_order_as_vseq>;
+        static constexpr auto decl_index = meta::index_into_sequence<LayoutIndex, layout_order_as_vseq>;
         static constexpr auto value =
             std::conditional_t<meta::contains_value<Sliced, meta::index_into_values<decl_index, Axes...>>,
                                outer_remaining_impl<LayoutIndex - 1, Sliced>,
@@ -88,13 +88,13 @@ private:
     };
     template<typename Sliced>
     struct outer_remaining_impl<0, Sliced> {
-        static constexpr auto decl_index = meta::index_into_sequence<0, axis_order_as_vseq>;
+        static constexpr auto decl_index = meta::index_into_sequence<0, layout_order_as_vseq>;
         static constexpr auto value      = meta::index_into_values<decl_index, Axes...>;
     };
 
     template<uZ LayoutIndex, typename Sliced>
     struct inner_remaining_impl {
-        static constexpr auto decl_index = meta::index_into_sequence<LayoutIndex, axis_order_as_vseq>;
+        static constexpr auto decl_index = meta::index_into_sequence<LayoutIndex, layout_order_as_vseq>;
         static constexpr auto value =
             std::conditional_t<meta::contains_value<Sliced, meta::index_into_values<decl_index, Axes...>>,
                                inner_remaining_impl<LayoutIndex + 1, Sliced>,
@@ -102,7 +102,7 @@ private:
     };
     template<typename Sliced>
     struct inner_remaining_impl<size - 1, Sliced> {
-        static constexpr auto decl_index = meta::index_into_sequence<size - 1, axis_order_as_vseq>;
+        static constexpr auto decl_index = meta::index_into_sequence<size - 1, layout_order_as_vseq>;
         static constexpr auto value      = meta::index_into_values<decl_index, Axes...>;
     };
 
@@ -126,7 +126,7 @@ public:
     template<std::unsigned_integral... Unsigned>
         requires /**/ (sizeof...(Unsigned) == size)
     consteval explicit basis(Unsigned... extents) noexcept
-    : basis(axis_order{}, extents...) {
+    : basis(layout_order{}, extents...) {
         for (auto e: basis::extents) {
             assert(e != 0);
         }
@@ -152,7 +152,7 @@ public:
     template<uZ Index>
         requires /**/ (Index < size)
     static consteval auto axis() {
-        constexpr uZ real_index = meta::index_into_sequence<Index, axis_order_as_vseq>;
+        constexpr uZ real_index = meta::index_into_sequence<Index, layout_order_as_vseq>;
         return meta::index_into_values<real_index, Axes...>;
     };
 
@@ -213,11 +213,11 @@ public:
     /**
      * @brief Identifier of the most contigious axis.
      */
-    static constexpr auto inner_axis = axis<meta::index_into_sequence<0, axis_order_as_vseq>>();
+    static constexpr auto inner_axis = axis<meta::index_into_sequence<0, layout_order_as_vseq>>();
     /**
      * @brief Identifier of the least contigious axis.
      */
-    static constexpr auto outer_axis = axis<meta::index_into_sequence<size - 1, axis_order_as_vseq>>();
+    static constexpr auto outer_axis = axis<meta::index_into_sequence<size - 1, layout_order_as_vseq>>();
 
     /**
      * @brief Identifier of the most contigious axis after making a slice from all of the axes in `Sliced`.
@@ -322,7 +322,7 @@ _NDINLINE_ constexpr auto get_dynamic_slice_offset(uZ                           
                 return extents[I] * f(f, extents, uZ_constant<I - 1>{});
             }
         };
-        constexpr uZ stride = storage_size / div(div, extents, uZ_constant<Basis.size - 1>{});
+        uZ stride = storage_size / div(div, extents, uZ_constant<Basis.size - 1>{});
 
         return stride * index;
     }
@@ -387,7 +387,7 @@ private:
             constexpr auto axis = Basis.template axis<I>();
             if constexpr (meta::contains_value<SlicedAxes, axis>) {
                 constexpr auto next_axis = Basis.template axis<I - 1>();
-                return Basis.template extent<next_axis>() * f(f, uZ_constant<I - 1>{});
+                return Basis.extent(next_axis) * f(f, uZ_constant<I - 1>{});
             } else {
                 return 1;
             }
@@ -553,7 +553,7 @@ private:
                 return extents[I] * f(std::forward<F>(f), extents, uZ_constant<I - 1>{});
             }
         };
-        auto div = f(f, extents_ptr->extents, uZ_constant<Basis.size() - 1>{});
+        auto div = f(f, extents_ptr->extents, uZ_constant<Basis.size - 1>{});
         return stride / div;
     }
 
@@ -592,12 +592,12 @@ protected:
     template<auto Axis>
     using new_slice_base = slice_base<Basis, meta::expand_value_sequence<SlicedAxes, Axis>, PackSize>;
 
-    _NDINLINE_ auto new_slice_base_args() noexcept {
+    _NDINLINE_ auto new_slice_base_args() const noexcept {
         return m_extents_ptr;
     }
 
     template<auto Axis>
-    _NDINLINE_ auto new_slice_offset(uZ index) noexcept -> uZ {
+    _NDINLINE_ auto new_slice_offset(uZ index) const noexcept -> uZ {
         const auto& storage_size = m_extents_ptr->storage_size;
         const auto& extents      = m_extents_ptr->extents;
         return detail_::get_dynamic_slice_offset<Basis, SlicedAxes, Axis, PackSize>(
@@ -620,35 +620,23 @@ class storage_base {
     using allocator_traits = std::allocator_traits<Allocator>;
 
     template<uZ... Is>
-    explicit storage_base(std::index_sequence<Is...>, auto... extents)
-    : m_extents{.extents{std::get<Is>(std::make_tuple(extents...))...}} {
-        if constexpr (Basis.size > 1) {
-            auto stride = calc_stride(m_extents.extents);
-            auto size   = stride * m_extents.extents.back();
-            m_ptr       = allocator_traits::allocate(m_allocator, size);
-            std::memset(m_ptr, 0, size * sizeof(T));
-        } else {
-            auto size = (m_extents.extents.front() + alignment - 1) / alignment * alignment;
-            m_ptr     = allocator_traits::allocate(m_allocator, size);
-            std::memset(m_ptr, 0, size * sizeof(T));
-        }
+    explicit storage_base(std::index_sequence<Is...>, Allocator allocator, auto... extents)
+    : m_allocator(std::move(allocator))
+    , m_extents{.extents{std::get<Is>(std::make_tuple(extents...))...},
+                .storage_size{calc_storage_size(m_extents.extents)}} {
+        m_ptr = allocator_traits::allocate(m_allocator, m_extents.storage_size);
+        std::memset(m_ptr, 0, m_extents.storage_size * sizeof(T));
     }
 
-    using axis_order    = std::index_sequence<Basis.size>;
-    using reverse_order =                                   //
-        meta::value_to_index_sequence<                      //
-            meta::reverse_value_sequence<                   //
-                meta::index_to_value_sequence<              //
-                    std::make_index_sequence<Basis.size>    //
-                    >>>;
+    using layout_order = decltype(Basis)::layout_order;
 
 protected:
     storage_base() noexcept
     : m_ptr(nullptr){};
 
     template<std::unsigned_integral... U>
-    explicit storage_base(U... extents)
-    : storage_base(axis_order{}, extents...){};
+    explicit storage_base(Allocator allocator, U... extents)
+    : storage_base(layout_order{}, std::move(allocator), extents...){};
 
 public:
     storage_base(const storage_base& other)            = delete;
@@ -714,7 +702,7 @@ protected:
     }
 
     template<auto Axis>
-    using slice_base = slice_base<Basis, meta::value_sequence<>, PackSize>;
+    using slice_base = slice_base<Basis, meta::value_sequence<Axis>, PackSize>;
 
     _NDINLINE_ auto slice_base_args() noexcept {
         return &m_extents;
@@ -740,15 +728,7 @@ private:
         for (uZ i = 1; i < Basis.size; ++i) {
             size *= extents[i];
         }
-    }
-    _NDINLINE_ auto calc_stride(const std::array<uZ, Basis.size>& extents) const noexcept -> uZ {
-        auto inner_storage_size = (extents.front() + alignment - 1) / alignment * alignment;
-
-        auto stride = inner_storage_size;
-        for (uZ i = 1; i < Basis.size - 1; ++i) {
-            stride *= extents[i];
-        }
-        return stride;
+        return size;
     }
 
     _NDINLINE_ auto storage_size() const noexcept -> uZ {
@@ -905,9 +885,6 @@ class sslice
 : public std::ranges::view_base
 , pcx::detail_::pack_aligned_base<Base::vector_like>
 , Base {
-    static constexpr bool contigious = !meta::contains_value<typename Base::sliced_axes, Basis.inner_axis>;
-
-private:
     template<bool, auto, typename, uZ, typename>
     friend class md::iterator;
 
@@ -984,7 +961,7 @@ public:
 
     [[nodiscard]] auto begin() const noexcept -> iterator {
         if constexpr (Base::vector_like) {
-            return pcx::detail_::make_iterator<T, Const, PackSize>(m_start, Base::iterator_base_args());
+            return pcx::detail_::make_iterator<T, Const, PackSize>(m_start, 0);
         } else {
             return iterator(m_start, Base::iterator_base_args());
         }
@@ -1050,13 +1027,13 @@ class storage
 public:
     /**
      * @brief Constructs dynamic storage using `allocator` for memory allocation.
-     * 
+     * c
      * @param extents Axis extents in the basis axis declaration order. See `storage(U... extents)`.
      */
     template<std::unsigned_integral... U>
     explicit storage(typename Base::allocator allocator, U... extents)
         requires(dynamic && sizeof...(U) == Basis.size)
-    {}
+    : Base(std::move(allocator), extents...) {}
     /**
      * @brief Constructs dynamic storage.
      * 
@@ -1075,7 +1052,7 @@ public:
     template<std::unsigned_integral... U>
     explicit storage(U... extents)
         requires(dynamic && sizeof...(U) == Basis.size)
-    {}
+    : storage(typename Base::allocator{}, extents...) {}
 
     storage() = default;
 
