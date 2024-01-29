@@ -628,7 +628,7 @@ class storage_base {
         std::memset(m_ptr, 0, m_extents.storage_size * sizeof(T));
     }
 
-    using layout_order = decltype(Basis)::layout_order;
+    using layout_order = typename decltype(Basis)::layout_order;
 
 protected:
     storage_base() noexcept
@@ -953,7 +953,7 @@ public:
      * @brief Returns a sub-slice of the data from the outer (least contigious) non-sliced axis.
      */
     [[nodiscard]] auto operator[](uZ index) const noexcept {
-        return slice<Basis.outer_axis>(index);
+        return slice<Base::outer_axis>(index);
     }
 
     // TODO(timofey): `at()`
