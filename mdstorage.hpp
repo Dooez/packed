@@ -183,19 +183,20 @@ public:
      */
     static consteval auto index_of(auto axis) -> uZ {
         assert(contains(axis));
-        return []<uZ... Is>(auto axis) {
+        return []<uZ... Is>(std::index_sequence<Is...>, auto axis) {
             uZ             index = 0;
             constexpr auto match = []<uZ I>(uZ_constant<I>, auto axis) {
-                constexpr auto basis_axis = meta::index_into_values<I, Axes...>;
-                if constexpr (std::equality_comparable_with<decltype(axis), decltype(basis_axis)>) {
-                    return axis == basis_axis;
+                constexpr auto layout_index = meta::index_into_sequence<I, layout_order_as_vseq>;
+                constexpr auto current_axis = meta::index_into_values<layout_index, Axes...>;
+                if constexpr (std::equality_comparable_with<decltype(axis), decltype(current_axis)>) {
+                    return axis == current_axis;
                 } else {
                     return false;
                 }
             };
             (void)((index = Is, match(uZ_constant<Is>{}, axis)) || ...);
             return index;
-        }(std::make_index_sequence<size>{});
+        }(std::make_index_sequence<size>{}, axis);
     }
 
     /**
