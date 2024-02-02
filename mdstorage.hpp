@@ -69,7 +69,12 @@ public:
      * For left layout declaration order and layout order are the same.
      * For right layout declaration order and layout order are inversed.
      */
-    using layout_order = std::make_index_sequence<size>;
+    using layout_order = std::conditional_t<Layout == layout::left,    //
+                                            std::make_index_sequence<size>,
+                                            meta::value_to_index_sequence<            //
+                                                meta::reverse_value_sequence<         //
+                                                    meta::index_to_value_sequence<    //
+                                                        std::make_index_sequence<size>>>>>;
 
 private:
     using layout_order_as_vseq = meta::index_to_value_sequence<layout_order>;
@@ -214,25 +219,25 @@ public:
     /**
      * @brief Identifier of the most contigious axis.
      */
-    static constexpr auto inner_axis = axis<meta::index_into_sequence<0, layout_order_as_vseq>>();
+    static constexpr auto inner_axis = axis<0>();
     /**
      * @brief Identifier of the least contigious axis.
      */
-    static constexpr auto outer_axis = axis<meta::index_into_sequence<size - 1, layout_order_as_vseq>>();
+    static constexpr auto outer_axis = axis<size - 1>();
 
     /**
      * @brief Identifier of the most contigious axis after making a slice from all of the axes in `Sliced`.
      * 
      * @tparam Sliced Sequence of identifiers of axis that were taken a slice from.
      */
-    template<meta::any_value_sequence Sliced>
+    template<meta::value_sequence_of_unique Sliced>
     static constexpr auto inner_axis_remaining = outer_remaining_impl<0, Sliced>::value;
     /**
      * @brief Identifier of the least contigious axis after making a slice from all of the axes in `Sliced`.
      * 
      * @tparam Sliced Sequence of identifiers of axis that were taken a slice from.
      */
-    template<meta::any_value_sequence Sliced>
+    template<meta::value_sequence_of_unique Sliced>
     static constexpr auto outer_axis_remaining = outer_remaining_impl<size - 1, Sliced>::value;
 
     /**
@@ -287,7 +292,7 @@ constexpr auto storage_size() -> uZ {
     }
     return size;
 }
-template<auto Basis, meta::any_value_sequence SlicedAxes, auto Axis, uZ Alignment, uZ PackSize>
+template<auto Basis, meta::value_sequence_of_unique SlicedAxes, auto Axis, uZ Alignment, uZ PackSize>
     requires /**/ (Basis.contains(Axis))
 _NDINLINE_ constexpr auto get_static_slice_offset(uZ index) noexcept -> uZ {
     if constexpr (equal_values<Axis, Basis.inner_axis>) {
@@ -307,7 +312,7 @@ _NDINLINE_ constexpr auto get_static_slice_offset(uZ index) noexcept -> uZ {
         return stride * index;
     }
 };
-template<auto Basis, meta::any_value_sequence SlicedAxes, auto Axis, uZ PackSize>
+template<auto Basis, meta::value_sequence_of_unique SlicedAxes, auto Axis, uZ PackSize>
     requires /**/ (Basis.contains(Axis))
 _NDINLINE_ constexpr auto get_dynamic_slice_offset(uZ                                storage_size,
                                                    const std::array<uZ, Basis.size>& extents,
@@ -330,18 +335,18 @@ _NDINLINE_ constexpr auto get_dynamic_slice_offset(uZ                           
 };
 
 namespace static_ {
-template<auto Basis, meta::any_value_sequence SlicedAxes, uZ PackSize, uZ Alignment>
+template<auto Basis, meta::value_sequence_of_unique SlicedAxes, uZ PackSize, uZ Alignment>
 class slice_base;
-template<auto Basis, meta::any_value_sequence SlicedAxes, uZ PackSize, uZ Alignment>
+template<auto Basis, meta::value_sequence_of_unique SlicedAxes, uZ PackSize, uZ Alignment>
 class iter_base;
 template<typename T, auto Basis, uZ PackSize, uZ Alignment>
     requires /**/ (Basis.has_extents())
 class storage_base;
 };    // namespace static_
 namespace dynamic {
-template<auto Basis, meta::any_value_sequence SlicedAxes, uZ PackSize>
+template<auto Basis, meta::value_sequence_of_unique SlicedAxes, uZ PackSize>
 class slice_base;
-template<auto Basis, meta::any_value_sequence SlicedAxes, uZ PackSize>
+template<auto Basis, meta::value_sequence_of_unique SlicedAxes, uZ PackSize>
 class iter_base;
 template<typename T, auto Basis, uZ PackSize, uZ Alignment, typename Allocator>
 class storage_base;
@@ -355,7 +360,7 @@ template<typename T, auto Basis, uZ PackSize, uZ Agignment, typename Base>
 class storage;
 
 namespace detail_::static_ {
-template<auto Basis, meta::any_value_sequence SlicedAxes, uZ PackSize, uZ Alignment>
+template<auto Basis, meta::value_sequence_of_unique SlicedAxes, uZ PackSize, uZ Alignment>
 class iter_base {
     static constexpr auto outer_axis = Basis.template outer_axis_remaining<SlicedAxes>;
 
@@ -412,7 +417,7 @@ private:
         return stride;
     }();
 };
-template<auto Basis, meta::any_value_sequence SlicedAxes, uZ PackSize, uZ Alignment>
+template<auto Basis, meta::value_sequence_of_unique SlicedAxes, uZ PackSize, uZ Alignment>
 class slice_base {
 public:
     static constexpr bool vector_like = (SlicedAxes::size == Basis.size - 1)    //
@@ -511,7 +516,7 @@ private:
 }    // namespace detail_::static_
 
 namespace detail_::dynamic {
-template<auto Basis, meta::any_value_sequence SlicedAxes, uZ PackSize>
+template<auto Basis, meta::value_sequence_of_unique SlicedAxes, uZ PackSize>
 class iter_base {
     static constexpr auto outer_axis = Basis.template outer_axis_remaining<SlicedAxes>;
 
@@ -561,7 +566,7 @@ private:
     uZ            m_stride{};
     extents_type* m_extents_ptr{};
 };
-template<auto Basis, meta::any_value_sequence SlicedAxes, uZ PackSize>
+template<auto Basis, meta::value_sequence_of_unique SlicedAxes, uZ PackSize>
 class slice_base {
     using extents_type = detail_::dynamic_extents_info<Basis.size>;
 

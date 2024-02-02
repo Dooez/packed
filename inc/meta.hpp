@@ -274,6 +274,13 @@ struct is_value_sequence : std::false_type {};
 template<auto... Values>
 struct is_value_sequence<value_sequence<Values...>> : std::true_type {};
 
+template<typename T>
+struct is_value_sequence_of_unique;
+template<auto... Values>
+struct is_value_sequence_of_unique<value_sequence<Values...>> {
+    static constexpr bool value = unique_values<Values...>;
+};
+
 template<typename Sequence, auto... NewValues>
 struct expand_value_sequence_impl;
 template<auto... Values, auto... NewValues>
@@ -300,6 +307,9 @@ struct reverse_value_sequence_impl<value_sequence<V, Vs...>> {
 }    // namespace detail_
 template<typename T>
 concept any_value_sequence = detail_::is_value_sequence<T>::value;
+
+template<typename T>
+concept value_sequence_of_unique = detail_::is_value_sequence_of_unique<T>::value;
 
 template<typename Sequence, auto... NewValues>
 using expand_value_sequence = typename detail_::expand_value_sequence_impl<Sequence, NewValues...>::type;

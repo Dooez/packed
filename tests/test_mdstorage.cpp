@@ -104,12 +104,12 @@ auto fill_mdstorage(auto&& slice, double exponent) {
 
 auto print_mdstorage(auto&& slice) {
     if constexpr (pcx::detail_::is_pcx_iterator<pcx::rv::iterator_t<decltype(slice)>>::value) {
-        std::cout << slice.size() << "\n";
+        // std::cout << slice.size() << "\n";
         for (auto v: slice) {
             std::cout << std::complex<float>(v) << " ";
         }
     } else {
-        std::cout << slice.size() << "\n";
+        // std::cout << slice.size() << "\n";
         for (auto s: slice) {
             print_mdstorage(s);
             std::cout << "\n";
@@ -198,7 +198,7 @@ auto check_storage(auto&& storage){
 
 int main() {
     using enum ax1;
-    static constexpr auto left_basis = pcx::md::left_basis<x, y, z>{3U, 1U, 3U};
+    constexpr auto left_basis = pcx::md::left_basis<x, y, z>{3U, 1U, 3U};
 
     auto static_storage_l = pcx::md::static_stoarge<float, left_basis>{};
     test_xyz_storage(static_storage_l);
@@ -206,18 +206,23 @@ int main() {
     // fill_mdstorage(static_storage_l, 10.);
     // print_mdstorage(static_storage_l);
 
-    auto dynamic_storage_l = pcx::md::dynamic_storage<float, left_basis>{1U, 2U, 3U};
+    auto dynamic_storage_l = pcx::md::dynamic_storage<float, left_basis>{3U, 2U, 1U};
     test_xyz_storage(dynamic_storage_l);
     std::cout << "dynamic l:\n";
     fill_mdstorage(dynamic_storage_l, 10.);
     print_mdstorage(dynamic_storage_l);
 
-    static constexpr auto right_basis = pcx::md::left_basis<x, y, z>{8U, 16U, 32U};
+    constexpr auto right_basis = pcx::md::right_basis<x, y, z>{1U, 1U, 1U};
+    constexpr auto asds        = right_basis.outer_axis;
 
     auto static_storage_r  = pcx::md::static_stoarge<float, right_basis>{};
-    auto dynamic_storage_r = pcx::md::dynamic_storage<float, right_basis>{8U, 16U, 32U};
-    test_xyz_storage(static_storage_r);
-    test_xyz_storage(dynamic_storage_r);
+    auto dynamic_storage_r = pcx::md::dynamic_storage<float, right_basis>{3U, 2U, 1U};
+    using enum pcx::md::layout;
+    test_xyz_storage<right>(static_storage_r);
+    test_xyz_storage<right>(dynamic_storage_r);
+    std::cout << "dynamic r:\n";
+    fill_mdstorage(dynamic_storage_r, 10.);
+    print_mdstorage(dynamic_storage_r);
     // std::cout << "dynamic r:\n";
     // fill_mdstorage(dynamic_storage_r, 10.);
     // print_mdstorage(dynamic_storage_r);
