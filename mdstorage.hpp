@@ -157,8 +157,8 @@ public:
     template<uZ Index>
         requires /**/ (Index < size)
     static consteval auto axis() {
-        constexpr uZ real_index = meta::index_into_sequence<Index, layout_order_as_vseq>;
-        return meta::index_into_values<real_index, Axes...>;
+        constexpr uZ decl_index = meta::index_into_sequence<Index, layout_order_as_vseq>;
+        return meta::index_into_values<decl_index, Axes...>;
     };
 
     /**
@@ -271,18 +271,17 @@ public:
     uZ                   storage_size;
 };
 
-template<auto Basis, uZ Alignment>
-constexpr auto storage_size() -> uZ {
+template<auto Basis, uZ PackSize, uZ Alignment>
+constexpr auto static_storage_size() -> uZ {
     constexpr uZ inner_extent = Basis.extent(Basis.inner_axis);
+    constexpr uZ alignment    = std::lcm(PackSize * 2, Alignment);
 
-    uZ size = (inner_extent * 2UL + Alignment - 1UL) / Alignment * Alignment;
+    uZ size = (inner_extent * 2UL + alignment - 1UL) / alignment * alignment;
 
     if constexpr (Basis.size > 1) {
         constexpr auto f = []<uZ I>(auto&& f, uZ size, uZ_constant<I>) {
             constexpr auto axis = Basis.template axis<I>();
-            if constexpr (Basis.size == 1) {
-                return size;
-            } else if constexpr (I == Basis.size - 1) {
+            if constexpr (I == Basis.size - 1) {
                 return size *= Basis.extent(axis);
             } else {
                 return f(f, size *= Basis.extent(axis), uZ_constant<I + 1>{});
@@ -306,7 +305,7 @@ _NDINLINE_ constexpr auto get_static_slice_offset(uZ index) noexcept -> uZ {
                 return Basis.extent(axis) * f(f, uZ_constant<I - 1>{});
             }
         };
-        constexpr uZ storage_size = detail_::storage_size<Basis, Alignment>();
+        constexpr uZ storage_size = detail_::static_storage_size<Basis, PackSize, Alignment>();
         constexpr uZ stride       = storage_size / div(div, uZ_constant<Basis.size - 1>{});
 
         return stride * index;
@@ -389,31 +388,18 @@ protected:
 
 private:
     static constexpr uZ s_stride = [] {
-        constexpr auto denom = []<uZ I>(auto&& f, uZ_constant<I>) {
+        constexpr auto f = []<uZ I>(auto f, uZ_constant<I>) {
             constexpr auto axis = Basis.template axis<I>();
-            if constexpr (meta::contains_value<SlicedAxes, axis>) {
-                constexpr auto next_axis = Basis.template axis<I - 1>();
-                return Basis.extent(next_axis) * f(f, uZ_constant<I - 1>{});
-            } else {
-                return 1;
-            }
-        };
-        constexpr uZ d = denom(denom, uZ_constant<Basis.size - 1>{});
-
-        constexpr uZ inner_extent = Basis.extent(Basis.inner_axis);
-
-        auto f = []<uZ I>(auto&& f, uZ_constant<I>) {
-            constexpr auto axis = Basis.template axis<I>();
-            if constexpr (I < Basis.size - 2) {
-                return Basis.extent(axis) * f(f, uZ_constant<I + 1>{});
-            } else {
+            if constexpr (equal_values<outer_axis, axis>) {
                 return Basis.extent(axis);
+            } else {
+                return Basis.extent(axis) * f(f, uZ_constant<I - 1>{});
             }
         };
+        constexpr auto div = f(f, uZ_constant<Basis.size - 1>{});
 
-        uZ stride = (inner_extent * 2UL + Alignment - 1UL) / Alignment * Alignment;
-        stride *= f(f, uZ_constant<0>{});
-        stride /= d;
+        constexpr auto size   = detail_::static_storage_size<Basis, PackSize, Alignment>();
+        constexpr auto stride = size / div;
         return stride;
     }();
 };
@@ -468,8 +454,8 @@ private:
 template<typename T, auto Basis, uZ PackSize, uZ Alignment>
     requires /**/ (Basis.has_extents())
 class storage_base {
-    static constexpr uZ alignment    = std::lcm(PackSize, Alignment);
-    static constexpr uZ storage_size = detail_::storage_size<Basis, alignment>();
+    // static constexpr uZ alignment    = std::lcm(PackSize, Alignment);
+    static constexpr uZ storage_size = detail_::static_storage_size<Basis, PackSize, Alignment>();
 
 protected:
     storage_base() noexcept                               = default;

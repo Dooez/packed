@@ -198,15 +198,24 @@ auto check_storage(auto&& storage){
 
 int main() {
     using enum ax1;
-    constexpr auto left_basis = pcx::md::left_basis<x, y, z>{3U, 1U, 3U};
-
-    auto static_storage_l = pcx::md::static_stoarge<float, left_basis>{};
+    constexpr auto       left_basis = pcx::md::left_basis<x, y, z>{3U, 2U, 2U};
+    std::array<float, 128> beging{};
+    auto                 static_storage_l = pcx::md::static_stoarge<float, left_basis>{};
+    std::array<float, 128> endg{};
     test_xyz_storage(static_storage_l);
-    // std::cout << "static l:\n";
-    // fill_mdstorage(static_storage_l, 10.);
-    // print_mdstorage(static_storage_l);
+    std::cout << "static l:\n";
+    fill_mdstorage(static_storage_l, 10.);
+    for (auto v: beging) {
+        std::cout << v << " ";
+    }
+    std::cout << "\n";
+    print_mdstorage(static_storage_l);
+    for (auto v: endg) {
+        std::cout << v << " ";
+    }
+    std::cout << "\n";
 
-    auto dynamic_storage_l = pcx::md::dynamic_storage<float, left_basis>{3U, 2U, 1U};
+    auto dynamic_storage_l = pcx::md::dynamic_storage<float, left_basis>{3U, 2U, 4U};
     test_xyz_storage(dynamic_storage_l);
     std::cout << "dynamic l:\n";
     fill_mdstorage(dynamic_storage_l, 10.);
