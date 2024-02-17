@@ -249,6 +249,7 @@ int main() {
     }
     std::cout << "\n";
     print_mdstorage(static_storage_l);
+    print_mdstorage(std::as_const(static_storage_l));
     for (auto v: endg) {
         std::cout << v << " ";
     }
@@ -259,6 +260,7 @@ int main() {
     std::cout << "dynamic l:\n";
     fill_mdstorage(dynamic_storage_l, 10.);
     print_mdstorage(dynamic_storage_l);
+    print_mdstorage(std::as_const(dynamic_storage_l));
 
     constexpr auto right_basis = pcx::md::right_basis<x, y, z>{1U, 1U, 1U};
     constexpr auto asds        = right_basis.outer_axis;

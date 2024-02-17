@@ -542,7 +542,7 @@ protected:
     };
 
 private:
-    _NDINLINE_ static auto calc_stride(extents_type* extents_ptr) noexcept {
+    _NDINLINE_ static auto calc_stride(const extents_type* extents_ptr) noexcept {
         auto stride = extents_ptr->storage_size;
 
         auto f = []<typename F, uZ I>(F&& f, auto& extents, uZ_constant<I>) {
@@ -702,6 +702,9 @@ protected:
     _NDINLINE_ auto iterator_base_args() noexcept {
         return &m_extents;
     }
+    _NDINLINE_ auto iterator_base_args() const noexcept {
+        return &m_extents;
+    }
 
     template<auto Axis>
     using const_slice_base = slice_base<true, Basis, meta::value_sequence<Axis>, PackSize>;
@@ -709,6 +712,9 @@ protected:
     using slice_base = slice_base<false, Basis, meta::value_sequence<Axis>, PackSize>;
 
     _NDINLINE_ auto slice_base_args() noexcept {
+        return &m_extents;
+    }
+    _NDINLINE_ auto slice_base_args() const noexcept {
         return &m_extents;
     }
 
@@ -857,10 +863,10 @@ public:
         return m_ptr <=> other.m_ptr;
     };
 
-    [[nodiscard]] auto operator==(const iterator& other) const noexcept {
+    [[nodiscard]] auto operator==(const iterator& other) const noexcept -> bool {
         return m_ptr == other.m_ptr;
     };
-    [[nodiscard]] auto operator==(const iterator<!Const, Basis, T, PackSize, Base>& other) const noexcept {
+    [[nodiscard]] auto operator==(const iterator<!Const, Basis, T, PackSize, Base>& other) const noexcept -> bool {
         return m_ptr == other.m_ptr;
     };
 
