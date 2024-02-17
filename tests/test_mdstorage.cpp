@@ -24,14 +24,16 @@ enum class ax2 {
 
 template<typename T>
 struct test_ranges {
-    static_assert(std::ranges::range<T>);
-    static_assert(std::ranges::sized_range<T>);
-    static_assert(std::ranges::input_range<T>);
-    static_assert(std::ranges::forward_range<T>);
-    static_assert(std::ranges::bidirectional_range<T>);
-    static_assert(std::ranges::random_access_range<T>);
-    static_assert(std::ranges::common_range<T>);
-    static_assert(std::ranges::viewable_range<T>);
+    void foo() {
+        static_assert(std::ranges::range<T>);
+        static_assert(std::ranges::sized_range<T>);
+        static_assert(std::ranges::input_range<T>);
+        static_assert(std::ranges::forward_range<T>);
+        static_assert(std::ranges::bidirectional_range<T>);
+        static_assert(std::ranges::random_access_range<T>);
+        static_assert(std::ranges::common_range<T>);
+        static_assert(std::ranges::viewable_range<T>);
+    }
 };
 
 template<pcx::md::layout Layout = pcx::md::layout::left>
@@ -71,6 +73,42 @@ auto test_xyz_storage(auto&& storage) {
     }
 }
 
+template<pcx::md::layout Layout = pcx::md::layout::left>
+auto test_const_xyz_storage(const auto& storage) {
+    using enum ax1;
+
+    auto sx   = storage.template slice<x>(0);
+    auto sxy  = sx.template slice<y>(0);
+    auto sxyz = sxy.template slice<z>(0);
+    auto sy   = storage.template slice<y>(0);
+    auto syz  = sy.template slice<z>(0);
+    auto syzx = syz.template slice<x>(0);
+    auto sz   = storage.template slice<z>(0);
+    auto szx  = sz.template slice<x>(0);
+    auto szxy = szx.template slice<y>(0);
+
+    (void)test_ranges<decltype(storage)>();
+    (void)test_ranges<decltype(sx)>();
+    (void)test_ranges<decltype(sxy)>();
+    (void)test_ranges<decltype(sy)>();
+    (void)test_ranges<decltype(syz)>();
+    (void)test_ranges<decltype(sz)>();
+    (void)test_ranges<decltype(szx)>();
+
+    static_assert(!pcx::complex_vector_of<float, decltype(storage)>);
+    static_assert(!pcx::complex_vector_of<float, decltype(sx)>);
+    static_assert(!pcx::complex_vector_of<float, decltype(sy)>);
+    static_assert(!pcx::complex_vector_of<float, decltype(sy)>);
+    static_assert(!pcx::complex_vector_of<float, decltype(szx)>);
+    using enum pcx::md::layout;
+    if constexpr (Layout == left) {
+        static_assert(!pcx::complex_vector_of<float, decltype(sxy)>);
+        static_assert(pcx::complex_vector_of<float, decltype(syz)>);
+    } else if constexpr (Layout == right) {
+        static_assert(pcx::complex_vector_of<float, decltype(sxy)>);
+        static_assert(!pcx::complex_vector_of<float, decltype(syz)>);
+    }
+}
 
 auto fill_mdstorage(auto&& slice, double exponent) {
     constexpr auto find_max = [](auto&& foo, auto&& slice, double e, double exponent) -> double {
@@ -198,11 +236,12 @@ auto check_storage(auto&& storage){
 
 int main() {
     using enum ax1;
-    constexpr auto       left_basis = pcx::md::left_basis<x, y, z>{3U, 2U, 2U};
+    constexpr auto         left_basis = pcx::md::left_basis<x, y, z>{3U, 2U, 2U};
     std::array<float, 128> beging{};
-    auto                 static_storage_l = pcx::md::static_stoarge<float, left_basis>{};
+    auto                   static_storage_l = pcx::md::static_stoarge<float, left_basis>{};
     std::array<float, 128> endg{};
     test_xyz_storage(static_storage_l);
+    test_const_xyz_storage(static_storage_l);
     std::cout << "static l:\n";
     fill_mdstorage(static_storage_l, 10.);
     for (auto v: beging) {

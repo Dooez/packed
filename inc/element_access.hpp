@@ -12,7 +12,9 @@ constexpr auto pidx(uZ idx) -> uZ {
 
 namespace detail_ {
 template<typename T, bool Const, uZ PackSize>
-auto make_iterator(T* ptr, iZ index) noexcept;
+auto make_iterator(auto* data_ptr, iZ index) noexcept {
+    return iterator<T, Const, PackSize>(data_ptr, index);
+};
 }    // namespace detail_
 
 template<typename T, bool Const = false, uZ PackSize = pcx::default_pack_size<T>>
@@ -24,10 +26,11 @@ class iterator {
     friend class iterator<T, true, PackSize>;
 
     friend auto detail_::make_iterator<T, Const, PackSize>(T* ptr, iZ index) noexcept;
+    friend auto detail_::make_iterator<T, Const, PackSize>(const T* ptr, iZ index) noexcept;
 
 public:
     using real_type       = T;
-    using real_pointer    = T*;
+    using real_pointer    = std::conditional_t<Const, const T*, T*>;
     using difference_type = ptrdiff_t;
     using reference =
         typename std::conditional_t<Const, const cx_ref<T, true, PackSize>, cx_ref<T, false, PackSize>>;
@@ -160,10 +163,11 @@ class iterator<T, Const, 1> {
     friend class iterator<T, true, 1>;
 
     friend auto detail_::make_iterator<T, Const, 1>(T* ptr, iZ index) noexcept;
+    friend auto detail_::make_iterator<T, Const, 1>(const T* ptr, iZ index) noexcept;
 
 public:
     using real_type       = T;
-    using real_pointer    = T*;
+    using real_pointer    = std::conditional_t<Const, const T*, T*>;
     using difference_type = ptrdiff_t;
     using reference       = typename std::conditional_t<Const, const cx_ref<T, true, 1>, cx_ref<T, false, 1>>;
     using value_type      = cx_ref<T, Const, 1>;
@@ -276,11 +280,6 @@ private:
 };
 
 namespace detail_ {
-template<typename T, bool Const, uZ PackSize>
-auto make_iterator(T* data_ptr, iZ index) noexcept {
-    return iterator<T, Const, PackSize>(data_ptr, index);
-};
-
 template<typename T>
 struct is_pcx_iterator {
     static constexpr bool value = false;
@@ -329,7 +328,7 @@ struct cx_vector_traits<R> {
 
 namespace detail_ {
 template<typename T, bool Const, uZ PackSize>
-[[nodiscard]] auto make_cx_ref(T* ptr) {
+[[nodiscard]] auto make_cx_ref(auto* ptr) {
     return cx_ref<T, Const, PackSize>(ptr);
 }
 }    // namespace detail_
@@ -349,14 +348,15 @@ class cx_ref {
     friend class cx_ref<T, true, PackSize>;
 
     friend auto detail_::make_cx_ref<T, Const, PackSize>(T* ptr);
+    friend auto detail_::make_cx_ref<T, Const, PackSize>(const T* ptr);
 
 public:
-    using real_type  = T;
-    using pointer    = typename std::conditional<Const, const T*, T*>::type;
-    using value_type = std::complex<real_type>;
+    using real_type    = T;
+    using real_pointer = typename std::conditional<Const, const T*, T*>::type;
+    using value_type   = std::complex<real_type>;
 
 private:
-    explicit cx_ref(pointer ptr) noexcept
+    explicit cx_ref(real_pointer ptr) noexcept
     : m_ptr(ptr){};
 
 public:
@@ -421,12 +421,12 @@ public:
         return *this;
     }
     // NOLINTNEXTLINE(google-runtime-operator)
-    [[nodiscard]] auto operator&() const noexcept -> pointer {
+    [[nodiscard]] auto operator&() const noexcept -> real_pointer {
         return m_ptr;
     }
 
 private:
-    pointer m_ptr{};
+    real_pointer m_ptr{};
 };
 }    // namespace pcx
 #endif
