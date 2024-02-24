@@ -1122,18 +1122,18 @@ public:
     [[nodiscard]] auto as_slice() noexcept
         requires /**/ (!vector_like)    // Temporarily
     {
-        if constexpr (vector_like) {
-            //return pcx::detail_::make_subrange<T, false, PackSize>(data(), size());
-        } else {
-            using slice_base = typename Base::template slice_base<>;
-            using slice_type = sslice<false, Basis, T, PackSize, slice_base>;
+        // if constexpr (vector_like) {
+        //     return pcx::detail_::make_subrange<T, false, PackSize>(data(), size());
+        // } else {
+        using slice_base = typename Base::template slice_base<>;
+        using slice_type = sslice<false, Basis, T, PackSize, slice_base>;
 
-            auto* slice_start = data();
-            return slice_type(slice_start, Base::slice_base_args());
-        }
+        auto* slice_start = data();
+        return slice_type(slice_start, Base::slice_base_args());
+        // }
     }
     /**
-     * @brief Returns a constant slice view over the whole storage.
+     * @brief Returns a read_only slice view over the whole storage.
      * TODO: If `Basis.size` equals 1 the returned slice type is `pcx::subrange`. 
      * 
      */
@@ -1141,22 +1141,22 @@ public:
         return as_cslice();
     }
     /**
-     * @brief Returns a constant slice view over the whole storage.
+     * @brief Returns a read-only slice view over the whole storage.
      * TODO: If `Basis.size` equals 1 the returned slice type is `pcx::subrange`. 
      * 
      */
     [[nodiscard]] auto as_cslice() const noexcept
         requires /**/ (!vector_like)    // Temporarily
     {
-        if constexpr (vector_like) {
-            //return pcx::detail_::make_subrange<T, const, PackSize>(data(), size());
-        } else {
+        // if constexpr (vector_like) {
+        //     return pcx::detail_::make_subrange<T, const, PackSize>(data(), size());
+        // } else {
             using slice_base = typename Base::template slice_base<>;
             using slice_type = sslice<true, Basis, T, PackSize, slice_base>;
 
             auto* slice_start = data();
             return slice_type(slice_start, Base::slice_base_args());
-        }
+        // }
     }
     /**
      * @brief Returns a read-only sub-slice from `Axis` at `index`.
