@@ -1,12 +1,9 @@
-
-#include "allocators.hpp"
 #include "element_access.hpp"
 #include "mdstorage.hpp"
 #include "meta.hpp"
 #include "types.hpp"
 
 #include <bits/ranges_base.h>
-#include <cassert>
 #include <iostream>
 #include <type_traits>
 
@@ -125,7 +122,7 @@ auto fill_mdstorage(auto&& slice, double exponent) {
         if constexpr (pcx::detail_::is_pcx_iterator<pcx::rv::iterator_t<decltype(slice)>>::value) {
             pcx::uZ i = 0;
             for (auto v: slice) {
-                v = std::complex<float>(offset + i);
+                v = static_cast<float>(offset + static_cast<double>(i));
                 ++i;
             }
         } else {
@@ -144,7 +141,7 @@ auto print_mdstorage(auto&& slice) {
     if constexpr (pcx::detail_::is_pcx_iterator<pcx::rv::iterator_t<decltype(slice)>>::value) {
         // std::cout << slice.size() << "\n";
         for (auto v: slice) {
-            std::cout << std::complex<float>(v) << " ";
+            std::cout << std::complex<float>{v} << " ";
         }
     } else {
         // std::cout << slice.size() << "\n";
@@ -236,14 +233,15 @@ auto check_storage(auto&& storage){
 
 int main() {
     using enum ax1;
-    constexpr auto         left_basis = pcx::md::left_basis<x, y, z>{3U, 2U, 2U};
-    std::array<float, 128> beging{};
-    auto                   static_storage_l = pcx::md::static_stoarge<float, left_basis>{};
-    std::array<float, 128> endg{};
+    constexpr auto               left_basis = pcx::md::left_basis<x, y, z>{3U, 2U, 2U};
+    const std::array<float, 128> beging{};
+    auto                         static_storage_l = pcx::md::static_stoarge<float, left_basis>{};
+    const std::array<float, 128> endg{};
     test_xyz_storage(static_storage_l);
     test_const_xyz_storage(static_storage_l);
     std::cout << "static l:\n";
-    fill_mdstorage(static_storage_l, 10.);
+    constexpr double ten = 10.;
+    fill_mdstorage(static_storage_l, ten);
     for (auto v: beging) {
         std::cout << v << " ";
     }
@@ -258,12 +256,12 @@ int main() {
     auto dynamic_storage_l = pcx::md::dynamic_storage<float, left_basis>{3U, 2U, 4U};
     test_xyz_storage(dynamic_storage_l);
     std::cout << "dynamic l:\n";
-    fill_mdstorage(dynamic_storage_l, 10.);
+    fill_mdstorage(dynamic_storage_l, ten);
     print_mdstorage(dynamic_storage_l);
     print_mdstorage(std::as_const(dynamic_storage_l));
 
     constexpr auto right_basis = pcx::md::right_basis<x, y, z>{1U, 1U, 1U};
-    constexpr auto asds        = right_basis.outer_axis;
+    constexpr auto asds        = pcx::md::right_basis<x, y, z>::outer_axis;
 
     auto static_storage_r  = pcx::md::static_stoarge<float, right_basis>{};
     auto dynamic_storage_r = pcx::md::dynamic_storage<float, right_basis>{3U, 2U, 1U};
@@ -271,13 +269,13 @@ int main() {
     test_xyz_storage<right>(static_storage_r);
     test_xyz_storage<right>(dynamic_storage_r);
     std::cout << "dynamic r:\n";
-    fill_mdstorage(dynamic_storage_r, 10.);
+    fill_mdstorage(dynamic_storage_r, ten);
     print_mdstorage(dynamic_storage_r);
     // std::cout << "dynamic r:\n";
-    // fill_mdstorage(dynamic_storage_r, 10.);
+    // fill_mdstorage(dynamic_storage_r, ten);
     // print_mdstorage(dynamic_storage_r);
     // std::cout << "static r:\n";
-    // fill_mdstorage(static_storage_r, 10.);
+    // fill_mdstorage(static_storage_r, ten);
     // print_mdstorage(static_storage_r);
 
     static constexpr auto vector_basis = pcx::md::left_basis<x>{8U};
