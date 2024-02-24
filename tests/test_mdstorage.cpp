@@ -34,7 +34,8 @@ struct test_ranges {
 template<pcx::md::layout Layout = pcx::md::layout::left>
 auto test_xyz_storage(auto&& storage) {
     using enum ax1;
-
+    
+    auto s = storage.as_slice();
     auto sx   = storage.template slice<x>(0);
     auto sxy  = sx.template slice<y>(0);
     auto sxyz = sxy.template slice<z>(0);
@@ -46,6 +47,7 @@ auto test_xyz_storage(auto&& storage) {
     auto szxy = szx.template slice<y>(0);
 
     (void)test_ranges<decltype(storage)>();
+    (void)test_ranges<decltype(s)>();
     (void)test_ranges<decltype(sx)>();
     (void)test_ranges<decltype(sxy)>();
     (void)test_ranges<decltype(sy)>();
@@ -159,17 +161,16 @@ auto check_storage(auto&& storage){
 
 int main() {
     using enum ax1;
-    constexpr auto               left_basis = pcx::md::left_basis<x, y, z>{3U, 2U, 2U};
+    constexpr auto               left_basis = pcx::md::left_basis<x, y, z>{3U, 2U, 3U};
     const std::array<float, 128> beging{};
     auto                         static_storage_l = pcx::md::static_stoarge<float, left_basis>{};
     const std::array<float, 128> endg{};
     test_xyz_storage(static_storage_l);
     test_const_xyz_storage(static_storage_l);
-    std::cout << "static left 3:2:2 :\n";
+    std::cout << "static left 3:2:3 :\n";
     constexpr double ten = 10.;
-    fill_mdstorage(static_storage_l, ten);
-    std::cout << "\n";
-    print_mdstorage(std::as_const(static_storage_l));
+    fill_mdstorage(static_storage_l.as_slice(), ten);
+    print_mdstorage(std::as_const(static_storage_l).as_slice());
 
     auto dynamic_storage_l = pcx::md::dynamic_storage<float, left_basis>{3U, 2U, 4U};
     test_xyz_storage(dynamic_storage_l);

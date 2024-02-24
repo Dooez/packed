@@ -469,17 +469,18 @@ protected:
 
     using allocator = pcx::null_allocator<T>;
 
-    using iterator_base = iter_base<Basis, meta::value_sequence<>, PackSize, Alignment>;
+    using iterator_base       = iter_base<Basis, meta::value_sequence<>, PackSize, Alignment>;
     using const_iterator_base = iterator_base;
 
     _NDINLINE_ static constexpr auto iterator_base_args() noexcept {
         return 0;
     };
 
-    template<auto Axis>
-    using slice_base = slice_base<Basis, meta::value_sequence<Axis>, PackSize, Alignment>;
-    template<auto Axis>
-    using const_slice_base = slice_base<Axis>;
+
+    template<auto... Axis>
+    using slice_base = slice_base<Basis, meta::value_sequence<Axis...>, PackSize, Alignment>;
+    template<auto... Axis>
+    using const_slice_base = slice_base<Axis...>;
 
     _NDINLINE_ static constexpr auto slice_base_args() noexcept {
         return 0;
@@ -706,10 +707,10 @@ protected:
         return &m_extents;
     }
 
-    template<auto Axis>
-    using const_slice_base = slice_base<true, Basis, meta::value_sequence<Axis>, PackSize>;
-    template<auto Axis>
-    using slice_base = slice_base<false, Basis, meta::value_sequence<Axis>, PackSize>;
+    template<auto... Axis>
+    using const_slice_base = slice_base<true, Basis, meta::value_sequence<Axis...>, PackSize>;
+    template<auto... Axis>
+    using slice_base = slice_base<false, Basis, meta::value_sequence<Axis...>, PackSize>;
 
     _NDINLINE_ auto slice_base_args() noexcept {
         return &m_extents;
@@ -866,7 +867,8 @@ public:
     [[nodiscard]] auto operator==(const iterator& other) const noexcept -> bool {
         return m_ptr == other.m_ptr;
     };
-    [[nodiscard]] auto operator==(const iterator<!Const, Basis, T, PackSize, Base>& other) const noexcept -> bool {
+    [[nodiscard]] auto operator==(const iterator<!Const, Basis, T, PackSize, Base>& other) const noexcept
+        -> bool {
         return m_ptr == other.m_ptr;
     };
 
@@ -1108,6 +1110,51 @@ public:
             using slice_type = sslice<false, Basis, T, PackSize, slice_base>;
 
             auto* slice_start = data() + Base::template slice_offset<Axis>(index);
+            return slice_type(slice_start, Base::slice_base_args());
+        }
+    }
+
+    /**
+     * @brief Returns a slice view over the whole storage.
+     * TODO: If `Basis.size` equals 1 the returned slice type is `pcx::subrange`. 
+     * 
+     */
+    [[nodiscard]] auto as_slice() noexcept
+        requires /**/ (!vector_like)    // Temporarily
+    {
+        if constexpr (vector_like) {
+            //return pcx::detail_::make_subrange<T, false, PackSize>(data(), size());
+        } else {
+            using slice_base = typename Base::template slice_base<>;
+            using slice_type = sslice<false, Basis, T, PackSize, slice_base>;
+
+            auto* slice_start = data();
+            return slice_type(slice_start, Base::slice_base_args());
+        }
+    }
+    /**
+     * @brief Returns a constant slice view over the whole storage.
+     * TODO: If `Basis.size` equals 1 the returned slice type is `pcx::subrange`. 
+     * 
+     */
+    [[nodiscard]] auto as_slice() const noexcept {
+        return as_cslice();
+    }
+    /**
+     * @brief Returns a constant slice view over the whole storage.
+     * TODO: If `Basis.size` equals 1 the returned slice type is `pcx::subrange`. 
+     * 
+     */
+    [[nodiscard]] auto as_cslice() const noexcept
+        requires /**/ (!vector_like)    // Temporarily
+    {
+        if constexpr (vector_like) {
+            //return pcx::detail_::make_subrange<T, const, PackSize>(data(), size());
+        } else {
+            using slice_base = typename Base::template slice_base<>;
+            using slice_type = sslice<true, Basis, T, PackSize, slice_base>;
+
+            auto* slice_start = data();
             return slice_type(slice_start, Base::slice_base_args());
         }
     }
