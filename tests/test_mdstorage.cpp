@@ -34,8 +34,8 @@ struct test_ranges {
 template<pcx::md::layout Layout = pcx::md::layout::left>
 auto test_xyz_storage(auto&& storage) {
     using enum ax1;
-    
-    auto s = storage.as_slice();
+
+    auto s    = storage.as_slice();
     auto sx   = storage.template slice<x>(0);
     auto sxy  = sx.template slice<y>(0);
     auto sxyz = sxy.template slice<z>(0);
@@ -185,7 +185,7 @@ int main() {
     auto static_storage_r  = pcx::md::static_stoarge<float, right_basis>{};
     auto dynamic_storage_r = pcx::md::dynamic_storage<float, right_basis>{3U, 2U, 4U};
     using enum pcx::md::layout;
-   
+
     test_xyz_storage<right>(static_storage_r);
     std::cout << "static right 3|2|4:\n";
     fill_mdstorage(static_storage_r, ten);
@@ -196,8 +196,12 @@ int main() {
     fill_mdstorage(dynamic_storage_r, ten);
     print_mdstorage(dynamic_storage_r);
 
-    static constexpr auto vector_basis = pcx::md::left_basis<x>{8U};
-    using vector_storage_type          = pcx::md::static_stoarge<float, vector_basis>;
-    static_assert(pcx::complex_vector_of<float, vector_storage_type>);
+    constexpr auto short_basis    = pcx::md::left_basis<x>{4U};
+    auto           short_static_l = pcx::md::static_stoarge<float, short_basis>{};
+    std::cout << "short left 4:\n";
+    fill_mdstorage(short_static_l, ten);
+    print_mdstorage(short_static_l);
+
+    static_assert(pcx::complex_vector_of<float, decltype(short_static_l)>);
     return 0;
 }
