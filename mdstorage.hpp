@@ -1249,6 +1249,11 @@ using dynamic_storage = storage<T,    //
                                 Alignment,
                                 detail_::dynamic::storage_base<T, Basis, PackSize, Alignment, Allocator>>;
 }    // namespace pcx::md
+
+namespace std::ranges {
+template<typename T, pcx::uZ PackSize, auto Basis, bool Const, typename Base>
+inline constexpr bool enable_borrowed_range<pcx::md::sslice<Const, Basis, T, PackSize, Base>> = true;
+}
 #undef _INLINE_
 #undef _NDINLINE_
 #endif

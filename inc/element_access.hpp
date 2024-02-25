@@ -291,40 +291,6 @@ struct is_pcx_iterator<iterator<T, Const, PackSize>> {
 };
 }    // namespace detail_
 
-template<typename R>
-    requires /**/ rv::range<R> && (detail_::is_pcx_iterator<rv::iterator_t<R>>::value)
-struct cx_vector_traits<R> {
-    using real_type               = typename rv::iterator_t<R>::real_type;
-    static constexpr uZ pack_size = rv::iterator_t<R>::pack_size;
-
-    inline static auto re_data(R& vector) {
-        auto it = vector.begin();
-        if constexpr (!always_aligned<R>) {
-            if (!it.aligned()) {
-                throw(
-                    std::invalid_argument("Packed complex range is not aligned. Packed complex range must be "
-                                          "aligned to be accessed as a vector."));
-            }
-        }
-        return &(*it);
-    }
-
-    inline static auto re_data(const R& vector) {
-        auto it = vector.begin();
-        if constexpr (!always_aligned<R>) {
-            if (!it.aligned()) {
-                throw(
-                    std::invalid_argument("Packed complex range is not aligned. Packed complex range must be "
-                                          "aligned to be accessed as a vector."));
-            }
-        }
-        return &(*it);
-    }
-
-    inline static auto size(const R& vector) {
-        return rv::size(vector);
-    }
-};
 
 namespace detail_ {
 template<typename T, bool Const, uZ PackSize>
@@ -352,7 +318,7 @@ class cx_ref {
 
 public:
     using real_type    = T;
-    using real_pointer = typename std::conditional<Const, const T*, T*>::type;
+    using real_pointer = std::conditional_t<Const, const T*, T*>;
     using value_type   = std::complex<real_type>;
 
 private:
@@ -427,6 +393,76 @@ public:
 
 private:
     real_pointer m_ptr{};
+};
+
+namespace detail_ {
+template<bool Always>
+struct pack_aligned_base {
+    using always_aligned = std::false_type;
+};
+template<>
+struct pack_aligned_base<true> {
+    using always_aligned = std::true_type;
+};
+}    // namespace detail_
+
+template<typename R>
+    requires /**/ (rv::range<R> && (detail_::is_pcx_iterator<rv::iterator_t<R>>::value))
+struct cx_vector_traits<R> {
+    using real_type                                 = typename rv::iterator_t<R>::real_type;
+    static constexpr uZ   pack_size                 = rv::iterator_t<R>::pack_size;
+    static constexpr bool enable_vector_expressions = true;
+
+    static constexpr bool always_aligned = pack_size == 1    //
+                                           || std::derived_from<R, detail_::pack_aligned_base<true>>;
+
+    inline static auto re_data(R& vector) {
+        auto it = vector.begin();
+        if constexpr (!always_aligned) {
+            // TODO: no exception verison
+            if (!it.aligned()) {
+                throw(
+                    std::invalid_argument("Packed complex range is not aligned. Packed complex range must be "
+                                          "aligned to be accessed as a vector."));
+            }
+        }
+        return &(*it);
+    }
+
+    inline static auto re_data(const R& vector) {
+        auto it = vector.begin();
+        if constexpr (!always_aligned) {
+            // TODO: no exception verison
+            if (!it.aligned()) {
+                throw(
+                    std::invalid_argument("Packed complex range is not aligned. Packed complex range must be "
+                                          "aligned to be accessed as a vector."));
+            }
+        }
+        return &(*it);
+    }
+
+    inline static auto size(const R& vector) {
+        return rv::size(vector);
+    }
+
+    inline static constexpr auto aligned(const R& /*vector*/) -> bool
+        requires(always_aligned)
+    {
+        return true;
+    }
+
+    inline static auto aligned(const R& vector) -> bool
+        requires(!always_aligned)
+    {
+        if constexpr (requires(const R& v) {
+                          { v.aligned() } -> std::same_as<bool>;
+                      }) {
+            return vector.aligned();
+        } else {
+            return vector.begin().aligned();
+        }
+    }
 };
 }    // namespace pcx
 #endif

@@ -66,17 +66,6 @@ struct cx_reg {
 
 }    // namespace simd
 
-namespace detail_ {
-template<bool Always>
-struct pack_aligned_base {};
-template<>
-struct pack_aligned_base<true> {
-    using always_aligned = std::true_type;
-};
-}    // namespace detail_
-
-template<typename T>
-concept always_aligned = std::derived_from<T, detail_::pack_aligned_base<true>>;
 
 template<typename T>
     requires floating_point<T>
@@ -108,6 +97,19 @@ struct is_std_complex_floating_point<std::complex<F>> {
 };
 }    // namespace detail_
 
+/**
+ *@brief Used to access raw data of packed complex vectors.
+ * Packed complex vector is a range that stores complex floating point values
+ * in a contigious memory region, where n real values are followed by 
+ * n imaginary values. n is the vector's pack size. 
+ *
+ * Example of a vector with pack size 2:
+ * [re0, re1, im0, im1, re2, re3, im2, im3]
+ *
+ * A specialization for contigious ranges of std::complex<T> is provided. 
+ * cx_vector_traits can be specialized to support arbitraty ranges.
+ *
+ */
 template<typename V>
 struct cx_vector_traits {
     using real_type               = decltype([] {});
@@ -118,8 +120,9 @@ template<typename R>
     requires rv::contiguous_range<R> && detail_::is_std_complex_floating_point<rv::range_value_t<R>>::value
 struct cx_vector_traits<R> {
     using real_type = typename detail_::is_std_complex_floating_point<rv::range_value_t<R>>::real_type;
-    static constexpr uZ   pack_size                = 1;
-    static constexpr bool enable_vector_extensions = false;
+    static constexpr uZ   pack_size                 = 1;
+    static constexpr bool enable_vector_expressions = false;
+    static constexpr bool always_aligned            = true;
 
     static auto re_data(R& vector) -> real_type* {
         return reinterpret_cast<real_type*>(rv::data(vector));
@@ -130,6 +133,9 @@ struct cx_vector_traits<R> {
     static auto size(const R& vector) {
         return rv::size(vector);
     }
+    static constexpr auto aligned(const R& /*vector*/) {
+        return true;
+    }
 };
 
 template<typename T, typename V>
@@ -138,6 +144,9 @@ concept complex_vector_of = std::same_as<T, typename cx_vector_traits<V>::real_t
 template<typename T, typename R>
 concept range_of_complex_vector_of = rv::random_access_range<R> &&    //
                                      complex_vector_of<T, std::remove_pointer_t<rv::range_value_t<R>>>;
+
+template<typename T>
+concept always_aligned = cx_vector_traits<T>::always_aligned;
 
 }    // namespace pcx
 #endif
