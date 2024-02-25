@@ -503,6 +503,11 @@ protected:
         return Basis.extent(Basis.outer_axis);
     }
 
+    template<auto Axis>
+    _NDINLINE_ static constexpr auto get_extent() noexcept -> uZ {
+        return Basis.extent(Axis);
+    }
+
 private:
     std::array<T, storage_size> m_data{};
 };
@@ -731,6 +736,12 @@ protected:
 
     _NDINLINE_ auto get_size() const noexcept -> uZ {
         return m_extents.extents.back();
+    }
+
+    template<auto Axis>
+    _NDINLINE_ auto get_extent() const noexcept -> uZ {
+        constexpr auto index = Basis.index_of(Axis);
+        return m_extents.extents[index];
     }
 
 private:
@@ -1041,7 +1052,7 @@ class storage
 public:
     /**
      * @brief Constructs dynamic storage using `allocator` for memory allocation.
-     * c
+     * 
      * @param extents Axis extents in the basis axis declaration order. See `storage(U... extents)`.
      */
     template<std::unsigned_integral... U>
@@ -1058,8 +1069,8 @@ public:
      ``` c++
         constexpr auto basis    = pcx::md::left_basis<x, y, z>;
         auto           storage  = dynamic_storage<float, basis>(2U, 4UL, 8U);
-        auto           x_extent = storage.extent<x>();
-        auto           y_extent = storage.extent<y>();
+        auto           x_extent = storage.extent<x>(); // 2
+        auto           y_extent = storage.extent<y>(); // 4
      ```
      * x_extent is std::size_t and equals 2, and y_extent is std::size_t and equals 4.
      */
@@ -1096,6 +1107,37 @@ public:
     [[nodiscard]] auto cend() const noexcept -> const_iterator {
         return cbegin() + size();
     }
+
+    /**
+     * @brief Returns a view over the whole storage.
+     * 
+     */
+    [[nodiscard]] auto as_slice() noexcept {
+        using slice_base = typename Base::template slice_base<>;
+        using slice_type = sslice<false, Basis, T, PackSize, slice_base>;
+
+        auto* slice_start = data();
+        return slice_type(slice_start, Base::slice_base_args());
+    }
+    /**
+     * @brief Returns a read_only view over the whole storage.
+     * 
+     */
+    [[nodiscard]] auto as_slice() const noexcept {
+        return as_cslice();
+    }
+    /**
+     * @brief Returns a read-only view over the whole storage.
+     * 
+     */
+    [[nodiscard]] auto as_cslice() const noexcept {
+        using slice_base = typename Base::template slice_base<>;
+        using slice_type = sslice<true, Basis, T, PackSize, slice_base>;
+
+        auto* slice_start = data();
+        return slice_type(slice_start, Base::slice_base_args());
+    }
+
     /**
      * @brief Returns a sub-slice from `Axis` at `index`.
      * If `Basis.size` equals 1 the returned slice type is `pcx::cx_ref`.
@@ -1115,51 +1157,7 @@ public:
     }
 
     /**
-     * @brief Returns a slice view over the whole storage.
-     * TODO: If `Basis.size` equals 1 the returned slice type is `pcx::subrange`. 
-     * 
-     */
-    [[nodiscard]] auto as_slice() noexcept
-        requires /**/ (!vector_like)    // Temporarily
-    {
-        // if constexpr (vector_like) {
-        //     return pcx::detail_::make_subrange<T, false, PackSize>(data(), size());
-        // } else {
-        using slice_base = typename Base::template slice_base<>;
-        using slice_type = sslice<false, Basis, T, PackSize, slice_base>;
-
-        auto* slice_start = data();
-        return slice_type(slice_start, Base::slice_base_args());
-        // }
-    }
-    /**
-     * @brief Returns a read_only slice view over the whole storage.
-     * TODO: If `Basis.size` equals 1 the returned slice type is `pcx::subrange`. 
-     * 
-     */
-    [[nodiscard]] auto as_slice() const noexcept {
-        return as_cslice();
-    }
-    /**
-     * @brief Returns a read-only slice view over the whole storage.
-     * TODO: If `Basis.size` equals 1 the returned slice type is `pcx::subrange`. 
-     * 
-     */
-    [[nodiscard]] auto as_cslice() const noexcept
-        requires /**/ (!vector_like)    // Temporarily
-    {
-        // if constexpr (vector_like) {
-        //     return pcx::detail_::make_subrange<T, const, PackSize>(data(), size());
-        // } else {
-            using slice_base = typename Base::template slice_base<>;
-            using slice_type = sslice<true, Basis, T, PackSize, slice_base>;
-
-            auto* slice_start = data();
-            return slice_type(slice_start, Base::slice_base_args());
-        // }
-    }
-    /**
-     * @brief Returns a read-only sub-slice from `Axis` at `index`.
+     * @brief Returns a read-only slice from `Axis` at `index`.
      * If `Basis.size` equals 1 the returned slice type is `pcx::cx_ref`.
      */
     template<auto Axis>
@@ -1168,7 +1166,7 @@ public:
         return cslice<Axis>(index);
     }
     /**
-     * @brief Returns a read-only sub-slice from `Axis` at `index`.
+     * @brief Returns a read-only slice from `Axis` at `index`.
      * If `Basis.size` equals 1 the returned slice type is `pcx::cx_ref`.
      */
     template<auto Axis>
@@ -1184,22 +1182,48 @@ public:
             return slice_type(slice_start, Base::slice_base_args());
         }
     }
-
+    /**
+     * @brief Returns a slice from outer axis at `index`
+     *
+     */
     [[nodiscard]] auto operator[](uZ index) noexcept {
         return slice<Basis.outer_axis>(index);
     }
+    /**
+     * @brief Returns a read-only slice from outer axis at `index`
+     *
+     */
     [[nodiscard]] auto operator[](uZ index) const noexcept {
         return slice<Basis.outer_axis>(index);
     }
-
+    /**
+     * @brief Returns a pointer to the raw storage
+     *
+     */
     [[nodiscard]] auto data() noexcept -> T* {
         return Base::get_data();
     }
+    /**
+     * @brief Returns a pointer to the raw storage
+     *
+     */
     [[nodiscard]] auto data() const noexcept -> const T* {
         return Base::get_data();
     }
+    /**
+     * @brief Returns the extent of the outer axis
+     *
+     */
     [[nodiscard]] auto size() const noexcept -> uZ {
         return Base::get_size();
+    }
+    /**
+     * @brief Returns the extent of the `Axis` axis
+     *
+     */
+    template<auto Axis>
+    [[nodiscard]] auto extent() const noexcept -> uZ {
+        return Base::template get_extent<Axis>();
     }
 };
 
