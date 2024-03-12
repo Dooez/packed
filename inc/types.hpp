@@ -119,7 +119,10 @@ struct cx_vector_traits {
 template<typename R>
     requires rv::contiguous_range<R> && detail_::is_std_complex_floating_point<rv::range_value_t<R>>::value
 struct cx_vector_traits<R> {
-    using real_type = typename detail_::is_std_complex_floating_point<rv::range_value_t<R>>::real_type;
+    using real_type        = typename detail_::is_std_complex_floating_point<rv::range_value_t<R>>::real_type;
+    using iterator_t       = rv::iterator_t<R>;
+    using const_iterator_t = decltype(rv::cbegin(std::declval<R&>()));
+
     static constexpr uZ   pack_size                 = 1;
     static constexpr bool enable_vector_expressions = false;
     static constexpr bool always_aligned            = true;
@@ -136,7 +139,16 @@ struct cx_vector_traits<R> {
     static constexpr auto aligned(const R& /*vector*/) {
         return true;
     }
+    static constexpr auto aligned(const iterator_t& /*iterator*/) {
+        return true;
+    }
+    static constexpr auto aligned(const const_iterator_t& /*iterator*/) {
+        return true;
+    }
 };
+
+template<typename V>
+concept complex_vector = cx_vector_traits<V>::pack_size != 0;
 
 template<typename T, typename V>
 concept complex_vector_of = std::same_as<T, typename cx_vector_traits<V>::real_type>;
