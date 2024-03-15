@@ -416,6 +416,9 @@ struct cx_vector_traits<R> {
     static constexpr bool always_aligned = pack_size == 1    //
                                            || std::derived_from<R, detail_::pack_aligned_base<true>>;
 
+    using iterator_t       = rv::iterator_t<R>;
+    using const_iterator_t = decltype(rv::cbegin(std::declval<R&>()));
+
     inline static auto re_data(R& vector) {
         auto it = vector.begin();
         if constexpr (!always_aligned) {
@@ -462,6 +465,16 @@ struct cx_vector_traits<R> {
         } else {
             return vector.begin().aligned();
         }
+    }
+
+    static constexpr auto aligned(const iterator_t& iterator) {
+        return iterator.aligned();
+    }
+
+    static constexpr auto aligned(const const_iterator_t& iterator)
+        requires(!std::same_as<iterator_t, const_iterator_t>)
+    {
+        return iterator.aligned();
     }
 };
 }    // namespace pcx

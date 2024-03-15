@@ -115,6 +115,9 @@ constexpr void concept_test() {
     using subrange_t       = pcx::subrange<T, false, pack_size>;
     using const_subrange_t = pcx::subrange<T, true, pack_size>;
 
+    static_assert(complex_vector<vector_t>);
+    static_assert(complex_vector<subrange_t>);
+
     static_assert(!view<vector_t>);
     static_assert(range<vector_t>);
     static_assert(sized_range<vector_t>);

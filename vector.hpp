@@ -176,14 +176,17 @@ public:
     }
 
     template<typename E>
-        requires /**/ (!std::same_as<E, vector>) && detail_::vector_expression<E>
+        requires /**/ (!std::same_as<E, vector>) &&
+                 (detail_::vector_expression<E> || std::derived_from<E, detail_::vecexpr_base>)
     vector& operator=(const E& other) {
         assert(size() == other.size());
 
         auto it_this = begin();
         auto it_expr = other.begin();
 
-        constexpr auto pack_size_expr = decltype(it_expr)::pack_size;
+        using expr_traits             = detail_::expr_traaits2<E>;
+        constexpr auto pack_size_expr = expr_traits::pack_size;
+        // constexpr auto pack_size_expr = decltype(it_expr)::pack_size;
 
         if (it_expr.aligned()) {
             constexpr auto reg_size   = 32 / sizeof(T);
@@ -194,7 +197,7 @@ public:
             for (uint i = 0; i < aligned_size; ++i) {
                 for (uint i_reg = 0; i_reg < store_size; i_reg += reg_size) {
                     auto offset = i * store_size + i_reg;
-                    auto data_  = detail_::expression_traits::cx_reg<pack_size_expr>(it_expr, offset);
+                    auto data_  = expr_traits::template cx_reg<pack_size_expr>(it_expr, offset);
                     auto data   = simd::apply_conj(data_);
                     simd::cxstore<pack_size>(simd::ra_addr<pack_size>(ptr, offset), data);
                 }
@@ -523,7 +526,7 @@ public:
     };
 
     template<typename E>
-        requires(!Const) && detail_::vector_expression<E>
+        requires(!Const) && (detail_::vector_expression<E> || std::derived_from<E, detail_::vecexpr_base>)
     void assign(const E& expression) {
         if (expression.size() != size()) {
             throw(std::invalid_argument(std::string("source size (which is ")
@@ -542,7 +545,9 @@ public:
             ++it_this;
             ++it_expr;
         }
-        constexpr auto pack_size_expr = decltype(it_expr)::pack_size;
+
+        using expr_traits = detail_::expr_traaits2<E>;
+        constexpr auto pack_size_expr = expr_traits::pack_size;
 
         if (it_this.aligned() && it_expr.aligned()) {
             constexpr auto reg_size   = 32 / sizeof(T);
@@ -553,7 +558,7 @@ public:
             for (uint i = 0; i < aligned_size; ++i) {
                 for (uint i_reg = 0; i_reg < store_size; i_reg += reg_size) {
                     auto offset = i * store_size + i_reg;
-                    auto data_  = detail_::expression_traits::cx_reg<pack_size_expr>(it_expr, offset);
+                    auto data_  = expr_traits::template cx_reg<pack_size_expr>(it_expr, offset);
                     auto data   = simd::apply_conj(data_);
                     simd::cxstore<pack_size>(simd::ra_addr<pack_size>(ptr, offset), data);
                 }

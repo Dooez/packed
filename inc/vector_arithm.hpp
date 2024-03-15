@@ -213,67 +213,88 @@ template<typename Iter, typename Range>
 concept iterator_of = std::same_as<rv::iterator_t<Range>, Iter>    //
                       || std::same_as<const_iterator_t<Range>, Iter>;
 
-template<typename R>
+template<typename T>
 struct expr_traaits2 {
-    template<uZ PackSize, typename Iter>
-        requires iterator_of<Iter, R> &&
-                 requires(const Iter& iterator, uZ offset) { iterator.cx_reg(offset); }
-    auto cx_reg(const Iter& iterator, uZ offset) {
-        return iterator.cx_reg(offset);
-    }
+    using real_type                                 = decltype([] {});
+    static constexpr uZ   pack_size                 = 0;
+    static constexpr bool enable_vector_expressions = false;
+};
 
+template<typename R>
+    requires complex_vector<R>
+struct expr_traaits2<R> : cx_vector_traits<R> {
     template<uZ PackSize, typename Iter>
-        requires complex_vector<R> && iterator_of<Iter, R>
-    auto cx_reg(const Iter& iterator, uZ offset) {
+        requires iterator_of<Iter, R>
+    static auto cx_reg(const Iter& iterator, uZ offset) {
         constexpr uZ pack_size = cx_vector_traits<R>::pack_size;
         auto         addr      = simd::ra_addr<pack_size>(&(*iterator), offset);
         auto         data      = simd::cxload<pack_size, PackSize>(addr);
         return data;
     }
-    template<typename Iter>
-        requires complex_vector<R> && iterator_of<Iter, R>
-    auto aligned(const auto& iterator) -> bool {
-        return cx_vector_traits<R>::aligned(iterator);
-    };
 };
+
+class vecexpr_base {};
+
 template<typename R>
-    requires complex_vector<R>
+    requires std::derived_from<R, vecexpr_base> || (vector_expression<R> && (!complex_vector<R>))
 struct expr_traaits2<R> {
-    static constexpr uZ pack_size = cx_vector_traits<R>::pack_size;
+    static constexpr uZ   pack_size                 = R::pack_size;
+    static constexpr bool always_aligned            = false;    // R::always_aligned; TODO:(REMOVE FALSE)
+    static constexpr bool enable_vector_expressions = true;
+
+    using real_type        = R::real_type;
+    using iterator_t       = rv::iterator_t<R>;
+    using const_iterator_t = decltype(rv::cbegin(std::declval<R&>()));
 
     template<uZ PackSize, typename Iter>
-        requires iterator_of<Iter, R>
-    auto cx_reg(const Iter& iterator, uZ offset) {
-        auto addr = simd::ra_addr<pack_size>(&(*iterator), offset);
-        auto data = simd::cxload<pack_size, PackSize>(addr);
-        return data;
+        requires iterator_of<Iter, R> &&
+                 requires(const Iter& iterator, uZ offset) { iterator.cx_reg(offset); }
+    static auto cx_reg(const Iter& iterator, uZ offset) {
+        return iterator.cx_reg(offset);
     }
+
     template<typename Iter>
         requires iterator_of<Iter, R>
-    auto aligned(const auto& iterator) -> bool {
-        return cx_vector_traits<R>::aligned(iterator);
+    static auto aligned(const Iter& iterator) -> bool {
+        return iterator.aligned();
+    };
+
+    template<typename Iter>
+        requires(iterator_of<Iter, R> && always_aligned)
+    constexpr static auto aligned(const Iter& /*iterator*/) -> bool {
+        return true;
     };
 };
 
-template<typename Impl, typename LhsIter, typename RhsIter>
-class eiter_base {
-protected:
-    LhsIter m_lhs;
-    RhsIter m_rhs;
 
-    eiter_base(const LhsIter& lhs, const RhsIter rhs)
+template<typename T>
+concept vecexpr = expr_traaits2<T>::enable_vector_expressions;
+template<typename T, typename U>
+concept compatible_vecexpr = vecexpr<T>                                               //
+                             && vecexpr<U>                                            //
+                             && std::same_as<typename expr_traaits2<T>::real_type,    //
+                                             typename expr_traaits2<U>::real_type>;
+
+template<typename Impl, typename LhsIter, typename RhsIter>
+class ee_iter_base {
+protected:
+    LhsIter m_lhs;    // NOLINT(*non-private*)
+    RhsIter m_rhs;    // NOLINT(*non-private*)
+
+    ee_iter_base(const LhsIter& lhs, const RhsIter& rhs)
     : m_lhs(lhs)
     , m_rhs(rhs){};
 
 public:
-    using difference_type = iZ;
+    using difference_type  = iZ;
+    using iterator_concept = std::random_access_iterator_tag;
 
-    eiter_base()                             = default;
-    eiter_base(eiter_base&&)                 = default;
-    eiter_base(const eiter_base&)            = default;
-    eiter_base& operator=(eiter_base&&)      = default;
-    eiter_base& operator=(const eiter_base&) = default;
-    ~eiter_base()                            = default;
+    ee_iter_base()                               = default;
+    ee_iter_base(ee_iter_base&&)                 = default;
+    ee_iter_base(const ee_iter_base&)            = default;
+    ee_iter_base& operator=(ee_iter_base&&)      = default;
+    ee_iter_base& operator=(const ee_iter_base&) = default;
+    ~ee_iter_base()                              = default;
 
     [[nodiscard]] bool operator==(const Impl& other) const noexcept {
         return (m_lhs == other.m_lhs);
@@ -311,7 +332,7 @@ public:
         return *static_cast<Impl*>(this);
     }
     auto operator-=(difference_type n) noexcept -> Impl& {
-        return (*this) += -n;
+        return *static_cast<Impl*>(this) += -n;
     }
 
     [[nodiscard]] friend auto operator+(Impl it, difference_type n) noexcept -> Impl {
@@ -330,102 +351,81 @@ public:
         return lhs.m_lhs - rhs.m_lhs;
     }
 };
-class expression_base {};
 
-template<typename E1, typename E2>
-class add2
-: rv::view_base
-, expression_base {
-    // friend auto operator+ <E1, E2>(const E1& lhs, const E2& rhs);
-    using lhs_iterator = const_iterator_t<E1>;
-    using rhs_iterator = const_iterator_t<E2>;
+template<typename Impl, typename Scalar, typename Iter>
+class se_iter_base {
+protected:
+    Scalar m_scalar;    // NOLINT(*non-private*)
+    Iter   m_iter;      // NOLINT(*non-private*)
 
-    using value_type      = std::complex<typename cx_vector_traits<E1>::real_type>;
-    using difference_type = iZ;
-
-    class iterator : eiter_base<iterator, lhs_iterator, rhs_iterator> {
-        using eiter_base<iterator, lhs_iterator, rhs_iterator>::eiter_base;
-
-        using iterator_concept = std::random_access_iterator_tag;
-
-        // NOLINTNEXTLINE (*const*)
-        [[nodiscard]] auto operator*() const -> value_type {
-            return value_type(*m_lhs) + value_type(*m_rhs);
-        }
-        // NOLINTNEXTLINE (*const*)
-        [[nodiscard]] auto operator[](difference_type idx) const -> value_type {
-            return value_type(*(m_lhs + idx)) + value_type(*(m_rhs + idx));
-        }
-        [[nodiscard]] auto cx_reg(uZ idx) const {
-            const auto lhs = expression_traits::cx_reg<pack_size>(m_lhs, idx);
-            const auto rhs = expression_traits::cx_reg<pack_size>(m_rhs, idx);
-            if constexpr (pack_size < simd::reg<real_type>::size) {
-                auto c_lhs = simd::apply_conj(lhs);
-                auto c_rhs = simd::apply_conj(rhs);
-                return simd::add(c_lhs, c_rhs);
-            } else {
-                return simd::add(lhs, rhs);
-            }
-        }
-        [[nodiscard]] constexpr bool aligned() const noexcept {
-            return expression_traits::aligned(m_lhs) && expression_traits::aligned(m_rhs);
-        }
-    };
+    explicit se_iter_base(Scalar scalar, const Iter& rhs)
+    : m_scalar(scalar)
+    , m_iter(rhs){};
 
 public:
-    using real_type = cx_vector_traits<E1>::pack_size;
+    using difference_type  = iZ;
+    using iterator_concept = std::random_access_iterator_tag;
 
-    static constexpr auto pack_size = std::min(std::max(cx_vector_traits<E1>::pack_size,    //
-                                                        cx_vector_traits<E2>::pack_size),
-                                               simd::reg<real_type>::size);
+    se_iter_base()                               = default;
+    se_iter_base(se_iter_base&&)                 = default;
+    se_iter_base(const se_iter_base&)            = default;
+    se_iter_base& operator=(se_iter_base&&)      = default;
+    se_iter_base& operator=(const se_iter_base&) = default;
+    ~se_iter_base()                              = default;
 
-    static constexpr bool always_aligned = cx_vector_traits<E1>::always_aligned    //
-                                           && cx_vector_traits<E2>::always_aligned;
-
-private:
-    add2(const E1& lhs, const E2& rhs)
-    : m_lhs(lhs.begin())
-    , m_rhs(rhs.begin())
-    , m_size(lhs.size()) {
-        assert(lhs.size() == rhs.size());
-    };
-
-public:
-    add2() noexcept = delete;
-
-    add2(add2&& other) noexcept = default;
-    add2(const add2&) noexcept  = default;
-
-    ~add2() noexcept = default;
-
-    add2& operator=(add2&& other) noexcept {
-        m_lhs  = std::move(other.m_lhs);
-        m_rhs  = std::move(other.m_rhs);
-        m_size = other.m_size;
-        return *this;
-    };
-    add2& operator=(const add2&) noexcept = delete;
-
-    [[nodiscard]] auto begin() const noexcept -> iterator {
-        return iterator(m_lhs, m_rhs);
+    [[nodiscard]] bool operator==(const Impl& other) const noexcept {
+        return (m_iter == other.m_iter);
     }
-    [[nodiscard]] auto end() const noexcept -> iterator {
-        return iterator(m_lhs + m_size, m_rhs + m_size);
+    [[nodiscard]] auto operator<=>(const Impl& other) const noexcept {
+        return (m_iter <=> other.m_iter);
     }
 
-    [[nodiscard]] auto operator[](uZ idx) const {
-        return std::complex<real_type>(m_lhs[idx]) + std::complex<real_type>(m_rhs[idx]);
-    };
-
-    [[nodiscard]] constexpr auto size() const noexcept -> uZ {
-        return m_size;
+    auto operator++() noexcept -> Impl& {
+        ++m_iter;
+        return *static_cast<Impl*>(this);
+    }
+    auto operator++(int) noexcept -> Impl {
+        auto ithis = static_cast<Impl*>(this);
+        auto copy  = *ithis;
+        ++(*ithis);
+        return copy;
+    }
+    auto operator--() noexcept -> Impl& {
+        --m_iter;
+        return *static_cast<Impl*>(this);
+    }
+    auto operator--(int) noexcept -> Impl {
+        auto ithis = static_cast<Impl*>(this);
+        auto copy  = *ithis;
+        --(ithis);
+        return copy;
     }
 
-private:
-    lhs_iterator m_lhs;
-    rhs_iterator m_rhs;
-    uZ           m_size;
+    auto operator+=(difference_type n) noexcept -> Impl& {
+        m_iter += n;
+        return *static_cast<Impl*>(this);
+    }
+    auto operator-=(difference_type n) noexcept -> Impl& {
+        return *static_cast<Impl*>(this) += -n;
+    }
+
+    [[nodiscard]] friend auto operator+(Impl it, difference_type n) noexcept -> Impl {
+        it += n;
+        return it;
+    }
+    [[nodiscard]] friend auto operator+(difference_type n, Impl it) noexcept -> Impl {
+        it += n;
+        return it;
+    }
+    [[nodiscard]] friend auto operator-(Impl it, difference_type n) noexcept -> Impl {
+        it -= n;
+        return it;
+    }
+    [[nodiscard]] friend auto operator-(Impl lhs, Impl rhs) noexcept {
+        return lhs.m_iter - rhs.m_iter;
+    }
 };
+
 
 }    // namespace detail_
 
@@ -480,6 +480,182 @@ auto conj(const E& vector);
 // #endregion operator forward declarations
 
 namespace detail_ {
+
+template<typename ELhs, typename ERhs>
+//    requires compatible_vecexpr<ELhs, ERhs>
+class add2 final
+: public rv::view_base
+, public vecexpr_base {
+    friend auto operator+ <ELhs, ERhs>(const ELhs& lhs, const ERhs& rhs);
+    using lhs_traits   = expr_traaits2<ELhs>;
+    using rhs_traits   = expr_traaits2<ERhs>;
+    using lhs_iterator = typename lhs_traits::const_iterator_t;
+    using rhs_iterator = typename rhs_traits::const_iterator_t;
+
+public:
+    using real_type = lhs_traits::real_type;
+
+    static constexpr auto pack_size = std::min(std::max(lhs_traits::pack_size,    //
+                                                        rhs_traits::pack_size),
+                                               simd::reg<real_type>::size);
+
+    static constexpr bool always_aligned = lhs_traits::always_aligned    //
+                                           && rhs_traits::always_aligned;
+
+    using value_type      = std::complex<real_type>;
+    using difference_type = iZ;
+
+private:
+    class iterator : public ee_iter_base<iterator, lhs_iterator, rhs_iterator> {
+        friend class add2;
+
+        iterator(const lhs_iterator& lhs, const rhs_iterator& rhs)
+        : ee_iter_base<iterator, lhs_iterator, rhs_iterator>(lhs, rhs){};
+
+    public:
+        // NOLINTNEXTLINE (*const*)
+        [[nodiscard]] auto operator*() const -> value_type {
+            return value_type(*this->m_lhs) + value_type(*this->m_rhs);
+        }
+        // NOLINTNEXTLINE (*const*)
+        [[nodiscard]] auto operator[](difference_type idx) const -> value_type {
+            return value_type(*(this->m_lhs + idx)) + value_type(*(this->m_rhs + idx));
+        }
+        [[nodiscard]] auto cx_reg(uZ idx) const {
+            const auto lhs = lhs_traits::template cx_reg<pack_size>(this->m_lhs, idx);
+            const auto rhs = rhs_traits::template cx_reg<pack_size>(this->m_rhs, idx);
+            if constexpr (pack_size < simd::reg<real_type>::size) {
+                auto c_lhs = simd::apply_conj(lhs);
+                auto c_rhs = simd::apply_conj(rhs);
+                return simd::add(c_lhs, c_rhs);
+            } else {
+                return simd::add(lhs, rhs);
+            }
+        }
+        [[nodiscard]] constexpr bool aligned() const noexcept {
+            return lhs_traits::aligned(this->m_lhs) && rhs_traits::aligned(this->m_rhs);
+        }
+    };
+
+    add2(const ELhs& lhs, const ERhs& rhs)
+    : m_lhs(rv::cbegin(lhs))
+    , m_rhs(rv::cbegin(rhs))
+    , m_size(rv::size(lhs)) {
+        assert(rv::size(lhs) == rv::size(rhs));
+    };
+
+public:
+    add2() noexcept                       = delete;
+    add2(add2&&) noexcept                 = default;
+    add2(const add2&) noexcept            = default;
+    add2& operator=(add2&&) noexcept      = delete;
+    add2& operator=(const add2&) noexcept = delete;
+    ~add2() noexcept                      = default;
+
+    [[nodiscard]] auto begin() const noexcept -> iterator {
+        return iterator(m_lhs, m_rhs);
+    }
+    [[nodiscard]] auto end() const noexcept -> iterator {
+        return iterator(m_lhs + m_size, m_rhs + m_size);
+    }
+
+    [[nodiscard]] auto operator[](uZ idx) const {
+        return std::complex<real_type>(m_lhs[idx]) + std::complex<real_type>(m_rhs[idx]);
+    };
+
+    [[nodiscard]] constexpr auto size() const noexcept -> uZ {
+        return m_size;
+    }
+
+private:
+    lhs_iterator m_lhs;
+    rhs_iterator m_rhs;
+    uZ           m_size;
+};
+template<typename E, typename S>
+    requires compatible_vecexpr<E, S>
+class add_scalar2 final
+: public vecexpr_base
+, rv::view_base {
+    friend auto operator+ <E, S>(const E&, S);
+    friend auto operator+ <E, S>(S, const E&);
+    friend auto operator- <E, S>(const E&, S);
+
+    using expr_traits   = expr_traaits2<E>;
+    using expr_iterator = typename expr_traits::const_iterator_t;
+
+public:
+    using real_type = expr_traits::real_type;
+
+    static constexpr auto pack_size = std::min(expr_traits::pack_size, simd::reg<real_type>::size);
+
+    static constexpr bool always_aligned = expr_traits::always_aligned;
+
+    using value_type      = std::complex<real_type>;
+    using difference_type = iZ;
+
+private:
+    class iterator : public se_iter_base<iterator, S, expr_iterator> {
+        friend class add_scalar2;
+
+        using base = se_iter_base<iterator, S, expr_iterator>;
+
+        iterator(S scalar, expr_iterator iter)
+        : base(scalar, iter){};
+
+    public:
+        // NOLINTNEXTLINE (*const*)
+        [[nodiscard]] auto operator*() const -> value_type {
+            return base::m_scalar + value_type(*base::m_iter);
+        }
+        // NOLINTNEXTLINE (*const*)
+        [[nodiscard]] auto operator[](difference_type idx) const -> value_type {
+            return base::m_scalar + value_type(*(base::m_iter + idx));
+        }
+        [[nodiscard]] auto cx_reg(uZ idx) const {
+            auto scalar = simd::broadcast(base::m_scalar);
+            auto vector = expr_traits::cx_reg<pack_size>(base::m_iter, idx);
+
+            return simd::add(scalar, vector);
+        }
+        [[nodiscard]] constexpr bool aligned() const noexcept {
+            return expr_traits::aligned(base::m_iter);
+        }
+    };
+
+    add_scalar2(S scalar, const E& expr)
+    : m_scalar(scalar)
+    , m_iter(rv::cbegin(expr))
+    , m_size(rv::size(expr)){};
+
+public:
+    add_scalar2() noexcept                              = delete;
+    add_scalar2(add_scalar2&&) noexcept                 = default;
+    add_scalar2(const add_scalar2&) noexcept            = default;
+    add_scalar2& operator=(add_scalar2&&) noexcept      = delete;
+    add_scalar2& operator=(const add_scalar2&) noexcept = delete;
+    ~add_scalar2() noexcept                             = default;
+
+    [[nodiscard]] auto begin() const noexcept -> iterator {
+        return iterator(m_scalar, m_iter);
+    }
+    [[nodiscard]] auto end() const noexcept -> iterator {
+        return iterator(m_scalar, m_iter + m_size);
+    }
+
+    [[nodiscard]] auto operator[](uZ idx) const {
+        return m_scalar + std::complex<real_type>(m_iter[idx]);
+    }
+    [[nodiscard]] constexpr auto size() const noexcept -> uZ {
+        return m_size;
+    }
+
+private:
+    S             m_scalar;
+    expr_iterator m_iter;
+    uZ            m_size;
+};
+
 
 template<typename E1, typename E2>
     requires compatible_expression<E1, E2>
@@ -1880,7 +2056,7 @@ private:
 template<typename E1, typename E2>
     requires detail_::compatible_expression<E1, E2>
 inline auto operator+(const E1& lhs, const E2& rhs) {
-    return detail_::add(lhs, rhs);
+    return detail_::add2(lhs, rhs);
 };
 template<typename E1, typename E2>
     requires detail_::compatible_expression<E1, E2>
