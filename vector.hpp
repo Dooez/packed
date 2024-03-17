@@ -26,7 +26,6 @@ namespace pcx {
 template<typename T, uZ PackSize = pcx::default_pack_size<T>, typename Allocator = pcx::aligned_allocator<T>>
     requires packed_floating_point<T, PackSize>
 class vector : public detail_::pack_aligned_base<true> {
-    friend class detail_::expression_traits;
     template<typename OT, uZ OPackSize, typename OAllocator>
         requires packed_floating_point<OT, OPackSize>
     friend class pcx::vector;
@@ -176,8 +175,7 @@ public:
     }
 
     template<typename E>
-        requires /**/ (!std::same_as<E, vector>) &&
-                 (detail_::vector_expression<E> || std::derived_from<E, detail_::vecexpr_base>)
+        requires /**/ (!std::same_as<E, vector>) && detail_::vecexpr<E>
     vector& operator=(const E& other) {
         assert(size() == other.size());
 
@@ -422,8 +420,6 @@ class subrange
         requires packed_floating_point<VT, VPackSize>
     friend class vector;
 
-    friend class detail_::expression_traits;
-
 public:
     using real_type       = T;
     using size_type       = uZ;
@@ -512,7 +508,7 @@ public:
     };
 
     template<typename R>
-        requires(!Const) && (!detail_::vector_expression<R>) && rv::input_range<R> &&
+        requires(!Const) && (!detail_::vecexpr<R>) && rv::input_range<R> &&
                 std::indirectly_copyable<rv::iterator_t<R>, iterator>
     void assign(const R& range) {
         if (range.size() != size()) {
@@ -526,7 +522,7 @@ public:
     };
 
     template<typename E>
-        requires(!Const) && (detail_::vector_expression<E> || std::derived_from<E, detail_::vecexpr_base>)
+        requires(!Const) && (detail_::vecexpr<E> || std::derived_from<E, detail_::vecexpr_base>)
     void assign(const E& expression) {
         if (expression.size() != size()) {
             throw(std::invalid_argument(std::string("source size (which is ")
@@ -546,7 +542,7 @@ public:
             ++it_expr;
         }
 
-        using expr_traits = detail_::expr_traaits2<E>;
+        using expr_traits             = detail_::expr_traaits2<E>;
         constexpr auto pack_size_expr = expr_traits::pack_size;
 
         if (it_this.aligned() && it_expr.aligned()) {
