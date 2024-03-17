@@ -10,13 +10,13 @@ namespace pcx::simd {
 
 template<>
 struct reg<float> {
-    using type = __m256;
-    static constexpr uZ size{32 / sizeof(float)};
+    using type               = __m256;
+    static constexpr uZ size = 32 / sizeof(float);
 };
 template<>
 struct reg<double> {
-    using type = __m256d;
-    static constexpr uZ size{32 / sizeof(double)};
+    using type               = __m256d;
+    static constexpr uZ size = 32 / sizeof(double);
 };
 
 template<typename T>

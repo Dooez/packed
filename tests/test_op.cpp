@@ -14,13 +14,13 @@
 
 void test_repack(float* data) {
     using namespace pcx::simd;
-    auto a1   = cxload<8>(data);
-    auto a2   = cxload<8>(data + 16);
+    auto a1 = cxload<8>(data);
+    auto a2 = cxload<8>(data + 16);
     // auto a3   = cxload<8>(data + 16);
     // auto a4   = cxload<8>(data + 24);
-    auto [b, c ] = repack<1,8>(a1, a2);
+    auto [b, c] = repack<1, 8>(a1, a2);
     cxstore<8>(data, b);
-    cxstore<8>(data +16, c);
+    cxstore<8>(data + 16, c);
     // cxstore<8>(data + 16, d);
     // cxstore<8>(data + 24, e);
 }
@@ -262,6 +262,15 @@ int test_subrange(std::size_t length) {
 
 int main() {
     int res = 0;
+
+    auto x = pcx::vector<double>(128);
+    auto y = pcx::vector<double>(128);
+    auto z = x * y;
+    auto ze = pcx::rv::end(z);
+
+
+    // static_assert(pcx::rv::range<decltype(z)>);
+
     for (uint i = 1; i < 32; ++i) {
         res += test_bin_ops<float, 1>(i);
         res += test_bin_ops<float, 2>(i);
@@ -278,9 +287,10 @@ int main() {
         // res += test_subrange<float>(i);
         // res += test_subrange<double>(i);
         if (res > 0) {
-            std::cout << i << "\n";
+            std::cout << "test_op error: " << i << "\n";
             return i;
         }
     }
+    std::cout << "test_op finished successfully\n";
     return res;
 }

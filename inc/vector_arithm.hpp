@@ -250,7 +250,9 @@ struct expr_traaits2<R> {
         requires iterator_of<Iter, R> &&
                  requires(const Iter& iterator, uZ offset) { iterator.cx_reg(offset); }
     static auto cx_reg(const Iter& iterator, uZ offset) {
-        return iterator.cx_reg(offset);
+        auto data_  = iterator.cx_reg(offset);
+        auto [data] = simd::repack2<PackSize>(data_);
+        return data;
     }
 
     template<typename Iter>
@@ -296,11 +298,11 @@ public:
     ee_iter_base& operator=(const ee_iter_base&) = default;
     ~ee_iter_base()                              = default;
 
-    [[nodiscard]] bool operator==(const Impl& other) const noexcept {
-        return (m_lhs == other.m_lhs);
+    [[nodiscard]] friend bool operator==(const Impl& lhs, const Impl& rhs) noexcept {
+        return (lhs.m_lhs == rhs.m_lhs);
     }
-    [[nodiscard]] auto operator<=>(const Impl& other) const noexcept {
-        return (m_lhs <=> other.m_lhs);
+    [[nodiscard]] friend auto operator<=>(const Impl& lhs, const Impl& rhs) noexcept {
+        return (lhs.m_lhs <=> rhs.m_lhs);
     }
 
     auto operator++() noexcept -> Impl& {
@@ -432,15 +434,21 @@ public:
 
 // #region operator forward declarations
 
+// template<typename E1, typename E2>
+//     requires detail_::compatible_expression<E1, E2>
+// auto operator+(const E1& lhs, const E2& rhs);
 template<typename E1, typename E2>
-    requires detail_::compatible_expression<E1, E2>
+    requires detail_::compatible_vecexpr<E1, E2>
 auto operator+(const E1& lhs, const E2& rhs);
 template<typename E1, typename E2>
     requires detail_::compatible_expression<E1, E2>
 auto operator-(const E1& lhs, const E2& rhs);
 template<typename E1, typename E2>
-    requires detail_::compatible_expression<E1, E2>
+    requires detail_::compatible_vecexpr<E1, E2>
 auto operator*(const E1& lhs, const E2& rhs);
+// template<typename E1, typename E2>
+//     requires detail_::compatible_expression<E1, E2>
+// auto operator*(const E1& lhs, const E2& rhs);
 template<typename E1, typename E2>
     requires detail_::compatible_expression<E1, E2>
 auto operator/(const E1& lhs, const E2& rhs);
@@ -482,7 +490,7 @@ auto conj(const E& vector);
 namespace detail_ {
 
 template<typename ELhs, typename ERhs>
-//    requires compatible_vecexpr<ELhs, ERhs>
+// requires compatible_vecexpr<ELhs, ERhs>
 class add2 final
 : public rv::view_base
 , public vecexpr_base {
@@ -513,6 +521,7 @@ private:
         : ee_iter_base<iterator, lhs_iterator, rhs_iterator>(lhs, rhs){};
 
     public:
+        iterator() = default;
         // NOLINTNEXTLINE (*const*)
         [[nodiscard]] auto operator*() const -> value_type {
             return value_type(*this->m_lhs) + value_type(*this->m_rhs);
@@ -568,12 +577,276 @@ public:
     }
 
 private:
+    lhs_iterator m_lhs{};
+    rhs_iterator m_rhs{};
+    uZ           m_size{};
+};
+
+template<typename ELhs, typename ERhs>
+// requires compatible_vecexpr<ELhs, ERhs>
+class sub2 final
+: public rv::view_base
+, public vecexpr_base {
+    friend auto operator- <ELhs, ERhs>(const ELhs& lhs, const ERhs& rhs);
+    using lhs_traits   = expr_traaits2<ELhs>;
+    using rhs_traits   = expr_traaits2<ERhs>;
+    using lhs_iterator = typename lhs_traits::const_iterator_t;
+    using rhs_iterator = typename rhs_traits::const_iterator_t;
+
+public:
+    using real_type = lhs_traits::real_type;
+
+    static constexpr auto pack_size = std::min(std::max(lhs_traits::pack_size,    //
+                                                        rhs_traits::pack_size),
+                                               simd::reg<real_type>::size);
+
+    static constexpr bool always_aligned = lhs_traits::always_aligned    //
+                                           && rhs_traits::always_aligned;
+
+    using value_type      = std::complex<real_type>;
+    using difference_type = iZ;
+
+private:
+    class iterator : public ee_iter_base<iterator, lhs_iterator, rhs_iterator> {
+        friend class sub2;
+
+        iterator(const lhs_iterator& lhs, const rhs_iterator& rhs)
+        : ee_iter_base<iterator, lhs_iterator, rhs_iterator>(lhs, rhs){};
+
+    public:
+        iterator() = default;
+        // NOLINTNEXTLINE (*const*)
+        [[nodiscard]] auto operator*() const -> value_type {
+            return value_type(*this->m_lhs) - value_type(*this->m_rhs);
+        }
+        // NOLINTNEXTLINE (*const*)
+        [[nodiscard]] auto operator[](difference_type idx) const -> value_type {
+            return value_type(*(this->m_lhs + idx)) - value_type(*(this->m_rhs + idx));
+        }
+        [[nodiscard]] auto cx_reg(uZ idx) const {
+            const auto lhs = lhs_traits::template cx_reg<pack_size>(this->m_lhs, idx);
+            const auto rhs = rhs_traits::template cx_reg<pack_size>(this->m_rhs, idx);
+            if constexpr (pack_size < simd::reg<real_type>::size) {
+                auto c_lhs = simd::apply_conj(lhs);
+                auto c_rhs = simd::apply_conj(rhs);
+                return simd::sub(c_lhs, c_rhs);
+            } else {
+                return simd::sub(lhs, rhs);
+            }
+        }
+        [[nodiscard]] constexpr bool aligned() const noexcept {
+            return lhs_traits::aligned(this->m_lhs) && rhs_traits::aligned(this->m_rhs);
+        }
+    };
+
+    sub2(const ELhs& lhs, const ERhs& rhs)
+    : m_lhs(rv::cbegin(lhs))
+    , m_rhs(rv::cbegin(rhs))
+    , m_size(rv::size(lhs)) {
+        assert(rv::size(lhs) == rv::size(rhs));
+    };
+
+public:
+    sub2() noexcept                       = delete;
+    sub2(sub2&&) noexcept                 = default;
+    sub2(const sub2&) noexcept            = default;
+    sub2& operator=(sub2&&) noexcept      = delete;
+    sub2& operator=(const sub2&) noexcept = delete;
+    ~sub2() noexcept                      = default;
+
+    [[nodiscard]] auto begin() const noexcept -> iterator {
+        return iterator(m_lhs, m_rhs);
+    }
+    [[nodiscard]] auto end() const noexcept -> iterator {
+        return iterator(m_lhs + m_size, m_rhs + m_size);
+    }
+
+    [[nodiscard]] auto operator[](uZ idx) const {
+        return std::complex<real_type>(m_lhs[idx]) - std::complex<real_type>(m_rhs[idx]);
+    };
+
+    [[nodiscard]] constexpr auto size() const noexcept -> uZ {
+        return m_size;
+    }
+
+private:
+    lhs_iterator m_lhs{};
+    rhs_iterator m_rhs{};
+    uZ           m_size{};
+};
+
+template<typename ELhs, typename ERhs>
+// requires compatible_vecexpr<ELhs, ERhs>
+class mul2 final
+: public rv::view_base
+, public vecexpr_base {
+    friend auto operator* <ELhs, ERhs>(const ELhs& lhs, const ERhs& rhs);
+    using lhs_traits   = expr_traaits2<ELhs>;
+    using rhs_traits   = expr_traaits2<ERhs>;
+    using lhs_iterator = typename lhs_traits::const_iterator_t;
+    using rhs_iterator = typename rhs_traits::const_iterator_t;
+
+public:
+    using real_type = lhs_traits::real_type;
+
+    static constexpr auto pack_size = simd::reg<real_type>::size;
+
+    static constexpr bool always_aligned = lhs_traits::always_aligned    //
+                                           && rhs_traits::always_aligned;
+
+    using value_type      = std::complex<real_type>;
+    using difference_type = iZ;
+
+private:
+    class iterator : public ee_iter_base<iterator, lhs_iterator, rhs_iterator> {
+        friend class mul2;
+
+        iterator(const lhs_iterator& lhs, const rhs_iterator& rhs)
+        : ee_iter_base<iterator, lhs_iterator, rhs_iterator>(lhs, rhs){};
+
+    public:
+        iterator() = default;
+        // NOLINTNEXTLINE (*const*)
+        [[nodiscard]] auto operator*() const -> value_type {
+            return value_type(*this->m_lhs) * value_type(*this->m_rhs);
+        }
+        // NOLINTNEXTLINE (*const*)
+        [[nodiscard]] auto operator[](difference_type idx) const -> value_type {
+            return value_type(*(this->m_lhs + idx)) * value_type(*(this->m_rhs + idx));
+        }
+        [[nodiscard]] auto cx_reg(uZ idx) const {
+            const auto lhs = lhs_traits::template cx_reg<pack_size>(this->m_lhs, idx);
+            const auto rhs = rhs_traits::template cx_reg<pack_size>(this->m_rhs, idx);
+            return simd::mul(lhs, rhs);
+        }
+        [[nodiscard]] constexpr bool aligned() const noexcept {
+            return lhs_traits::aligned(this->m_lhs) && rhs_traits::aligned(this->m_rhs);
+        }
+    };
+
+    mul2(const ELhs& lhs, const ERhs& rhs)
+    : m_lhs(rv::cbegin(lhs))
+    , m_rhs(rv::cbegin(rhs))
+    , m_size(rv::size(lhs)) {
+        assert(rv::size(lhs) == rv::size(rhs));
+    };
+
+public:
+    mul2() noexcept                       = default;
+    mul2(mul2&&) noexcept                 = default;
+    mul2(const mul2&) noexcept            = default;
+    mul2& operator=(mul2&&) noexcept      = delete;
+    mul2& operator=(const mul2&) noexcept = delete;
+    ~mul2() noexcept                      = default;
+
+    [[nodiscard]] auto begin() const noexcept -> iterator {
+        return iterator(m_lhs, m_rhs);
+    }
+    [[nodiscard]] auto end() const noexcept -> iterator {
+        return iterator(m_lhs + m_size, m_rhs + m_size);
+    }
+
+    [[nodiscard]] auto operator[](uZ idx) const {
+        return std::complex<real_type>(m_lhs[idx]) * std::complex<real_type>(m_rhs[idx]);
+    };
+
+    [[nodiscard]] constexpr auto size() const noexcept -> uZ {
+        return m_size;
+    }
+
+private:
+    lhs_iterator m_lhs{};
+    rhs_iterator m_rhs{};
+    uZ           m_size{};
+};
+
+template<typename ELhs, typename ERhs>
+// requires compatible_vecexpr<ELhs, ERhs>
+class div2 final
+: public rv::view_base
+, public vecexpr_base {
+    friend auto operator/ <ELhs, ERhs>(const ELhs& lhs, const ERhs& rhs);
+    using lhs_traits   = expr_traaits2<ELhs>;
+    using rhs_traits   = expr_traaits2<ERhs>;
+    using lhs_iterator = typename lhs_traits::const_iterator_t;
+    using rhs_iterator = typename rhs_traits::const_iterator_t;
+
+public:
+    using real_type = lhs_traits::real_type;
+
+    static constexpr auto pack_size = simd::reg<real_type>::size;
+
+    static constexpr bool always_aligned = lhs_traits::always_aligned    //
+                                           && rhs_traits::always_aligned;
+
+    using value_type      = std::complex<real_type>;
+    using difference_type = iZ;
+
+private:
+    class iterator : public ee_iter_base<iterator, lhs_iterator, rhs_iterator> {
+        friend class div2;
+
+        iterator(const lhs_iterator& lhs, const rhs_iterator& rhs)
+        : ee_iter_base<iterator, lhs_iterator, rhs_iterator>(lhs, rhs){};
+
+    public:
+        iterator() = default;
+        // NOLINTNEXTLINE (*const*)
+        [[nodiscard]] auto operator*() const -> value_type {
+            return value_type(*this->m_lhs) / value_type(*this->m_rhs);
+        }
+        // NOLINTNEXTLINE (*const*)
+        [[nodiscard]] auto operator[](difference_type idx) const -> value_type {
+            return value_type(*(this->m_lhs + idx)) / value_type(*(this->m_rhs + idx));
+        }
+        [[nodiscard]] auto cx_reg(uZ idx) const {
+            const auto lhs = lhs_traits::template cx_reg<pack_size>(this->m_lhs, idx);
+            const auto rhs = rhs_traits::template cx_reg<pack_size>(this->m_rhs, idx);
+            return simd::div(lhs, rhs);
+        }
+        [[nodiscard]] constexpr bool aligned() const noexcept {
+            return lhs_traits::aligned(this->m_lhs) && rhs_traits::aligned(this->m_rhs);
+        }
+    };
+
+    div2(const ELhs& lhs, const ERhs& rhs)
+    : m_lhs(rv::cbegin(lhs))
+    , m_rhs(rv::cbegin(rhs))
+    , m_size(rv::size(lhs)) {
+        assert(rv::size(lhs) == rv::size(rhs));
+    };
+
+public:
+    div2() noexcept                       = delete;
+    div2(div2&&) noexcept                 = default;
+    div2(const div2&) noexcept            = default;
+    div2& operator=(div2&&) noexcept      = delete;
+    div2& operator=(const div2&) noexcept = delete;
+    ~div2() noexcept                      = default;
+
+    [[nodiscard]] auto begin() const noexcept -> iterator {
+        return iterator(m_lhs, m_rhs);
+    }
+    [[nodiscard]] auto end() const noexcept -> iterator {
+        return iterator(m_lhs + m_size, m_rhs + m_size);
+    }
+
+    [[nodiscard]] auto operator[](uZ idx) const {
+        return std::complex<real_type>(m_lhs[idx]) / std::complex<real_type>(m_rhs[idx]);
+    };
+
+    [[nodiscard]] constexpr auto size() const noexcept -> uZ {
+        return m_size;
+    }
+
+private:
     lhs_iterator m_lhs;
     rhs_iterator m_rhs;
     uZ           m_size;
 };
+
 template<typename E, typename S>
-    requires compatible_vecexpr<E, S>
+// requires compatible_vecexpr<E, S>
 class add_scalar2 final
 : public vecexpr_base
 , rv::view_base {
@@ -660,7 +933,7 @@ private:
 template<typename E1, typename E2>
     requires compatible_expression<E1, E2>
 class add : public rv::view_base {
-    friend auto operator+ <E1, E2>(const E1& lhs, const E2& rhs);
+    // friend auto operator+ <E1, E2>(const E1& lhs, const E2& rhs);
     using lhs_iterator = decltype(std::declval<const E1>().begin());
     using rhs_iterator = decltype(std::declval<const E2>().begin());
 
@@ -986,7 +1259,7 @@ private:
 template<typename E1, typename E2>
     requires compatible_expression<E1, E2>
 class mul : public rv::view_base {
-    friend auto operator* <E1, E2>(const E1& lhs, const E2& rhs);
+    // friend auto operator* <E1, E2>(const E1& lhs, const E2& rhs);
     using lhs_iterator = decltype(std::declval<const E1>().begin());
     using rhs_iterator = decltype(std::declval<const E2>().begin());
 
@@ -1905,7 +2178,6 @@ private:
     S m_scalar;
 };
 
-
 template<typename E>
     requires vector_expression<E>
 class conjugate : public rv::view_base {
@@ -2053,25 +2325,35 @@ private:
 
 // #region operator definitions
 
+// template<typename E1, typename E2>
+//     requires detail_::compatible_expression<E1, E2>
+// inline auto operator+(const E1& lhs, const E2& rhs) {
+//     return detail_::add(lhs, rhs);
+// };
 template<typename E1, typename E2>
-    requires detail_::compatible_expression<E1, E2>
+    requires detail_::compatible_vecexpr<E1, E2>
 inline auto operator+(const E1& lhs, const E2& rhs) {
     return detail_::add2(lhs, rhs);
 };
 template<typename E1, typename E2>
     requires detail_::compatible_expression<E1, E2>
 inline auto operator-(const E1& lhs, const E2& rhs) {
-    return detail_::sub(lhs, rhs);
+    return detail_::sub2(lhs, rhs);
 };
 template<typename E1, typename E2>
-    requires detail_::compatible_expression<E1, E2>
+    requires detail_::compatible_vecexpr<E1, E2>
 inline auto operator*(const E1& lhs, const E2& rhs) {
-    return detail_::mul(lhs, rhs);
+    return detail_::mul2(lhs, rhs);
 };
+// template<typename E1, typename E2>
+//     requires detail_::compatible_expression<E1, E2>
+// inline auto operator*(const E1& lhs, const E2& rhs) {
+//     return detail_::mul(lhs, rhs);
+// };
 template<typename E1, typename E2>
     requires detail_::compatible_expression<E1, E2>
 inline auto operator/(const E1& lhs, const E2& rhs) {
-    return detail_::div(lhs, rhs);
+    return detail_::div2(lhs, rhs);
 };
 
 template<typename E, typename S>
