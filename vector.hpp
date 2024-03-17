@@ -182,7 +182,7 @@ public:
         auto it_this = begin();
         auto it_expr = other.begin();
 
-        using expr_traits             = detail_::expr_traaits2<E>;
+        using expr_traits             = detail_::expr_traits<E>;
         constexpr auto pack_size_expr = expr_traits::pack_size;
         // constexpr auto pack_size_expr = decltype(it_expr)::pack_size;
 
@@ -542,7 +542,7 @@ public:
             ++it_expr;
         }
 
-        using expr_traits             = detail_::expr_traaits2<E>;
+        using expr_traits             = detail_::expr_traits<E>;
         constexpr auto pack_size_expr = expr_traits::pack_size;
 
         if (it_this.aligned() && it_expr.aligned()) {
