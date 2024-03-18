@@ -12,6 +12,8 @@
 //     set(v_def_2.begin(), v_def_2.end(), 1);
 // }
 
+using pcx::uZ;
+
 void test_repack(float* data) {
     using namespace pcx::simd;
     auto a1 = cxload<8>(data);
@@ -120,6 +122,28 @@ int test_bin_ops(std::size_t length) {
         //
     );
 
+    auto check_cx = [&](auto&& lhs, auto&& rhs, auto&& ops) {
+        return [&]<uZ... I>(std::index_sequence<I...>, auto&& lhs, auto&& rhs, auto& ops) {
+            auto single_op = [&](auto&& lhs, auto&& rhs, auto&& op, uZ N) {
+                pcx_res = op(lhs, pcx_rhs);
+                for (uint i = 0; i < length; ++i) {
+                    auto v   = pcx_res[i].value();
+                    auto res = op(std_lhs[i], std_rhs[i]);
+                    if (!equal_eps(res, pcx_res[i].value())) {
+                        std::cout << "Values not equal after vector•vector operation " << N <<    //
+                            " for pack size " << PackSize << ".\n";
+                        std::cout << "Length: " << length << " Index: " << i <<    //
+                            ". Expected value: " << res <<                         //
+                            ". Acquired value: " << pcx_res[i].value() << ".\n";
+                        return 1;
+                    }
+                }
+                return 0;
+            };
+            return (single_op(lhs, rhs, std::get<I>(ops), I) + ...);
+        }(std::make_index_sequence<std::tuple_size_v<std::remove_cvref_t<decltype(ops)>>>{}, lhs, rhs, ops);
+    };
+
     auto check_vector = [&]<std::size_t N>(auto&& ops) {
         auto& op = std::get<N>(ops);
         pcx_res  = op(pcx_lhs, pcx_rhs);
@@ -213,7 +237,18 @@ int test_bin_ops(std::size_t length) {
         return 0;
     };
 
-    auto check_cx = [&]<typename... Ops>(const std::tuple<Ops...>& ops) {
+    auto check_ch = [&]() {
+        auto lhs = pcx::vector<T>(length);
+        auto rhs = pcx::vector<T>(length);
+
+        auto lhs2 = pcx::vector<T>(length);
+        auto rhs2 = pcx::vector<T>(length);
+
+        check_cx(lhs, rhs, cxops);
+        check_cx(lhs, rhs, cxops);
+    };
+
+    auto check_cx_ = [&]<typename... Ops>(const std::tuple<Ops...>& ops) {
         auto check_all_impl = [&]<std::size_t... N>(auto&& ops, std::index_sequence<N...>) {
             return (check_vector.template operator()<N>(ops) + ...) +
                    (check_subr.template operator()<N>(ops) + ...) +
@@ -228,7 +263,7 @@ int test_bin_ops(std::size_t length) {
         return check_all_impl(ops, std::index_sequence_for<Ops...>{});
     };
 
-    return check_cx(cxops) + check_re(reops);
+    return check_cx_(cxops) + check_re(reops);
 }
 
 template<typename T>
@@ -263,9 +298,9 @@ int test_subrange(std::size_t length) {
 int main() {
     int res = 0;
 
-    auto x = pcx::vector<double>(128);
-    auto y = pcx::vector<double>(128);
-    auto z = x * y;
+    auto x  = pcx::vector<double>(128);
+    auto y  = pcx::vector<double>(128);
+    auto z  = x * y;
     auto ze = pcx::rv::end(z);
 
 
