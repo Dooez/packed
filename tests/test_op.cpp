@@ -1,16 +1,15 @@
 
+#include "mdstorage.hpp"
 #include "simd_common.hpp"
 #include "vector.hpp"
-#include "vector_util.hpp"
 
-#include <algorithm>
 #include <iostream>
 #include <limits>
+#include <map>
+#include <string>
+#include <typeindex>
+#include <typeinfo>
 #include <utility>
-// void set_te(packed_cx_vector<double>& v_def_2)
-// {
-//     set(v_def_2.begin(), v_def_2.end(), 1);
-// }
 
 using pcx::uZ;
 
@@ -67,9 +66,28 @@ int equal_eps(std::complex<T> lhs, std::complex<T> rhs) {
     return abs(lhs - rhs) < (largest * epsilon);
 }
 
-template<typename T, std::size_t PackSize>
+auto type_names = std::map<std::type_index, std::string>{};
+int  reg_type_name(const auto& obj, std::string_view name) {
+    auto index = std::type_index{typeid(obj)};
+    if (type_names.contains(index)) {
+        if (type_names[index] != name)
+            return -1;
+        return 0;
+    }
+    type_names[index] = name;
+    return 0;
+};
+auto get_type_name(const auto& obj) -> std::string {
+    auto index = std::type_index{typeid(obj)};
+    if (type_names.contains(index)) {
+        return type_names[index];
+    }
+    return "<unregistered type " + std::string(typeid(obj).name()) + ">";
+};
+
+template<typename T, uZ PackSize>
     requires pcx::packed_floating_point<T, PackSize>
-int test_bin_ops(std::size_t length) {
+int test_bin_ops(uZ length) {
     auto pcx_lhs = pcx::vector<T, PackSize, pcx::aligned_allocator<T>>(length);
     auto pcx_rhs = pcx::vector<T, PackSize, pcx::aligned_allocator<T>>(length);
     auto pcx_res = pcx::vector<T, PackSize, pcx::aligned_allocator<T>>(length);
@@ -113,7 +131,6 @@ int test_bin_ops(std::size_t length) {
         //
     );
 
-
     auto reops = std::make_tuple(    //
         [](auto&& a, auto&& b) { return a + b; },
         [](auto&& a, auto&& b) { return a - b; },
@@ -122,16 +139,20 @@ int test_bin_ops(std::size_t length) {
         //
     );
 
+
     auto check_cx = [&](auto&& lhs, auto&& rhs, auto&& ops) {
         return [&]<uZ... I>(std::index_sequence<I...>, auto&& lhs, auto&& rhs, auto& ops) {
             auto single_op = [&](auto&& lhs, auto&& rhs, auto&& op, uZ N) {
-                pcx_res = op(lhs, pcx_rhs);
+                pcx_res = op(lhs, rhs);
                 for (uint i = 0; i < length; ++i) {
                     auto v   = pcx_res[i].value();
                     auto res = op(std_lhs[i], std_rhs[i]);
                     if (!equal_eps(res, pcx_res[i].value())) {
-                        std::cout << "Values not equal after vector•vector operation " << N <<    //
-                            " for pack size " << PackSize << ".\n";
+                        const auto* lhs_name = typeid(lhs).name();
+                        const auto* rhs_name = typeid(rhs).name();
+                        std::cout << "Values not equal after " << get_type_name(lhs) << "•"
+                                  << get_type_name(rhs) << " operation #" << N << " for pack size "
+                                  << PackSize << ".\n";
                         std::cout << "Length: " << length << " Index: " << i <<    //
                             ". Expected value: " << res <<                         //
                             ". Acquired value: " << pcx_res[i].value() << ".\n";
@@ -144,25 +165,7 @@ int test_bin_ops(std::size_t length) {
         }(std::make_index_sequence<std::tuple_size_v<std::remove_cvref_t<decltype(ops)>>>{}, lhs, rhs, ops);
     };
 
-    auto check_vector = [&]<std::size_t N>(auto&& ops) {
-        auto& op = std::get<N>(ops);
-        pcx_res  = op(pcx_lhs, pcx_rhs);
-        for (uint i = 0; i < length; ++i) {
-            auto v   = pcx_res[i].value();
-            auto res = op(std_lhs[i], std_rhs[i]);
-            if (!equal_eps(res, pcx_res[i].value())) {
-                std::cout << "Values not equal after vector•vector operation " << N <<    //
-                    " for pack size " << PackSize << ".\n";
-                std::cout << "Length: " << length << " Index: " << i <<    //
-                    ". Expected value: " << res <<                         //
-                    ". Acquired value: " << pcx_res[i].value() << ".\n";
-                return 1;
-            }
-        }
-        return 0;
-    };
-
-    auto check_subr = [&]<std::size_t N>(auto&& ops) {
+    auto check_subr = [&]<uZ N>(auto&& ops) {
         auto& op = std::get<N>(ops);
         pcx::subrange<T, false, PackSize>(pcx_res).assign(op(pcx_lhs, pcx_rhs));
         for (uint i = 0; i < length; ++i) {
@@ -179,7 +182,7 @@ int test_bin_ops(std::size_t length) {
         }
         return 0;
     };
-    auto check_cx_scalar = [&]<std::size_t N>(auto&& ops) {
+    auto check_cx_scalar = [&]<uZ N>(auto&& ops) {
         auto& op = std::get<N>(ops);
         pcx_res  = op(pcx_lhs, cx_scalar);
         for (uint i = 0; i < length; ++i) {
@@ -208,7 +211,7 @@ int test_bin_ops(std::size_t length) {
         return 0;
     };
 
-    auto check_re_scalar = [&]<std::size_t N>(auto&& ops) {
+    auto check_re_scalar = [&]<uZ N>(auto&& ops) {
         auto& op = std::get<N>(ops);
         pcx_res  = op(pcx_lhs, re_scalar);
         for (uint i = 0; i < length; ++i) {
@@ -247,17 +250,25 @@ int test_bin_ops(std::size_t length) {
         check_cx(lhs, rhs, cxops);
         check_cx(lhs, rhs, cxops);
     };
+    using subrange = pcx::subrange<T, false, PackSize>;
+    auto sub_lhs   = subrange(pcx_lhs);
+    auto sub_rhs   = subrange(pcx_rhs);
+    auto sub_res   = subrange(pcx_res);
+    reg_type_name(pcx_lhs, "pcx::vector<T>");
+    reg_type_name(sub_lhs, "pcx::subrange<T>");
 
     auto check_cx_ = [&]<typename... Ops>(const std::tuple<Ops...>& ops) {
-        auto check_all_impl = [&]<std::size_t... N>(auto&& ops, std::index_sequence<N...>) {
-            return (check_vector.template operator()<N>(ops) + ...) +
-                   (check_subr.template operator()<N>(ops) + ...) +
-                   (check_cx_scalar.template operator()<N>(ops) + ...);
+        auto check_all_impl = [&]<uZ... N>(auto&& ops, std::index_sequence<N...>) {
+            return check_cx(pcx_lhs, pcx_rhs, ops)      //
+                   + check_cx(sub_lhs, sub_rhs, ops)    //
+                   /* (check_vector.template operator()<N>(ops) + ...) + */
+                   + (check_subr.template operator()<N>(ops) + ...)    //
+                   + (check_cx_scalar.template operator()<N>(ops) + ...);
         };
         return check_all_impl(ops, std::index_sequence_for<Ops...>{});
     };
     auto check_re = [&]<typename... Ops>(const std::tuple<Ops...>& ops) {
-        auto check_all_impl = [&]<std::size_t... N>(auto&& ops, std::index_sequence<N...>) {
+        auto check_all_impl = [&]<uZ... N>(auto&& ops, std::index_sequence<N...>) {
             return (check_re_scalar.template operator()<N>(ops) + ...);
         };
         return check_all_impl(ops, std::index_sequence_for<Ops...>{});
@@ -268,7 +279,7 @@ int test_bin_ops(std::size_t length) {
 
 template<typename T>
     requires std::floating_point<T>
-int test_subrange(std::size_t length) {
+int test_subrange(uZ length) {
     auto vec1 = pcx::vector<T>(length);
     auto vec2 = pcx::vector<T>(length);
     auto vecr = pcx::vector<T>(length);
