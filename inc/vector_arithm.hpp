@@ -1,5 +1,6 @@
 #ifndef VECTOR_ARITHM_HPP
 #define VECTOR_ARITHM_HPP
+
 #include "simd_common.hpp"
 #include "vector_util.hpp"
 
@@ -11,8 +12,6 @@
 #include <ranges>
 
 namespace pcx {
-
-
 namespace simd {
 
 template<typename... Args>
@@ -409,57 +408,57 @@ public:
     }
 };
 }    // namespace detail_
-
+}    // namespace pcx
 
 // #region operator forward declarations
 
 template<typename E1, typename E2>
-    requires detail_::compatible_vecexpr<E1, E2>
+    requires pcx::detail_::compatible_vecexpr<E1, E2>
 auto operator+(const E1& lhs, const E2& rhs);
 template<typename E1, typename E2>
-    requires detail_::compatible_vecexpr<E1, E2>
+    requires pcx::detail_::compatible_vecexpr<E1, E2>
 auto operator-(const E1& lhs, const E2& rhs);
 template<typename E1, typename E2>
-    requires detail_::compatible_vecexpr<E1, E2>
+    requires pcx::detail_::compatible_vecexpr<E1, E2>
 auto operator*(const E1& lhs, const E2& rhs);
 template<typename E1, typename E2>
-    requires detail_::compatible_vecexpr<E1, E2>
+    requires pcx::detail_::compatible_vecexpr<E1, E2>
 auto operator/(const E1& lhs, const E2& rhs);
 
 template<typename E, typename S>
-    requires detail_::compatible_scalar<E, S>
+    requires pcx::detail_::compatible_scalar<E, S>
 auto operator+(const E& vector, S scalar);
 template<typename E, typename S>
-    requires detail_::compatible_scalar<E, S>
+    requires pcx::detail_::compatible_scalar<E, S>
 auto operator+(S scalar, const E& vector);
 
 template<typename E, typename S>
-    requires detail_::compatible_scalar<E, S>
+    requires pcx::detail_::compatible_scalar<E, S>
 auto operator-(const E& vector, S scalar);
 template<typename E, typename S>
-    requires detail_::compatible_scalar<E, S>
+    requires pcx::detail_::compatible_scalar<E, S>
 auto operator-(S scalar, const E& vector);
 
 template<typename E, typename S>
-    requires detail_::compatible_scalar<E, S>
+    requires pcx::detail_::compatible_scalar<E, S>
 auto operator*(const E& vector, S scalar);
 template<typename E, typename S>
-    requires detail_::compatible_scalar<E, S>
+    requires pcx::detail_::compatible_scalar<E, S>
 auto operator*(S scalar, const E& vector);
 
 template<typename E, typename S>
-    requires detail_::compatible_scalar<E, S>
+    requires pcx::detail_::compatible_scalar<E, S>
 auto operator/(const E& vector, S scalar);
 template<typename E, typename S>
-    requires detail_::compatible_scalar<E, S>
+    requires pcx::detail_::compatible_scalar<E, S>
 auto operator/(S scalar, const E& vector);
 
 template<typename E>
-    requires detail_::vecexpr<E>
+    requires pcx::detail_::vecexpr<E>
 auto conj(const E& vector);
 
 // #endregion operator forward declarations
-
+namespace pcx {
 namespace detail_ {
 
 template<typename ELhs, typename ERhs>
@@ -961,7 +960,7 @@ template<typename E>
 class conjugate final : public un_expr_base<conjugate<E>, E> {
     friend class un_expr_base<conjugate, E>;
 
-    friend auto pcx::conj(const E&);
+    friend auto ::conj(const E&);
 
     using expr_traits   = expr_traits<E>;
     using expr_iterator = typename expr_traits::const_iterator_t;
@@ -1008,80 +1007,81 @@ private:
 };
 
 }    // namespace detail_
-
-// #region operator definitions
+}    // namespace pcx
 
 template<typename E1, typename E2>
-    requires detail_::compatible_vecexpr<E1, E2>
+    requires pcx::detail_::compatible_vecexpr<E1, E2>
 inline auto operator+(const E1& lhs, const E2& rhs) {
-    return detail_::add(lhs, rhs);
+    return pcx::detail_::add(lhs, rhs);
 };
+inline auto add_wrap(const auto& lhs, const auto& rhs) {
+    return lhs + rhs;
+}
+
 template<typename E1, typename E2>
-    requires detail_::compatible_vecexpr<E1, E2>
+    requires pcx::detail_::compatible_vecexpr<E1, E2>
 inline auto operator-(const E1& lhs, const E2& rhs) {
-    return detail_::sub(lhs, rhs);
+    return pcx::detail_::sub(lhs, rhs);
 };
 template<typename E1, typename E2>
-    requires detail_::compatible_vecexpr<E1, E2>
+    requires pcx::detail_::compatible_vecexpr<E1, E2>
 inline auto operator*(const E1& lhs, const E2& rhs) {
-    return detail_::mul(lhs, rhs);
+    return pcx::detail_::mul(lhs, rhs);
 };
 template<typename E1, typename E2>
-    requires detail_::compatible_vecexpr<E1, E2>
+    requires pcx::detail_::compatible_vecexpr<E1, E2>
 inline auto operator/(const E1& lhs, const E2& rhs) {
-    return detail_::div(lhs, rhs);
+    return pcx::detail_::div(lhs, rhs);
 };
 
 template<typename E, typename S>
-    requires detail_::compatible_scalar<E, S>
+    requires pcx::detail_::compatible_scalar<E, S>
 inline auto operator+(const E& vector, S scalar) {
-    return detail_::scalar_add(scalar, vector);
+    return pcx::detail_::scalar_add(scalar, vector);
 }
 template<typename E, typename S>
-    requires detail_::compatible_scalar<E, S>
+    requires pcx::detail_::compatible_scalar<E, S>
 inline auto operator+(S scalar, const E& vector) {
-    return detail_::scalar_add(scalar, vector);
+    return pcx::detail_::scalar_add(scalar, vector);
 }
 
 template<typename E, typename S>
-    requires detail_::compatible_scalar<E, S>
+    requires pcx::detail_::compatible_scalar<E, S>
 inline auto operator-(const E& vector, S scalar) {
-    return detail_::scalar_add(-scalar, vector);
+    return pcx::detail_::scalar_add(-scalar, vector);
 }
 template<typename E, typename S>
-    requires detail_::compatible_scalar<E, S>
+    requires pcx::detail_::compatible_scalar<E, S>
 inline auto operator-(S scalar, const E& vector) {
-    return detail_::scalar_sub(scalar, vector);
+    return pcx::detail_::scalar_sub(scalar, vector);
 }
 
 template<typename E, typename S>
-    requires detail_::compatible_scalar<E, S>
+    requires pcx::detail_::compatible_scalar<E, S>
 inline auto operator*(const E& vector, S scalar) {
-    return detail_::scalar_mul(scalar, vector);
+    return pcx::detail_::scalar_mul(scalar, vector);
 }
 template<typename E, typename S>
-    requires detail_::compatible_scalar<E, S>
+    requires pcx::detail_::compatible_scalar<E, S>
 inline auto operator*(S scalar, const E& vector) {
-    return detail_::scalar_mul(scalar, vector);
+    return pcx::detail_::scalar_mul(scalar, vector);
 }
 
 template<typename E, typename S>
-    requires detail_::compatible_scalar<E, S>
+    requires pcx::detail_::compatible_scalar<E, S>
 inline auto operator/(const E& vector, S scalar) {
-    return detail_::scalar_mul(S(1) / scalar, vector);
+    return pcx::detail_::scalar_mul(S(1) / scalar, vector);
 }
 template<typename E, typename S>
-    requires detail_::compatible_scalar<E, S>
+    requires pcx::detail_::compatible_scalar<E, S>
 inline auto operator/(S scalar, const E& vector) {
-    return detail_::scalar_div(scalar, vector);
+    return pcx::detail_::scalar_div(scalar, vector);
 }
 
 template<typename E>
-    requires detail_::vecexpr<E>
+    requires pcx::detail_::vecexpr<E>
 auto conj(const E& vector) {
-    return detail_::conjugate<E>(vector);
+    return pcx::detail_::conjugate<E>(vector);
 }
 
-// #endregion operator definitions
-}    // namespace pcx
 #endif

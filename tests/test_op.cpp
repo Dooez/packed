@@ -2,6 +2,7 @@
 #include "mdstorage.hpp"
 #include "simd_common.hpp"
 #include "vector.hpp"
+#include "vector_arithm.hpp"
 
 #include <iostream>
 #include <limits>
@@ -110,7 +111,8 @@ int test_bin_ops(uZ length) {
         pcx_rhs[i] = rhs;
         std_rhs[i] = rhs;
     }
-
+    
+    using namespace pcx;
     auto cxops = std::make_tuple(    //
         [](auto&& a, auto&& b) { return a + b; },
         [](auto&& a, auto&& b) { return a - b; },
@@ -128,7 +130,6 @@ int test_bin_ops(uZ length) {
         [](auto&& a, auto&& b) { return conj(a) - conj(b); },
         [](auto&& a, auto&& b) { return conj(a) * conj(b); },
         [](auto&& a, auto&& b) { return conj(a) / conj(b); }
-        //
     );
 
     auto reops = std::make_tuple(    //
@@ -254,13 +255,27 @@ int test_bin_ops(uZ length) {
     auto sub_lhs   = subrange(pcx_lhs);
     auto sub_rhs   = subrange(pcx_rhs);
     auto sub_res   = subrange(pcx_res);
-    reg_type_name(pcx_lhs, "pcx::vector<T>");
-    reg_type_name(sub_lhs, "pcx::subrange<T>");
+
+
+    constexpr auto bas    = pcx::md::right_basis<1, 2, 3>{};
+    auto           md_lhs = pcx::md::dynamic_storage<T, bas>{8U, 8U, length};
+    auto           md_rhs = pcx::md::dynamic_storage<T, bas>{8U, 8U, length};
+
+    auto slice_lhs = md_lhs.template slice<1>(0).template slice<2>(0);
+    auto slice_rhs = md_lhs.template slice<1>(0).template slice<2>(0);
+
+    pcx::rv::copy(pcx_lhs, slice_lhs.begin());
+    pcx::rv::copy(pcx_rhs, slice_rhs.begin());
+
+    reg_type_name(pcx_lhs, "pcx::vector<" + get_type_name(T{}) + ">");
+    reg_type_name(sub_lhs, "pcx::subrange<" + get_type_name(T{}) + ">");
+    reg_type_name(slice_lhs, "pcx::md::slice<" + get_type_name(T{}) + ">");
 
     auto check_cx_ = [&]<typename... Ops>(const std::tuple<Ops...>& ops) {
         auto check_all_impl = [&]<uZ... N>(auto&& ops, std::index_sequence<N...>) {
-            return check_cx(pcx_lhs, pcx_rhs, ops)      //
-                   + check_cx(sub_lhs, sub_rhs, ops)    //
+            return check_cx(pcx_lhs, pcx_rhs, ops)          //
+                   + check_cx(sub_lhs, sub_rhs, ops)        //
+                   + check_cx(slice_lhs, slice_rhs, ops)    //
                    /* (check_vector.template operator()<N>(ops) + ...) + */
                    + (check_subr.template operator()<N>(ops) + ...)    //
                    + (check_cx_scalar.template operator()<N>(ops) + ...);
@@ -314,6 +329,8 @@ int main() {
     auto z  = x * y;
     auto ze = pcx::rv::end(z);
 
+    reg_type_name(0.F, "float");
+    reg_type_name(0., "double");
 
     // static_assert(pcx::rv::range<decltype(z)>);
 
