@@ -262,7 +262,7 @@ int test_bin_ops(uZ length) {
     auto           md_rhs = pcx::md::dynamic_storage<T, bas>{8U, 8U, length};
 
     auto slice_lhs = md_lhs.template slice<1>(0).template slice<2>(0);
-    auto slice_rhs = md_lhs.template slice<1>(0).template slice<2>(0);
+    auto slice_rhs = md_rhs.template slice<1>(1).template slice<2>(1);
 
     pcx::rv::copy(pcx_lhs, slice_lhs.begin());
     pcx::rv::copy(pcx_rhs, slice_rhs.begin());
