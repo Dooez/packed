@@ -2,6 +2,7 @@
 #define VECTOR_ARITHM_HPP
 
 #include "simd_common.hpp"
+#include "types.hpp"
 #include "vector_util.hpp"
 
 #include <cassert>
@@ -208,6 +209,39 @@ public:
 
     [[nodiscard]] constexpr auto size() const noexcept -> uZ {
         return m_size;
+    }
+
+    template<typename V>
+        requires complex_vector_of<real_type, V>
+    friend void store(const Impl& expression, V& vector) {
+        assert(expression.size() == rv::size(vector));
+
+        auto it_this = expression.begin();
+        auto it_expr = vector.begin();
+        if constexpr (expr_traits::always_aligned) {
+            if constexpr (cx_vector_traits<V>::always_aligned) {
+                constexpr auto reg_size   = simd::reg_t<real_type>::size;
+                constexpr auto store_size = std::max(reg_size, expr_traits::pack_size);
+
+                auto aligned_size = (rv::end(vector).align_lower() - it_this) / store_size;
+                auto ptr          = &(*it_this);
+                for (uint i = 0; i < aligned_size; ++i) {
+                    for (uint i_reg = 0; i_reg < store_size; i_reg += reg_size) {
+                        auto offset = i * store_size + i_reg;
+                        // auto data_  = expr_traits<Impl>::cx_reg(it_expr, offset);
+                        // auto data   = simd::apply_conj(data_);
+                        // simd::cxstore<pack_size>(simd::ra_addr<pack_size>(ptr, offset), data);
+                    }
+                }
+                it_this += aligned_size * store_size;
+                it_expr += aligned_size * store_size;
+            }
+            // while (it_this < end()) {
+            //     *it_this = *it_expr;
+            //     ++it_this;
+            //     ++it_expr;
+            // }
+        }
     }
 };
 /**
