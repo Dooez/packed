@@ -12,8 +12,7 @@
 #include <immintrin.h>
 #include <ranges>
 
-namespace pcx {
-namespace simd {
+namespace pcx::simd {
 
 template<typename... Args>
 // NOLINTNEXTLINE(*-c-arrays)
@@ -42,9 +41,9 @@ inline auto mul(const cx_reg<Args> (&... args)[2]) {
     auto tmp = pcx::detail_::apply_for_each(real_mul, tup);
     return pcx::detail_::apply_for_each(imag_mul, tmp);
 }
-}    // namespace simd
+}    // namespace pcx::simd
 
-namespace detail_ {
+namespace pcx::detail_ {
 // TODO(Dooez): switch to rv::const_iterator_t
 template<typename R>
 using const_iterator_t = decltype(rv::cbegin(std::declval<R&>()));
@@ -63,6 +62,12 @@ struct expr_traits {
 template<typename R>
     requires complex_vector<R>
 struct expr_traits<R> : cx_vector_traits<R> {
+    /**
+     * @brief Returns
+     *
+     * @param iterator  Iterator to the part of expression. Must be aligned.
+     * @param offset    Offset from the the iterator. Must be a multiple of simd vector size.
+     */
     template<uZ PackSize, typename Iter>
         requires iterator_of<Iter, R>
     static auto cx_reg(const Iter& iterator, uZ offset) {
@@ -213,34 +218,43 @@ public:
 
     template<typename V>
         requires complex_vector_of<real_type, V>
-    friend void store(const Impl& expression, V& vector) {
-        assert(expression.size() == rv::size(vector));
+    friend void store(const Impl& src_expr, V& dest_vec) {
+        assert(src_expr.size() == rv::size(dest_vec));
 
-        auto it_this = expression.begin();
-        auto it_expr = vector.begin();
-        if constexpr (expr_traits::always_aligned) {
-            if constexpr (cx_vector_traits<V>::always_aligned) {
-                constexpr auto reg_size   = simd::reg_t<real_type>::size;
-                constexpr auto store_size = std::max(reg_size, expr_traits::pack_size);
+        using src_traits  = detail_::expr_traits<Impl>;
+        using dest_traits = cx_vector_traits<V>;
 
-                auto aligned_size = (rv::end(vector).align_lower() - it_this) / store_size;
-                auto ptr          = &(*it_this);
-                for (uint i = 0; i < aligned_size; ++i) {
-                    for (uint i_reg = 0; i_reg < store_size; i_reg += reg_size) {
-                        auto offset = i * store_size + i_reg;
-                        // auto data_  = expr_traits<Impl>::cx_reg(it_expr, offset);
-                        // auto data   = simd::apply_conj(data_);
-                        // simd::cxstore<pack_size>(simd::ra_addr<pack_size>(ptr, offset), data);
-                    }
-                }
-                it_this += aligned_size * store_size;
-                it_expr += aligned_size * store_size;
+        auto it_src  = rv::begin(src_expr);
+        auto end_src = rv::end(src_expr);
+        auto it_dest = rv::begin(dest_vec);
+
+        if constexpr (!src_traits::always_aligned || !dest_traits::always_aligned) {
+            while (!(src_traits::aligned(it_src) && dest_traits::aligned(it_dest)) && it_src != end_src) {
+                *it_dest == *it_src;
+                ++it_src;
+                ++it_dest;
             }
-            // while (it_this < end()) {
-            //     *it_this = *it_expr;
-            //     ++it_this;
-            //     ++it_expr;
-            // }
+        }
+        constexpr auto reg_size       = simd::reg_t<real_type>::size;
+        constexpr auto dest_pack_size = dest_traits::pack_size;
+        constexpr auto store_size     = std::max(reg_size, dest_pack_size);
+
+        uZ    aligned_size = (end_src - it_src) / store_size;
+        auto* ptr          = std::to_address(it_dest);
+        for (uZ i = 0; i < aligned_size; ++i) {
+            for (uZ i_reg = 0; i_reg < store_size; i_reg += reg_size) {
+                auto offset = i * store_size + i_reg;
+                auto data_  = src_traits::cx_reg(it_src, offset);
+                auto data   = simd::apply_conj(data_);
+                simd::cxstore<dest_pack_size>(simd::ra_addr<dest_pack_size>(ptr, offset), data);
+            }
+        }
+        it_src += aligned_size * store_size;
+        it_dest += aligned_size * store_size;
+        while (it_src != end_src) {
+            *it_dest = *it_src;
+            ++it_src;
+            ++it_dest;
         }
     }
 };
@@ -441,7 +455,52 @@ public:
         return lhs.m_iter - rhs.m_iter;
     }
 };
-}    // namespace detail_
+}    // namespace pcx::detail_
+
+namespace pcx {
+template<detail_::vecexpr E, typename V>
+    requires complex_vector_of<typename detail_::expr_traits<E>::real_type, V>
+void store(const E& src_expr, V& dest_vec) {
+    assert(src_expr.size() == rv::size(dest_vec));
+
+    using src_traits  = detail_::expr_traits<E>;
+    using dest_traits = cx_vector_traits<V>;
+
+    auto it_src  = rv::begin(src_expr);
+    auto end_src = rv::end(src_expr);
+    auto it_dest = rv::begin(dest_vec);
+
+    if constexpr (!src_traits::always_aligned || !dest_traits::always_aligned) {
+        while (!(src_traits::aligned(it_src) && dest_traits::aligned(it_dest)) && it_src != end_src) {
+            *it_dest = *it_src;
+            ++it_src;
+            ++it_dest;
+        }
+    }
+    constexpr auto reg_size       = simd::cx_reg<typename src_traits::real_type>::size;
+    constexpr auto dest_pack_size = dest_traits::pack_size;
+    constexpr auto store_size     = std::max(reg_size, dest_pack_size);
+    constexpr auto load_size      = std::min(reg_size, dest_pack_size);
+
+    uZ aligned_size = (end_src - it_src) / store_size;
+    // auto* ptr          = std::to_address(it_dest);
+    auto* ptr = &(*it_dest);    // TODO: ensure to_address() in pcx iterators.
+    for (uZ i = 0; i < aligned_size; ++i) {
+        for (uZ i_reg = 0; i_reg < store_size; i_reg += reg_size) {
+            auto offset = i * store_size + i_reg;
+            auto data_  = src_traits::template cx_reg<load_size>(it_src, offset);
+            auto data   = simd::apply_conj(data_);
+            simd::cxstore<dest_pack_size>(simd::ra_addr<dest_pack_size>(ptr, offset), data);
+        }
+    }
+    it_src += aligned_size * store_size;
+    it_dest += aligned_size * store_size;
+    while (it_src != end_src) {
+        *it_dest = *it_src;
+        ++it_src;
+        ++it_dest;
+    }
+}
 }    // namespace pcx
 
 // #region operator forward declarations

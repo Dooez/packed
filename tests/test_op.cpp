@@ -1,4 +1,3 @@
-
 #include "mdstorage.hpp"
 #include "simd_common.hpp"
 #include "vector.hpp"
@@ -111,7 +110,7 @@ int test_bin_ops(uZ length) {
         pcx_rhs[i] = rhs;
         std_rhs[i] = rhs;
     }
-    
+
     using namespace pcx;
     auto cxops = std::make_tuple(    //
         [](auto&& a, auto&& b) { return a + b; },
@@ -129,8 +128,7 @@ int test_bin_ops(uZ length) {
         [](auto&& a, auto&& b) { return conj(a) + conj(b); },
         [](auto&& a, auto&& b) { return conj(a) - conj(b); },
         [](auto&& a, auto&& b) { return conj(a) * conj(b); },
-        [](auto&& a, auto&& b) { return conj(a) / conj(b); }
-    );
+        [](auto&& a, auto&& b) { return conj(a) / conj(b); });
 
     auto reops = std::make_tuple(    //
         [](auto&& a, auto&& b) { return a + b; },
@@ -164,6 +162,39 @@ int test_bin_ops(uZ length) {
             };
             return (single_op(lhs, rhs, std::get<I>(ops), I) + ...);
         }(std::make_index_sequence<std::tuple_size_v<std::remove_cvref_t<decltype(ops)>>>{}, lhs, rhs, ops);
+    };
+
+    auto check_store_cx = [&](auto&& lhs, auto&& rhs, auto& out, const auto& ops) {
+        return [&]<uZ... I>(std::index_sequence<I...>, auto&& lhs, auto&& rhs, auto& out, const auto& ops) {
+            auto single_op = [&](auto&& lhs, auto&& rhs, auto& out, const auto& op, uZ N) {
+                // vector expression op
+                pcx::store(op(lhs, rhs), out);
+
+                for (uZ i = 0; i < length; ++i) {
+                    // op with scalar std
+                    auto v   = static_cast<std::complex<T>>(out[i]);
+                    auto res = op(std_lhs[i], std_rhs[i]);
+
+                    if (!equal_eps(res, v)) {
+                        const auto* lhs_name = typeid(lhs).name();
+                        const auto* rhs_name = typeid(rhs).name();
+                        std::cout << "Values not equal after " << get_type_name(lhs) << "•"
+                                  << get_type_name(rhs) << " operation #" << N << " for pack size "
+                                  << PackSize << ".\n";
+                        std::cout << "Length: " << length << " Index: " << i <<    //
+                            ". Expected value: " << res <<                         //
+                            ". Acquired value: " << pcx_res[i].value() << ".\n";
+                        return 1;
+                    }
+                }
+                return 0;
+            };
+            return (single_op(lhs, rhs, out, std::get<I>(ops), I) + ...);
+        }(std::make_index_sequence<std::tuple_size_v<std::remove_cvref_t<decltype(ops)>>>{},
+               lhs,
+               rhs,
+               out,
+               ops);
     };
 
     auto check_subr = [&]<uZ N>(auto&& ops) {
@@ -273,9 +304,10 @@ int test_bin_ops(uZ length) {
 
     auto check_cx_ = [&]<typename... Ops>(const std::tuple<Ops...>& ops) {
         auto check_all_impl = [&]<uZ... N>(auto&& ops, std::index_sequence<N...>) {
-            return check_cx(pcx_lhs, pcx_rhs, ops)          //
-                   + check_cx(sub_lhs, sub_rhs, ops)        //
-                   + check_cx(slice_lhs, slice_rhs, ops)    //
+            return check_cx(pcx_lhs, pcx_rhs, ops)                     //
+                   + check_cx(sub_lhs, sub_rhs, ops)                   //
+                   + check_cx(slice_lhs, slice_rhs, ops)               //
+                   + check_store_cx(pcx_lhs, pcx_rhs, pcx_res, ops)    //
                    /* (check_vector.template operator()<N>(ops) + ...) + */
                    + (check_subr.template operator()<N>(ops) + ...)    //
                    + (check_cx_scalar.template operator()<N>(ops) + ...);
