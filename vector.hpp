@@ -4,7 +4,7 @@
 #include "allocators.hpp"
 #include "element_access.hpp"
 #include "types.hpp"
-#include "vector_arithm.hpp"
+// #include "vector_arithm.hpp"
 #include "vector_util.hpp"
 
 #include <complex>
@@ -175,39 +175,9 @@ public:
     }
 
     template<typename E>
-        requires /**/ (!std::same_as<E, vector>) && detail_::vecexpr<E>
-    vector& operator=(const E& other) {
-        assert(size() == other.size());
-
-        auto it_this = begin();
-        auto it_expr = other.begin();
-
-        using expr_traits             = detail_::expr_traits<E>;
-        constexpr auto pack_size_expr = expr_traits::pack_size;
-        // constexpr auto pack_size_expr = decltype(it_expr)::pack_size;
-
-        if (it_expr.aligned()) {
-            constexpr auto reg_size   = 32 / sizeof(T);
-            constexpr auto store_size = std::max(reg_size, pack_size);
-
-            auto aligned_size = (end().align_lower() - it_this) / store_size;
-            auto ptr          = &(*it_this);
-            for (uint i = 0; i < aligned_size; ++i) {
-                for (uint i_reg = 0; i_reg < store_size; i_reg += reg_size) {
-                    auto offset = i * store_size + i_reg;
-                    auto data_  = expr_traits::template cx_reg<pack_size_expr>(it_expr, offset);
-                    auto data   = simd::apply_conj(data_);
-                    simd::cxstore<pack_size>(simd::ra_addr<pack_size>(ptr, offset), data);
-                }
-            }
-            it_this += aligned_size * store_size;
-            it_expr += aligned_size * store_size;
-        }
-        while (it_this < end()) {
-            *it_this = *it_expr;
-            ++it_this;
-            ++it_expr;
-        }
+        requires /**/ (!complex_vector<E>) && detail_::vecexpr<E>
+    vector& operator=(const E& expression) {
+        store(expression, *this);
         return *this;
     };
 
@@ -262,8 +232,8 @@ public:
         first.swap(second);
     }
 
-    [[nodiscard]] auto get_allocator() const noexcept(std::is_nothrow_copy_constructible_v<allocator_type>)
-        -> allocator_type {
+    [[nodiscard]] auto get_allocator() const
+        noexcept(std::is_nothrow_copy_constructible_v<allocator_type>) -> allocator_type {
         return m_allocator;
     }
 
@@ -522,7 +492,7 @@ public:
     };
 
     template<typename E>
-        requires(!Const) && (detail_::vecexpr<E> || std::derived_from<E, detail_::vecexpr_base>)
+        requires(!Const) && (detail_::vecexpr<E>)
     void assign(const E& expression) {
         if (expression.size() != size()) {
             throw(std::invalid_argument(std::string("source size (which is ")
@@ -531,42 +501,7 @@ public:
                                             .append(std::to_string(size()))
                                             .append(")")));
         }
-        assert(size() == expression.size());
-
-        auto it_this       = begin();
-        auto it_expr       = expression.begin();
-        auto aligned_begin = std::min(it_this.align_upper(), end());
-        while (it_this < aligned_begin) {
-            *it_this = *it_expr;
-            ++it_this;
-            ++it_expr;
-        }
-
-        using expr_traits             = detail_::expr_traits<E>;
-        constexpr auto pack_size_expr = expr_traits::pack_size;
-
-        if (it_this.aligned() && it_expr.aligned()) {
-            constexpr auto reg_size   = 32 / sizeof(T);
-            constexpr auto store_size = std::max(reg_size, pack_size);
-
-            auto aligned_size = (end().align_lower() - it_this) / store_size;
-            auto ptr          = &(*it_this);
-            for (uint i = 0; i < aligned_size; ++i) {
-                for (uint i_reg = 0; i_reg < store_size; i_reg += reg_size) {
-                    auto offset = i * store_size + i_reg;
-                    auto data_  = expr_traits::template cx_reg<pack_size_expr>(it_expr, offset);
-                    auto data   = simd::apply_conj(data_);
-                    simd::cxstore<pack_size>(simd::ra_addr<pack_size>(ptr, offset), data);
-                }
-            }
-            it_this += aligned_size * store_size;
-            it_expr += aligned_size * store_size;
-        }
-        while (it_this < end()) {
-            *it_this = *it_expr;
-            ++it_this;
-            ++it_expr;
-        }
+        store(expression, *this);
     };
 
 private:

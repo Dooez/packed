@@ -160,5 +160,49 @@ concept range_of_complex_vector_of = rv::random_access_range<R> &&    //
 template<typename T>
 concept always_aligned = cx_vector_traits<T>::always_aligned;
 
+namespace detail_ {
+/**
+ *  @brief expr_traits is a struct providing a vector expression
+ *  interface for class `T`. 
+ *
+ *  In the scope of `pcx` library vector expressions require 
+ *  methods of accessing packed simd registers and checking
+ *  pack alignment.
+ *
+ *  `expr_traits` specialization for classes satisfying `pcx::complex_vector`
+ *  is provided.
+ */
+template<typename T>
+struct expr_traits {
+    static constexpr bool enable_vector_expressions = false;
+
+    /* 
+    static constexpr bool always_aligned = ...;    
+    static constexpr uZ   pack_size      = ...;
+
+    using real_type        = ...;
+    using iterator_t       = ...;
+    using const_iterator_t = ...;
+    */
+
+    /*
+     * Returns complex simd vector starting at `iterator` + `offset`.
+     * `iterator` must be aligned.
+    template<uZ PackSize, typename Iter>
+        requires iterator_of<Iter, R>
+    static auto cx_reg(const Iter& iterator, uZ offset);
+     */
+
+    /*
+     * Returnes whether the `iterator` is aligned
+    template<typename Iter>
+        requires iterator_of<Iter, R>
+    static auto aligned(const Iter& iterator) -> bool {
+     */
+};
+
+template<typename T>
+concept vecexpr = expr_traits<T>::enable_vector_expressions;
+}    // namespace detail_
 }    // namespace pcx
 #endif

@@ -44,6 +44,7 @@ inline auto mul(const cx_reg<Args> (&... args)[2]) {
 }    // namespace pcx::simd
 
 namespace pcx::detail_ {
+
 // TODO(Dooez): switch to rv::const_iterator_t
 template<typename R>
 using const_iterator_t = decltype(rv::cbegin(std::declval<R&>()));
@@ -51,13 +52,6 @@ using const_iterator_t = decltype(rv::cbegin(std::declval<R&>()));
 template<typename Iter, typename Range>
 concept iterator_of = std::same_as<rv::iterator_t<Range>, Iter>    //
                       || std::same_as<const_iterator_t<Range>, Iter>;
-
-template<typename T>
-struct expr_traits {
-    using real_type                                 = decltype([] {});
-    static constexpr uZ   pack_size                 = 0;
-    static constexpr bool enable_vector_expressions = false;
-};
 
 template<typename R>
     requires complex_vector<R>
@@ -113,8 +107,6 @@ struct expr_traits<R> {
     };
 };
 
-template<typename T>
-concept vecexpr = expr_traits<T>::enable_vector_expressions;
 template<typename T, typename U>
 concept compatible_vecexpr = vecexpr<T>                                             //
                              && vecexpr<U>                                          //
@@ -163,9 +155,7 @@ public:
         return iterator(impl_->m_lhs, impl_->m_rhs);
     }
     [[nodiscard]] auto end() const noexcept {
-        auto* impl_    = static_cast<const Impl*>(this);
-        using iterator = Impl::iterator;
-        return iterator(impl_->m_lhs + m_size, impl_->m_rhs + m_size);
+        return begin() + size();
     }
 
     [[nodiscard]] constexpr auto size() const noexcept -> uZ {
@@ -207,55 +197,11 @@ public:
         return iterator(impl_->m_scalar, impl_->m_iter);
     }
     [[nodiscard]] auto end() const noexcept {
-        auto* impl_    = static_cast<const Impl*>(this);
-        using iterator = Impl::iterator;
-        return iterator(impl_->m_scalar, impl_->m_iter);
+        return begin() + size();
     }
 
     [[nodiscard]] constexpr auto size() const noexcept -> uZ {
         return m_size;
-    }
-
-    template<typename V>
-        requires complex_vector_of<real_type, V>
-    friend void store(const Impl& src_expr, V& dest_vec) {
-        assert(src_expr.size() == rv::size(dest_vec));
-
-        using src_traits  = detail_::expr_traits<Impl>;
-        using dest_traits = cx_vector_traits<V>;
-
-        auto it_src  = rv::begin(src_expr);
-        auto end_src = rv::end(src_expr);
-        auto it_dest = rv::begin(dest_vec);
-
-        if constexpr (!src_traits::always_aligned || !dest_traits::always_aligned) {
-            while (!(src_traits::aligned(it_src) && dest_traits::aligned(it_dest)) && it_src != end_src) {
-                *it_dest == *it_src;
-                ++it_src;
-                ++it_dest;
-            }
-        }
-        constexpr auto reg_size       = simd::reg_t<real_type>::size;
-        constexpr auto dest_pack_size = dest_traits::pack_size;
-        constexpr auto store_size     = std::max(reg_size, dest_pack_size);
-
-        uZ    aligned_size = (end_src - it_src) / store_size;
-        auto* ptr          = std::to_address(it_dest);
-        for (uZ i = 0; i < aligned_size; ++i) {
-            for (uZ i_reg = 0; i_reg < store_size; i_reg += reg_size) {
-                auto offset = i * store_size + i_reg;
-                auto data_  = src_traits::cx_reg(it_src, offset);
-                auto data   = simd::apply_conj(data_);
-                simd::cxstore<dest_pack_size>(simd::ra_addr<dest_pack_size>(ptr, offset), data);
-            }
-        }
-        it_src += aligned_size * store_size;
-        it_dest += aligned_size * store_size;
-        while (it_src != end_src) {
-            *it_dest = *it_src;
-            ++it_src;
-            ++it_dest;
-        }
     }
 };
 /**
@@ -293,9 +239,7 @@ public:
         return iterator(impl_->m_iter);
     }
     [[nodiscard]] auto end() const noexcept {
-        auto* impl_    = static_cast<const Impl*>(this);
-        using iterator = Impl::iterator;
-        return iterator(impl_->m_iter + m_size);
+        return begin() + size();
     }
 
     [[nodiscard]] constexpr auto size() const noexcept -> uZ {
@@ -480,11 +424,11 @@ void store(const E& src_expr, V& dest_vec) {
     constexpr auto reg_size       = simd::cx_reg<typename src_traits::real_type>::size;
     constexpr auto dest_pack_size = dest_traits::pack_size;
     constexpr auto store_size     = std::max(reg_size, dest_pack_size);
-    constexpr auto load_size      = std::min(reg_size, dest_pack_size);
+    constexpr auto load_size      = std::min(reg_size, src_traits::pack_size);
 
     uZ aligned_size = (end_src - it_src) / store_size;
     // auto* ptr          = std::to_address(it_dest);
-    auto* ptr = &(*it_dest);    // TODO: ensure to_address() in pcx iterators.
+    auto* ptr = &(*it_dest);    // TODO: implement to_address() in pcx iterators.
     for (uZ i = 0; i < aligned_size; ++i) {
         for (uZ i_reg = 0; i_reg < store_size; i_reg += reg_size) {
             auto offset = i * store_size + i_reg;
