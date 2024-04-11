@@ -31,7 +31,7 @@ struct test_ranges {
     }
 };
 
-template<pcx::md::layout Layout = pcx::md::layout::left>
+template<typename T, pcx::md::layout Layout = pcx::md::layout::left>
 auto test_xyz_storage(auto&& storage) {
     using enum ax1;
 
@@ -55,22 +55,22 @@ auto test_xyz_storage(auto&& storage) {
     (void)test_ranges<decltype(sz)>();
     (void)test_ranges<decltype(szx)>();
 
-    static_assert(!pcx::complex_vector_of<float, decltype(storage)>);
-    static_assert(!pcx::complex_vector_of<float, decltype(sx)>);
-    static_assert(!pcx::complex_vector_of<float, decltype(sy)>);
-    static_assert(!pcx::complex_vector_of<float, decltype(sy)>);
-    static_assert(!pcx::complex_vector_of<float, decltype(szx)>);
+    static_assert(!pcx::complex_vector_of<T, decltype(storage)>);
+    static_assert(!pcx::complex_vector_of<T, decltype(sx)>);
+    static_assert(!pcx::complex_vector_of<T, decltype(sy)>);
+    static_assert(!pcx::complex_vector_of<T, decltype(sy)>);
+    static_assert(!pcx::complex_vector_of<T, decltype(szx)>);
     using enum pcx::md::layout;
     if constexpr (Layout == left) {
-        static_assert(!pcx::complex_vector_of<float, decltype(sxy)>);
-        static_assert(pcx::complex_vector_of<float, decltype(syz)>);
+        static_assert(!pcx::complex_vector_of<T, decltype(sxy)>);
+        static_assert(pcx::complex_vector_of<T, decltype(syz)>);
     } else if constexpr (Layout == right) {
-        static_assert(pcx::complex_vector_of<float, decltype(sxy)>);
-        static_assert(!pcx::complex_vector_of<float, decltype(syz)>);
+        static_assert(pcx::complex_vector_of<T, decltype(sxy)>);
+        static_assert(!pcx::complex_vector_of<T, decltype(syz)>);
     }
 }
 
-template<pcx::md::layout Layout = pcx::md::layout::left>
+template<typename T, pcx::md::layout Layout = pcx::md::layout::left>
 auto test_const_xyz_storage(const auto& storage) {
     using enum ax1;
 
@@ -92,18 +92,18 @@ auto test_const_xyz_storage(const auto& storage) {
     (void)test_ranges<decltype(sz)>();
     (void)test_ranges<decltype(szx)>();
 
-    static_assert(!pcx::complex_vector_of<float, decltype(storage)>);
-    static_assert(!pcx::complex_vector_of<float, decltype(sx)>);
-    static_assert(!pcx::complex_vector_of<float, decltype(sy)>);
-    static_assert(!pcx::complex_vector_of<float, decltype(sy)>);
-    static_assert(!pcx::complex_vector_of<float, decltype(szx)>);
+    static_assert(!pcx::complex_vector_of<T, decltype(storage)>);
+    static_assert(!pcx::complex_vector_of<T, decltype(sx)>);
+    static_assert(!pcx::complex_vector_of<T, decltype(sy)>);
+    static_assert(!pcx::complex_vector_of<T, decltype(sy)>);
+    static_assert(!pcx::complex_vector_of<T, decltype(szx)>);
     using enum pcx::md::layout;
     if constexpr (Layout == left) {
-        static_assert(!pcx::complex_vector_of<float, decltype(sxy)>);
-        static_assert(pcx::complex_vector_of<float, decltype(syz)>);
+        static_assert(!pcx::complex_vector_of<T, decltype(sxy)>);
+        static_assert(pcx::complex_vector_of<T, decltype(syz)>);
     } else if constexpr (Layout == right) {
-        static_assert(pcx::complex_vector_of<float, decltype(sxy)>);
-        static_assert(!pcx::complex_vector_of<float, decltype(syz)>);
+        static_assert(pcx::complex_vector_of<T, decltype(sxy)>);
+        static_assert(!pcx::complex_vector_of<T, decltype(syz)>);
     }
 }
 
@@ -154,27 +154,29 @@ auto print_mdstorage(auto&& slice) {
 
 using pcx::uZ;
 template<auto Basis>
-auto check_storage(auto&& storage){
+auto check_storage(auto&& storage) {
 
 
 };
 
-int main() {
+
+template<typename T>
+int do_tests() {
     using enum ax1;
-    constexpr auto               left_basis = pcx::md::left_basis<x, y, z>{3U, 2U, 3U};
-    const std::array<float, 128> beging{};
-    auto                         static_storage_l = pcx::md::static_stoarge<float, left_basis>{};
-    const std::array<float, 128> endg{};
-    test_xyz_storage(static_storage_l);
-    test_const_xyz_storage(static_storage_l);
+    constexpr auto           left_basis = pcx::md::left_basis<x, y, z>{5U, 2U, 3U};
+    const std::array<T, 128> beging{};
+    auto                     static_storage_l = pcx::md::static_stoarge<T, left_basis>{};
+    const std::array<T, 128> endg{};
+    test_xyz_storage<T>(static_storage_l);
+    test_const_xyz_storage<T>(static_storage_l);
     std::cout << "static left 3:2:3 :\n";
     constexpr double ten = 10.;
     fill_mdstorage(static_storage_l.as_slice(), ten);
     print_mdstorage(std::as_const(static_storage_l).as_slice());
 
-    auto dynamic_storage_l = pcx::md::dynamic_storage<float, left_basis>{3U, 2U, 4U};
-    test_xyz_storage(dynamic_storage_l);
-    std::cout << "dynamic left 3:2:4 :\n";
+    auto dynamic_storage_l = pcx::md::dynamic_storage<T, left_basis>{5U, 8U, 8U};
+    test_xyz_storage<T>(dynamic_storage_l);
+    std::cout << "dynamic left 5:8:8 :\n";
     fill_mdstorage(dynamic_storage_l, ten);
     print_mdstorage(dynamic_storage_l);
     print_mdstorage(std::as_const(dynamic_storage_l));
@@ -182,26 +184,35 @@ int main() {
     constexpr auto right_basis = pcx::md::right_basis<x, y, z>{3U, 2U, 4U};
     constexpr auto asds        = pcx::md::right_basis<x, y, z>::outer_axis;
 
-    auto static_storage_r  = pcx::md::static_stoarge<float, right_basis>{};
-    auto dynamic_storage_r = pcx::md::dynamic_storage<float, right_basis>{3U, 2U, 4U};
+    auto static_storage_r  = pcx::md::static_stoarge<T, right_basis>{};
+    auto dynamic_storage_r = pcx::md::dynamic_storage<T, right_basis>{8U, 8U, 5U};
     using enum pcx::md::layout;
 
-    test_xyz_storage<right>(static_storage_r);
+    test_xyz_storage<T, right>(static_storage_r);
     std::cout << "static right 3|2|4:\n";
     fill_mdstorage(static_storage_r, ten);
     print_mdstorage(static_storage_r);
 
-    test_xyz_storage<right>(dynamic_storage_r);
+    test_xyz_storage<T, right>(dynamic_storage_r);
     std::cout << "dynamic right :\n";
     fill_mdstorage(dynamic_storage_r, ten);
     print_mdstorage(dynamic_storage_r);
 
     constexpr auto short_basis    = pcx::md::left_basis<x>{4U};
-    auto           short_static_l = pcx::md::static_stoarge<float, short_basis>{};
+    auto           short_static_l = pcx::md::static_stoarge<T, short_basis>{};
     std::cout << "short left 4:\n";
     fill_mdstorage(short_static_l, ten);
     print_mdstorage(short_static_l);
+    static_assert(pcx::complex_vector_of<T, decltype(short_static_l)>);
+    return 0;
+}
 
-    static_assert(pcx::complex_vector_of<float, decltype(short_static_l)>);
+
+int main() {
+    std::cout << "float:\n";
+    do_tests<float>();
+    // std::cout << "double:\n";
+    // do_tests<double>();
+
     return 0;
 }
