@@ -3,7 +3,6 @@
 
 #include "simd_common.hpp"
 #include "types.hpp"
-#include "vector_util.hpp"
 
 #include <cassert>
 #include <complex>

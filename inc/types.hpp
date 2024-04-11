@@ -203,6 +203,12 @@ struct expr_traits {
 
 template<typename T>
 concept vecexpr = expr_traits<T>::enable_vector_expressions;
+
 }    // namespace detail_
+
+template<detail_::vecexpr E, typename V>
+    requires complex_vector_of<typename detail_::expr_traits<E>::real_type, V>
+void store(const E& src_expr, V& dest_vec);
+
 }    // namespace pcx
 #endif

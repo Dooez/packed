@@ -863,8 +863,8 @@ public:
         return lhs + (-rhs);
     };
 
-    [[nodiscard]] friend auto operator-(const iterator& lhs, const iterator& rhs) noexcept
-        -> difference_type {
+    [[nodiscard]] friend auto operator-(const iterator& lhs,
+                                        const iterator& rhs) noexcept -> difference_type {
         return (lhs.m_ptr - rhs.m_ptr) / lhs.stride();
     };
 
@@ -878,8 +878,8 @@ public:
     [[nodiscard]] auto operator==(const iterator& other) const noexcept -> bool {
         return m_ptr == other.m_ptr;
     };
-    [[nodiscard]] auto operator==(const iterator<!Const, Basis, T, PackSize, Base>& other) const noexcept
-        -> bool {
+    [[nodiscard]] auto
+    operator==(const iterator<!Const, Basis, T, PackSize, Base>& other) const noexcept -> bool {
         return m_ptr == other.m_ptr;
     };
 
@@ -954,6 +954,13 @@ public:
     sslice& operator=(const sslice&) noexcept = default;
     sslice& operator=(sslice&&) noexcept      = default;
     ~sslice()                                 = default;
+
+    template<typename E>
+        requires Base::vector_like && pcx::detail_::vecexpr<E>
+    auto operator=(const E& expression) -> sslice& {
+        store(expression, *this);
+        return *this;
+    }
 
     /**
      * @brief Returns a sub-slice of the data from `Axis` at position `index`. 
@@ -1080,6 +1087,13 @@ public:
     : storage(typename Base::allocator{}, extents...) {}
 
     storage() = default;
+
+    template<typename E>
+        requires Base::vector_like && pcx::detail_::vecexpr<E>
+    auto operator=(const E& expression) -> storage& {
+        store(expression, *this);
+        return *this;
+    }
 
     [[nodiscard]] auto begin() noexcept -> iterator {
         if constexpr (vector_like) {

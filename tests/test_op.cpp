@@ -85,6 +85,7 @@ auto get_type_name(const auto& obj) -> std::string {
     return "<unregistered type " + std::string(typeid(obj).name()) + ">";
 };
 
+
 template<typename T, uZ PackSize>
     requires pcx::packed_floating_point<T, PackSize>
 int test_bin_ops(uZ length) {
@@ -138,37 +139,15 @@ int test_bin_ops(uZ length) {
         //
     );
 
-
-    auto check_cx = [&](auto&& lhs, auto&& rhs, auto&& ops) {
-        return [&]<uZ... I>(std::index_sequence<I...>, auto&& lhs, auto&& rhs, auto& ops) {
-            auto single_op = [&](auto&& lhs, auto&& rhs, auto&& op, uZ N) {
-                pcx_res = op(lhs, rhs);
-                for (uint i = 0; i < length; ++i) {
-                    auto v   = pcx_res[i].value();
-                    auto res = op(std_lhs[i], std_rhs[i]);
-                    if (!equal_eps(res, pcx_res[i].value())) {
-                        const auto* lhs_name = typeid(lhs).name();
-                        const auto* rhs_name = typeid(rhs).name();
-                        std::cout << "Values not equal after " << get_type_name(lhs) << "•"
-                                  << get_type_name(rhs) << " operation #" << N << " for pack size "
-                                  << PackSize << ".\n";
-                        std::cout << "Length: " << length << " Index: " << i <<    //
-                            ". Expected value: " << res <<                         //
-                            ". Acquired value: " << pcx_res[i].value() << ".\n";
-                        return 1;
-                    }
-                }
-                return 0;
-            };
-            return (single_op(lhs, rhs, std::get<I>(ops), I) + ...);
-        }(std::make_index_sequence<std::tuple_size_v<std::remove_cvref_t<decltype(ops)>>>{}, lhs, rhs, ops);
-    };
-
-    auto check_store_cx = [&](auto&& lhs, auto&& rhs, auto& out, const auto& ops) {
+    auto check_cx = [&]<bool Assign>(
+                        auto&& lhs, auto&& rhs, auto& out, const auto& ops, std::bool_constant<Assign>) {
         return [&]<uZ... I>(std::index_sequence<I...>, auto&& lhs, auto&& rhs, auto& out, const auto& ops) {
             auto single_op = [&](auto&& lhs, auto&& rhs, auto& out, const auto& op, uZ N) {
-                // vector expression op
-                pcx::store(op(lhs, rhs), out);
+                if constexpr (!Assign) {
+                    store(op(lhs, rhs), out);
+                } else {
+                    out = op(lhs, rhs);
+                }
 
                 for (uZ i = 0; i < length; ++i) {
                     // op with scalar std
@@ -196,28 +175,46 @@ int test_bin_ops(uZ length) {
                out,
                ops);
     };
+    auto check_scalar_cx = [&](auto&& lhs, auto&& rhs, auto& out, const auto& ops) {
+        return [&]<uZ... I>(std::index_sequence<I...>, auto&& lhs, auto&& rhs, auto& out, const auto& ops) {
+            auto single_op = [&](auto&& lhs, auto&& rhs, auto& out, const auto& op, uZ N) {
+                if constexpr (std::same_as<std::remove_cvref_t<decltype(out)>,
+                                           std::vector<std::complex<T>>>) {
+                    store(op(lhs, rhs), out);
+                } else {
+                    out = op(lhs, rhs);
+                }
 
-    auto check_subr = [&]<uZ N>(auto&& ops) {
-        auto& op = std::get<N>(ops);
-        pcx::subrange<T, false, PackSize>(pcx_res).assign(op(pcx_lhs, pcx_rhs));
-        for (uint i = 0; i < length; ++i) {
-            auto v   = pcx_res[i].value();
-            auto res = op(std_lhs[i], std_rhs[i]);
-            if (!equal_eps(res, pcx_res[i].value())) {
-                std::cout << "Values not equal after subrange vector•vector operation " << N <<    //
-                    " for pack size " << PackSize << ".\n";
-                std::cout << "Length: " << length << " Index: " << i <<    //
-                    ". Expected value: " << res <<                         //
-                    ". Acquired value: " << pcx_res[i].value() << ".\n";
-                return 1;
-            }
-        }
-        return 0;
+                for (uZ i = 0; i < length; ++i) {
+                    // op with scalar std
+                    auto v   = static_cast<std::complex<T>>(out[i]);
+                    auto res = op(std_lhs[i], std_rhs[i]);
+
+                    if (!equal_eps(res, v)) {
+                        const auto* lhs_name = typeid(lhs).name();
+                        const auto* rhs_name = typeid(rhs).name();
+                        std::cout << "Values not equal after " << get_type_name(lhs) << "•"
+                                  << get_type_name(rhs) << " operation #" << N << " for pack size "
+                                  << PackSize << ".\n";
+                        std::cout << "Length: " << length << " Index: " << i <<    //
+                            ". Expected value: " << res <<                         //
+                            ". Acquired value: " << pcx_res[i].value() << ".\n";
+                        return 1;
+                    }
+                }
+                return 0;
+            };
+            return (single_op(lhs, rhs, out, std::get<I>(ops), I) + ...);
+        }(std::make_index_sequence<std::tuple_size_v<std::remove_cvref_t<decltype(ops)>>>{},
+               lhs,
+               rhs,
+               out,
+               ops);
     };
     auto check_cx_scalar = [&]<uZ N>(auto&& ops) {
         auto& op = std::get<N>(ops);
         pcx_res  = op(pcx_lhs, cx_scalar);
-        for (uint i = 0; i < length; ++i) {
+        for (uZ i = 0; i < length; ++i) {
             auto res = op(std_lhs[i], cx_scalar);
             if (!equal_eps(res, pcx_res[i].value())) {
                 std::cout << "Values not equal after vector•cx_scalar operation " << N <<    //
@@ -229,7 +226,7 @@ int test_bin_ops(uZ length) {
             }
         }
         pcx_res = op(cx_scalar, pcx_rhs);
-        for (uint i = 0; i < length; ++i) {
+        for (uZ i = 0; i < length; ++i) {
             auto res = op(cx_scalar, std_rhs[i]);
             if (!equal_eps(res, pcx_res[i].value())) {
                 std::cout << "Values not equal after cx_scalar•vector operation " << N <<    //
@@ -246,7 +243,7 @@ int test_bin_ops(uZ length) {
     auto check_re_scalar = [&]<uZ N>(auto&& ops) {
         auto& op = std::get<N>(ops);
         pcx_res  = op(pcx_lhs, re_scalar);
-        for (uint i = 0; i < length; ++i) {
+        for (uZ i = 0; i < length; ++i) {
             auto res = op(std_lhs[i], re_scalar);
             if (!equal_eps(res, pcx_res[i].value())) {
                 std::cout << "Values not equal after vector•re_scalar operation " << N <<    //
@@ -258,7 +255,7 @@ int test_bin_ops(uZ length) {
             }
         }
         pcx_res = op(re_scalar, pcx_rhs);
-        for (uint i = 0; i < length; ++i) {
+        for (uZ i = 0; i < length; ++i) {
             auto res = op(re_scalar, std_rhs[i]);
             if (!equal_eps(res, pcx_res[i].value())) {
                 std::cout << "Values not equal after re_scalar•vector operation " << N <<    //
@@ -272,16 +269,6 @@ int test_bin_ops(uZ length) {
         return 0;
     };
 
-    auto check_ch = [&]() {
-        auto lhs = pcx::vector<T>(length);
-        auto rhs = pcx::vector<T>(length);
-
-        auto lhs2 = pcx::vector<T>(length);
-        auto rhs2 = pcx::vector<T>(length);
-
-        check_cx(lhs, rhs, cxops);
-        check_cx(lhs, rhs, cxops);
-    };
     using subrange = pcx::subrange<T, false, PackSize>;
     auto sub_lhs   = subrange(pcx_lhs);
     auto sub_rhs   = subrange(pcx_rhs);
@@ -291,9 +278,11 @@ int test_bin_ops(uZ length) {
     constexpr auto bas    = pcx::md::right_basis<1, 2, 3>{};
     auto           md_lhs = pcx::md::dynamic_storage<T, bas>{8U, 8U, length};
     auto           md_rhs = pcx::md::dynamic_storage<T, bas>{8U, 8U, length};
+    auto           md_res = pcx::md::dynamic_storage<T, bas>{8U, 8U, length};
 
     auto slice_lhs = md_lhs.template slice<1>(0).template slice<2>(0);
-    auto slice_rhs = md_rhs.template slice<1>(1).template slice<2>(1);
+    auto slice_rhs = md_lhs.template slice<1>(0).template slice<2>(1);
+    auto slice_res = md_lhs.template slice<1>(0).template slice<2>(2);
 
     pcx::rv::copy(pcx_lhs, slice_lhs.begin());
     pcx::rv::copy(pcx_rhs, slice_rhs.begin());
@@ -304,12 +293,10 @@ int test_bin_ops(uZ length) {
 
     auto check_cx_ = [&]<typename... Ops>(const std::tuple<Ops...>& ops) {
         auto check_all_impl = [&]<uZ... N>(auto&& ops, std::index_sequence<N...>) {
-            return check_cx(pcx_lhs, pcx_rhs, ops)                     //
-                   + check_cx(sub_lhs, sub_rhs, ops)                   //
-                   + check_cx(slice_lhs, slice_rhs, ops)               //
-                   + check_store_cx(pcx_lhs, pcx_rhs, pcx_res, ops)    //
-                   /* (check_vector.template operator()<N>(ops) + ...) + */
-                   + (check_subr.template operator()<N>(ops) + ...)    //
+            return check_cx(pcx_lhs, pcx_rhs, pcx_res, ops, std::true_type{})            //
+                   + check_cx(sub_lhs, sub_rhs, sub_res, ops, std::false_type{})          //
+                   + check_cx(slice_lhs, slice_rhs, slice_res, ops, std::true_type{})    //
+                   // + (check_subr.template operator()<N>(ops) + ...)    //
                    + (check_cx_scalar.template operator()<N>(ops) + ...);
         };
         return check_all_impl(ops, std::index_sequence_for<Ops...>{});
