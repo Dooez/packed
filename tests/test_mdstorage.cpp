@@ -162,8 +162,9 @@ auto check_storage(auto&& storage) {
 
 template<typename T>
 int do_tests() {
+    std::array<uZ, 2048> begin_guard{};
     using enum ax1;
-    constexpr auto           left_basis = pcx::md::left_basis<x, y, z>{5U, 2U, 3U};
+    constexpr auto           left_basis = pcx::md::left_basis<x, y, z>{9U, 8U, 8U};
     const std::array<T, 128> beging{};
     auto                     static_storage_l = pcx::md::static_stoarge<T, left_basis>{};
     const std::array<T, 128> endg{};
@@ -172,15 +173,16 @@ int do_tests() {
     std::cout << "static left 3:2:3 :\n";
     constexpr double ten = 10.;
     fill_mdstorage(static_storage_l.as_slice(), ten);
-    print_mdstorage(std::as_const(static_storage_l).as_slice());
+    // print_mdstorage(std::as_const(static_storage_l).as_slice());
 
-    auto dynamic_storage_l = pcx::md::dynamic_storage<T, left_basis>{5U, 8U, 8U};
+    auto dynamic_storage_l = pcx::md::dynamic_storage<T, left_basis>{9U, 8U, 8U};
     test_xyz_storage<T>(dynamic_storage_l);
     std::cout << "dynamic left 5:8:8 :\n";
     fill_mdstorage(dynamic_storage_l, ten);
     print_mdstorage(dynamic_storage_l);
-    print_mdstorage(std::as_const(dynamic_storage_l));
+    // print_mdstorage(std::as_const(dynamic_storage_l));
 
+    return 0;
     constexpr auto right_basis = pcx::md::right_basis<x, y, z>{3U, 2U, 4U};
     constexpr auto asds        = pcx::md::right_basis<x, y, z>::outer_axis;
 
@@ -204,6 +206,9 @@ int do_tests() {
     fill_mdstorage(short_static_l, ten);
     print_mdstorage(short_static_l);
     static_assert(pcx::complex_vector_of<T, decltype(short_static_l)>);
+
+
+    std::array<uZ, 2048> end_guard{};
     return 0;
 }
 
@@ -213,6 +218,16 @@ int main() {
     do_tests<float>();
     // std::cout << "double:\n";
     // do_tests<double>();
+
+    using enum ax1;
+    using T = double;
+
+    constexpr auto           left_basis = pcx::md::left_basis<x, y, z>{7U, 2U, 3U};
+    const std::array<T, 128> beging{};
+    auto                     static_storage_l = pcx::md::static_stoarge<T, left_basis>{};
+    // std::cout << static_storage_l.extent<x>() << "\n";
+    // std::cout << static_storage_l.extent<y>() << "\n";
+    // std::cout << static_storage_l.extent<z>() << "\n";
 
     return 0;
 }

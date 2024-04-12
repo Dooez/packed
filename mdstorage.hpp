@@ -267,8 +267,8 @@ template<uZ Size>
 struct dynamic_extents_info {
 private:
 public:
-    std::array<uZ, Size> extents;
-    uZ                   storage_size;
+    std::array<uZ, Size> extents;         // layout order
+    uZ                   storage_size;    // size in elemnts
 };
 
 template<auto Basis, uZ PackSize, uZ Alignment>
@@ -551,12 +551,12 @@ private:
     _NDINLINE_ static auto calc_stride(const extents_type* extents_ptr) noexcept {
         auto stride = extents_ptr->storage_size;
 
-        auto f = []<typename F, uZ I>(F&& f, auto& extents, uZ_constant<I>) {
+        constexpr auto f = []<uZ I>(const auto& f, auto& extents, uZ_constant<I>) {
             constexpr auto axis = Basis.template axis<I>();
             if constexpr (equal_values<outer_axis, axis>) {
                 return extents[I];
             } else {
-                return extents[I] * f(std::forward<F>(f), extents, uZ_constant<I - 1>{});
+                return extents[I] * f(f, extents, uZ_constant<I - 1>{});
             }
         };
         auto div = f(f, extents_ptr->extents, uZ_constant<Basis.size - 1>{});
@@ -746,7 +746,7 @@ protected:
 
 private:
     _NDINLINE_ static auto calc_storage_size(const std::array<uZ, Basis.size>& extents) noexcept -> uZ {
-        auto size = (extents.front() + alignment - 1) / alignment * alignment;
+        auto size = (extents.front() * 2U + alignment - 1) / alignment * alignment;
         for (uZ i = 1; i < Basis.size; ++i) {
             size *= extents[i];
         }
