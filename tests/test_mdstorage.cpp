@@ -166,7 +166,7 @@ int do_tests() {
     using enum ax1;
     constexpr auto           left_basis = pcx::md::left_basis<x, y, z>{9U, 8U, 8U};
     const std::array<T, 128> beging{};
-    auto                     static_storage_l = pcx::md::static_stoarge<T, left_basis>{};
+    auto                     static_storage_l = pcx::md::static_storage<T, left_basis>{};
     const std::array<T, 128> endg{};
     test_xyz_storage<T>(static_storage_l);
     test_const_xyz_storage<T>(static_storage_l);
@@ -186,7 +186,7 @@ int do_tests() {
     constexpr auto right_basis = pcx::md::right_basis<x, y, z>{3U, 2U, 4U};
     constexpr auto asds        = pcx::md::right_basis<x, y, z>::outer_axis;
 
-    auto static_storage_r  = pcx::md::static_stoarge<T, right_basis>{};
+    auto static_storage_r  = pcx::md::static_storage<T, right_basis>{};
     auto dynamic_storage_r = pcx::md::dynamic_storage<T, right_basis>{8U, 8U, 5U};
     using enum pcx::md::layout;
 
@@ -201,7 +201,7 @@ int do_tests() {
     print_mdstorage(dynamic_storage_r);
 
     constexpr auto short_basis    = pcx::md::left_basis<x>{4U};
-    auto           short_static_l = pcx::md::static_stoarge<T, short_basis>{};
+    auto           short_static_l = pcx::md::static_storage<T, short_basis>{};
     std::cout << "short left 4:\n";
     fill_mdstorage(short_static_l, ten);
     print_mdstorage(short_static_l);
@@ -224,7 +224,7 @@ int main() {
 
     constexpr auto           left_basis = pcx::md::left_basis<x, y, z>{7U, 2U, 3U};
     const std::array<T, 128> beging{};
-    auto                     static_storage_l = pcx::md::static_stoarge<T, left_basis>{};
+    auto                     static_storage_l = pcx::md::static_storage<T, left_basis>{};
     // std::cout << static_storage_l.extent<x>() << "\n";
     // std::cout << static_storage_l.extent<y>() << "\n";
     // std::cout << static_storage_l.extent<z>() << "\n";

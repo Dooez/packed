@@ -1246,7 +1246,7 @@ template<typename T,
          uZ   PackSize  = pcx::default_pack_size<T>,
          uZ   Alignment = pcx::default_pack_size<T>>
     requires /**/ (Basis.has_extents())
-using static_stoarge = storage<T,    //
+using static_storage = storage<T,    //
                                Basis,
                                PackSize,
                                Alignment,
