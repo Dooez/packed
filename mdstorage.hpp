@@ -1160,7 +1160,7 @@ public:
     }
 
     template<typename E>
-        requires Base::vector_like && pcx::detail_::vecexpr<E>
+        requires vector_like && pcx::detail_::vecexpr<E>
     auto operator=(const E& expression) -> storage& {
         store(expression, *this);
         return *this;
