@@ -48,7 +48,7 @@ public:
     iterator() noexcept = default;
 
     // NOLINTNEXTLINE(*explicit*)
-    iterator(const iterator<T, false, PackSize>& other) noexcept
+    explicit iterator(const iterator<T, false, PackSize>& other) noexcept
         requires Const
     : m_ptr(other.m_ptr)
     , m_idx(other.m_idx){};
@@ -124,9 +124,8 @@ public:
     }
 
     template<bool OConst>
-    [[nodiscard]] friend auto operator-(const iterator&                      lhs,
-                                        const iterator<T, OConst, PackSize>& rhs) noexcept
-        -> difference_type {
+    [[nodiscard]] friend auto
+    operator-(const iterator& lhs, const iterator<T, OConst, PackSize>& rhs) noexcept -> difference_type {
         return lhs.m_idx - rhs.m_idx;
     }
 
@@ -250,8 +249,8 @@ public:
     }
 
     template<bool OConst>
-    [[nodiscard]] friend auto operator-(const iterator& lhs, const iterator<T, OConst, 1>& rhs) noexcept
-        -> difference_type {
+    [[nodiscard]] friend auto operator-(const iterator&               lhs,
+                                        const iterator<T, OConst, 1>& rhs) noexcept -> difference_type {
         return (lhs.m_ptr - rhs.m_ptr) >> 1U;
     }
 
@@ -471,10 +470,12 @@ struct cx_vector_traits<R> {
         return iterator.aligned();
     }
 
-    static constexpr auto aligned(const const_iterator_t& iterator)
+    static constexpr auto aligned(const const_iterator_t& iter)
         requires(!std::same_as<iterator_t, const_iterator_t>)
     {
-        return iterator.aligned();
+        using pcx_const_iter_t = iterator<real_type, true, pack_size>;
+        static_assert(std::convertible_to<const_iterator_t, pcx_const_iter_t>);
+        return static_cast<pcx_const_iter_t>(iter).aligned();
     }
 };
 }    // namespace pcx
