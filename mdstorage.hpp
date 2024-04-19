@@ -664,7 +664,7 @@ protected:
     : storage_base(layout_order{}, std::move(allocator), extents...){};
     template<std::unsigned_integral... U>
     explicit storage_base(uninitialized_tag ut, Allocator allocator, U... extents)
-    : storage_base(ut, layout_order{}, std::move(allocator), extents...){};
+    : storage_base(layout_order{}, ut, std::move(allocator), extents...){};
 
 public:
     storage_base(const storage_base& other)            = delete;
