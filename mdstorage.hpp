@@ -458,7 +458,10 @@ class storage_base {
     static constexpr uZ storage_size = detail_::static_storage_size<Basis, PackSize, Alignment>();
 
 protected:
-    storage_base() noexcept                               = default;
+    struct uninitialized_tag {};
+    storage_base() noexcept
+    : m_data{} {};
+    explicit storage_base(uninitialized_tag) noexcept {};
     storage_base(const storage_base&) noexcept            = default;
     storage_base(storage_base&&) noexcept                 = default;
     storage_base& operator=(const storage_base&) noexcept = default;
@@ -509,7 +512,7 @@ protected:
     }
 
 private:
-    std::array<T, storage_size> m_data{};
+    std::array<T, storage_size> m_data;
 };
 }    // namespace detail_::static_
 
@@ -621,6 +624,10 @@ private:
 };
 template<typename T, auto Basis, uZ PackSize, uZ Alignment, typename Allocator>
 class storage_base {
+protected:
+    struct uninitialized_tag {};
+
+private:
     static constexpr uZ alignment = std::lcm(PackSize * 2, Alignment);
 
     using extents_type     = detail_::dynamic_extents_info<Basis.size>;
@@ -635,15 +642,29 @@ class storage_base {
         std::memset(m_ptr, 0, m_extents.storage_size * sizeof(T));
     }
 
+
+    template<uZ... Is>
+    explicit storage_base(std::index_sequence<Is...>, uninitialized_tag, Allocator allocator, auto... extents)
+    : m_allocator(std::move(allocator))
+    , m_extents{.extents{std::get<Is>(std::make_tuple(extents...))...},
+                .storage_size{calc_storage_size(m_extents.extents)}} {
+        m_ptr = allocator_traits::allocate(m_allocator, m_extents.storage_size);
+    }
+
     using layout_order = typename decltype(Basis)::layout_order;
 
 protected:
     storage_base() noexcept
     : m_ptr(nullptr){};
+    explicit storage_base(uninitialized_tag) noexcept
+    : m_ptr(nullptr){};
 
     template<std::unsigned_integral... U>
     explicit storage_base(Allocator allocator, U... extents)
     : storage_base(layout_order{}, std::move(allocator), extents...){};
+    template<std::unsigned_integral... U>
+    explicit storage_base(uninitialized_tag ut, Allocator allocator, U... extents)
+    : storage_base(ut, layout_order{}, std::move(allocator), extents...){};
 
 public:
     storage_base(const storage_base& other)            = delete;
@@ -1056,6 +1077,18 @@ class storage
                            pcx::iterator<T, true, PackSize>,
                            md::iterator<true, Basis, T, PackSize, typename Base::const_iterator_base>>;
 
+    using allocator         = typename Base::allocator;
+    using uninitialized_tag = typename Base::uninitialized_tag;
+
+    template<std::unsigned_integral... U>
+    storage(uninitialized_tag ut, allocator allocator, U... extents)
+        requires(dynamic && sizeof...(U) == Basis.size)
+    : Base(ut, std::move(allocator), extents...) {}
+
+    storage(uninitialized_tag ut)
+    : Base(ut){};
+
+
 public:
     /**
      * @brief Constructs dynamic storage using `allocator` for memory allocation.
@@ -1063,9 +1096,21 @@ public:
      * @param extents Axis extents in the basis axis declaration order. See `storage(U... extents)`.
      */
     template<std::unsigned_integral... U>
-    explicit storage(typename Base::allocator allocator, U... extents)
+    explicit storage(allocator alloca, U... extents)
         requires(dynamic && sizeof...(U) == Basis.size)
-    : Base(std::move(allocator), extents...) {}
+    : Base(std::move(alloca), extents...) {}
+
+    /**
+     * @brief Constructs uninitialized dynamic storage using `allocator` for memory allocation.
+     * 
+     * @param extents Axis extents in the basis axis declaration order. See `storage(U... extents)`.
+     */
+    template<std::unsigned_integral... U>
+    static storage uninitialized(allocator alloca, U... extents)
+        requires(dynamic && sizeof...(U) == Basis.size)
+    {
+        return storage(uninitialized_tag{}, std::move(alloca), extents...);
+    }
     /**
      * @brief Constructs dynamic storage.
      * 
@@ -1086,7 +1131,33 @@ public:
         requires(dynamic && sizeof...(U) == Basis.size)
     : storage(typename Base::allocator{}, extents...) {}
 
+    /**
+     * @brief Constructs dynamic storage.
+     * 
+     * @param extents Axis extents in the basis axis declaration order.
+     * 
+     * Example:
+     * after executing
+     ``` c++
+        constexpr auto basis    = pcx::md::left_basis<x, y, z>;
+        auto           storage  = dynamic_storage<float, basis>(2U, 4UL, 8U);
+        auto           x_extent = storage.extent<x>(); // 2
+        auto           y_extent = storage.extent<y>(); // 4
+     ```
+     * x_extent is std::size_t and equals 2, and y_extent is std::size_t and equals 4.
+     */
+    template<std::unsigned_integral... U>
+    static storage uninitialized(U... extents)
+        requires(dynamic && sizeof...(U) == Basis.size)
+    {
+        return storage(uninitialized_tag{}, allocator{}, extents...);
+    }
+
     storage() = default;
+
+    static storage uninitialized() {
+        return storage(uninitialized_tag{});
+    }
 
     template<typename E>
         requires Base::vector_like && pcx::detail_::vecexpr<E>

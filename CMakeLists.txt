@@ -51,13 +51,13 @@ if( CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR )
     add_test(NAME test_avx512 COMMAND test_fxcorr)
 else()
 
-    add_library(packed_complex INTERFACE vector.hpp)
-    target_include_directories(packed_complex INTERFACE
+    add_library(pcx INTERFACE vector.hpp)
+    target_include_directories(pcx INTERFACE
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${CMAKE_CURRENT_SOURCE_DIR}/inc
         ${CMAKE_CURRENT_SOURCE_DIR}/inc/simd_impl
     )
-    set_target_properties(packed_complex PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED True)
+    set_target_properties(pcx PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED True)
 
 endif()
 # set(CPACK_PROJECT_NAME ${PROJECT_NAME})
