@@ -730,8 +730,8 @@ private:
     static constexpr bool sorted = Order == fft_order::normal;
 
     using sort_t    = std::conditional_t<sorted,    //
-                                      std::vector<uZ, sort_allocator_type>,
-                                      decltype([]() {})>;
+                                         std::vector<uZ, sort_allocator_type>,
+                                         decltype([]() {})>;
     using twiddle_t = std::conditional_t<sorted,
                                          pcx::vector<real_type, simd::reg<T>::size, allocator_type>,
                                          std::vector<real_type, allocator_type>>;
@@ -2330,8 +2330,8 @@ private:
     static constexpr bool sorted = Order == fft_order::normal;
 
     using sort_t    = std::conditional_t<sorted,    //
-                                      std::vector<uZ, sort_allocator_type>,
-                                      decltype([]() {})>;
+                                         std::vector<uZ, sort_allocator_type>,
+                                         decltype([]() {})>;
     using twiddle_t = std::vector<std::complex<real_type>, tw_allocator_type>;
 
 public:
@@ -2365,7 +2365,7 @@ public:
         constexpr auto PSrc   = cx_vector_traits<src_vector_t>::pack_size;
         constexpr auto PTform = std::max(PDest, simd::reg<T>::size);
 
-        constexpr auto get_vector = [](auto& R, uZ i) -> auto& {
+        constexpr auto get_vector = [](auto& R, uZ i) -> decltype(auto) {
             using vector_t = rv::range_value_t<std::remove_cvref_t<decltype(R)>>;
             if constexpr (std::is_pointer_v<vector_t>) {
                 return *R[i];
@@ -2399,7 +2399,7 @@ public:
                 constexpr auto get_data_ptr =
                     []<uZ... I>(auto& data, uZ i, uZ grp_size, std::index_sequence<I...>) {
                         using vector_t            = rv::range_value_t<std::remove_cvref_t<decltype(data)>>;
-                        constexpr auto get_vector = [](auto&& R, uZ i) -> auto& {
+                        constexpr auto get_vector = [](auto&& R, uZ i) -> decltype(auto) {
                             if constexpr (std::is_pointer_v<vector_t>) {
                                 return *R[i];
                             } else {
@@ -2479,7 +2479,7 @@ public:
             constexpr auto get_data_ptr_iml =
                 []<uZ... I>(auto& data, uZ i, uZ grp_size, std::index_sequence<I...>) {
                     using vector_t            = rv::range_value_t<std::remove_cvref_t<decltype(data)>>;
-                    constexpr auto get_vector = [](auto& R, uZ i) -> auto& {
+                    constexpr auto get_vector = [](auto& R, uZ i) -> decltype(auto) {
                         if constexpr (std::is_pointer_v<vector_t>) {
                             return *R[i];
                         } else {
