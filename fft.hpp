@@ -54,6 +54,9 @@ constexpr auto powi(uint64_t num, uint64_t pow) -> uint64_t {
 }
 
 constexpr auto reverse_bit_order(u64 num, u64 depth) -> u64 {
+    //TODO(Timofey): possibly find better solution to prevent UB
+    if (depth == 0)
+        return 0;
     num = num >> 32 | num << 32;
     num = (num & 0xFFFF0000FFFF0000) >> 16 | (num & 0x0000FFFF0000FFFF) << 16;
     num = (num & 0xFF00FF00FF00FF00) >> 8 | (num & 0x00FF00FF00FF00FF) << 8;
