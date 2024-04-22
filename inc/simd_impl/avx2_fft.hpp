@@ -6,6 +6,8 @@
 
 #include <array>
 
+#define _AINLINE_ [[gnu::always_inline, clang::always_inline]] inline
+
 namespace pcx::simd {
 
 constexpr auto swap_48 = [](cx_reg<float, false> reg) {
@@ -38,7 +40,7 @@ namespace avx2 {
  */
 template<uZ... PackSize>
     requires detail_::equal<PackSize...>
-static inline auto split(cx_reg<float, false, PackSize>... args) {
+_AINLINE_ static auto split(cx_reg<float, false, PackSize>... args) {
     constexpr auto swap_48 = []<uZ PackSize_>(cx_reg<float, false, PackSize_> reg) {
         auto real = avx2::unpacklo_128(reg.real, reg.imag);
         auto imag = avx2::unpackhi_128(reg.real, reg.imag);
@@ -67,7 +69,7 @@ static inline auto split(cx_reg<float, false, PackSize>... args) {
 }
 template<uZ PackTo, uZ... PackSize>
     requires detail_::equal<PackSize...>
-static inline auto combine(cx_reg<float, false, PackSize>... args) {
+_AINLINE_ static auto combine(cx_reg<float, false, PackSize>... args) {
     constexpr auto swap_48 = []<uZ PackSize_>(cx_reg<float, false, PackSize_> reg) {
         auto real = avx2::unpacklo_128(reg.real, reg.imag);
         auto imag = avx2::unpackhi_128(reg.real, reg.imag);
@@ -110,7 +112,7 @@ template<>
 inline constexpr uZ unsorted_size<double> = 16;
 
 template<uZ PDest, uZ PTform, bool BitReversed>
-inline auto unsorted(float* dest, const float* twiddle_ptr, uZ size) -> const float* {
+_AINLINE_  auto unsorted(float* dest, const float* twiddle_ptr, uZ size) -> const float* {
     constexpr auto reg_size = reg<float>::size;
     using cx_reg            = cx_reg<float, false, reg_size>;
 
@@ -215,7 +217,7 @@ inline auto unsorted(float* dest, const float* twiddle_ptr, uZ size) -> const fl
 }
 
 template<uZ PTform, uZ PSrc, bool Scale, bool BitReversed>
-inline auto unsorted_reverse(float*       dest,    //
+_AINLINE_ auto unsorted_reverse(float*       dest,    //
                              const float* twiddle_ptr,
                              uZ           size,
                              uZ           fft_size,
@@ -440,12 +442,12 @@ inline void insert_unsorted(auto& twiddles, uZ n_blocks, uZ l_size, uZ i_group) 
 }
 
 template<>
-static constexpr uZ sorted_size<float> = 8;
+constexpr uZ sorted_size<float> = 8;
 template<>
-static constexpr uZ sorted_size<double> = 4;
+constexpr uZ sorted_size<double> = 4;
 
 template<uZ PTform, uZ PSrc, bool Inverse>
-static inline void tform_sort(float* data, uZ size, const auto& sort) {
+_AINLINE_ static void tform_sort(float* data, uZ size, const auto& sort) {
     constexpr auto reg_size = reg<float>::size;
     using cx_reg            = cx_reg<float, false, reg_size>;
 
@@ -746,7 +748,7 @@ static inline void tform_sort(float* data, uZ size, const auto& sort) {
 }
 
 template<uZ PTform, uZ PSrc, bool Inverse>
-static inline void tform_sort(float* dest, const float* source, uZ size, const auto& sort) {
+_AINLINE_ static void tform_sort(float* dest, const float* source, uZ size, const auto& sort) {
     constexpr auto reg_size = reg<float>::size;
     using cx_reg            = cx_reg<float, false, reg_size>;
 
@@ -946,4 +948,6 @@ static inline void tform_sort(float* dest, const float* source, uZ size, const a
 // NOLINTEND(*pointer-arithmetic*)
 
 }    // namespace pcx::simd
+
+#undef _AINLINE_
 #endif

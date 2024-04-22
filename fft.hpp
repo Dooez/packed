@@ -27,6 +27,7 @@
 #include <utility>
 #include <xmmintrin.h>
 
+#define _AINLINE_ [[gnu::always_inline, clang::always_inline]] inline
 // NOLINTBEGIN (*magic-numbers)
 namespace pcx {
 
@@ -283,7 +284,7 @@ struct node {
 template<>
 struct node<2> {
     template<typename T, uZ PDest, uZ PSrc, bool ConjTw, bool Reverse, bool DIT = false, typename... Args>
-    static inline void perform(std::array<T*, 2> dest, Args... args) {
+    _AINLINE_ static void perform(std::array<T*, 2> dest, Args... args) {
         constexpr auto reg_size = simd::reg<T>::size;
         using cx_reg            = simd::cx_reg<T, false, reg_size>;
 
@@ -337,7 +338,7 @@ struct node<2> {
 template<>
 struct node<4> {
     template<typename T, uZ PDest, uZ PSrc, bool ConjTw, bool Reverse, bool DIT = false, typename... Args>
-    static inline void perform(std::array<T*, 4> dest, Args... args) {
+    _AINLINE_ static void perform(std::array<T*, 4> dest, Args... args) {
         constexpr auto reg_size = simd::reg<T>::size;
         using cx_reg            = simd::cx_reg<T, false, reg_size>;
 
@@ -420,7 +421,7 @@ struct node<4> {
 template<>
 struct node<8> {
     template<typename T, uZ PDest, uZ PSrc, bool ConjTw, bool Reverse, bool DIT = false, typename... Args>
-    static inline void perform(std::array<T*, 8> dest, Args... args) {
+    _AINLINE_ static void perform(std::array<T*, 8> dest, Args... args) {
         constexpr auto reg_size = simd::reg<T>::size;
         using cx_reg            = simd::cx_reg<T, false, reg_size>;
 
@@ -2723,4 +2724,5 @@ private:
 
 // NOLINTEND (*magic-numbers)
 }    // namespace pcx
+#undef _AINLINE_
 #endif

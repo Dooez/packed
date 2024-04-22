@@ -6,6 +6,8 @@
 
 #include <immintrin.h>
 
+#define _AINLINE_ [[gnu::always_inline, clang::always_inline]] inline
+
 namespace pcx::simd {
 
 template<>
@@ -34,81 +36,81 @@ struct simd_traits<reg_t<double>> {
 
 
 template<>
-inline auto zero<float>() -> reg_t<float> {
+_AINLINE_ auto zero<float>() -> reg_t<float> {
     return _mm256_setzero_ps();
 };
 template<>
-inline auto zero<double>() -> reg_t<double> {
+_AINLINE_ auto zero<double>() -> reg_t<double> {
     return _mm256_setzero_pd();
 };
-inline auto broadcast(const float* source) -> reg_t<float> {
+_AINLINE_ auto broadcast(const float* source) -> reg_t<float> {
     return _mm256_broadcast_ss(source);
 }
-inline auto broadcast(const double* source) -> reg_t<double> {
+_AINLINE_ auto broadcast(const double* source) -> reg_t<double> {
     return _mm256_broadcast_sd(source);
 }
 template<typename T>
-inline auto broadcast(T source) -> reg_t<T> {
+_AINLINE_ auto broadcast(T source) -> reg_t<T> {
     return broadcast(&source);
 }
-inline auto load(const float* source) -> reg_t<float> {
+_AINLINE_ auto load(const float* source) -> reg_t<float> {
     return _mm256_loadu_ps(source);
 }
-inline auto load(const double* source) -> reg_t<double> {
+_AINLINE_ auto load(const double* source) -> reg_t<double> {
     return _mm256_loadu_pd(source);
 }
-inline void store(float* dest, reg_t<float> reg) {
+_AINLINE_ void store(float* dest, reg_t<float> reg) {
     return _mm256_storeu_ps(dest, reg);
 }
-inline void store(double* dest, reg_t<double> reg) {
+_AINLINE_ void store(double* dest, reg_t<double> reg) {
     return _mm256_storeu_pd(dest, reg);
 }
 
 template<uZ PackSize, typename T>
-inline auto broadcast(std::complex<T> source) -> cx_reg<T, false, PackSize> {
+_AINLINE_ auto broadcast(std::complex<T> source) -> cx_reg<T, false, PackSize> {
     return {broadcast(source.real()), broadcast(source.imag())};
 }
 template<typename T>
-inline auto broadcast(std::complex<T> source) -> cx_reg<T, false, reg<T>::size> {
+_AINLINE_ auto broadcast(std::complex<T> source) -> cx_reg<T, false, reg<T>::size> {
     return {broadcast(source.real()), broadcast(source.imag())};
 }
 namespace avx2 {
 
-inline auto unpacklo_ps(reg_t<float> a, reg_t<float> b) -> reg_t<float> {
+_AINLINE_ auto unpacklo_ps(reg_t<float> a, reg_t<float> b) -> reg_t<float> {
     return _mm256_unpacklo_ps(a, b);
 };
-inline auto unpackhi_ps(reg_t<float> a, reg_t<float> b) -> reg_t<float> {
+_AINLINE_ auto unpackhi_ps(reg_t<float> a, reg_t<float> b) -> reg_t<float> {
     return _mm256_unpackhi_ps(a, b);
 };
 
-inline auto unpacklo_pd(reg_t<float> a, reg_t<float> b) -> reg_t<float> {
+_AINLINE_ auto unpacklo_pd(reg_t<float> a, reg_t<float> b) -> reg_t<float> {
     return _mm256_castpd_ps(_mm256_unpacklo_pd(_mm256_castps_pd(a), _mm256_castps_pd(b)));
 };
-inline auto unpackhi_pd(reg_t<float> a, reg_t<float> b) -> reg_t<float> {
+_AINLINE_ auto unpackhi_pd(reg_t<float> a, reg_t<float> b) -> reg_t<float> {
     return _mm256_castpd_ps(_mm256_unpackhi_pd(_mm256_castps_pd(a), _mm256_castps_pd(b)));
 };
-inline auto unpacklo_pd(reg_t<double> a, reg_t<double> b) -> reg_t<double> {
+_AINLINE_ auto unpacklo_pd(reg_t<double> a, reg_t<double> b) -> reg_t<double> {
     return _mm256_unpacklo_pd(a, b);
 };
-inline auto unpackhi_pd(reg_t<double> a, reg_t<double> b) -> reg_t<double> {
+_AINLINE_ auto unpackhi_pd(reg_t<double> a, reg_t<double> b) -> reg_t<double> {
     return _mm256_unpackhi_pd(a, b);
 };
 
-inline auto unpacklo_128(reg_t<float> a, reg_t<float> b) -> reg_t<float> {
+_AINLINE_ auto unpacklo_128(reg_t<float> a, reg_t<float> b) -> reg_t<float> {
     return _mm256_insertf128_ps(a, _mm256_extractf128_ps(b, 0), 1);
 };
-inline auto unpackhi_128(reg_t<float> a, reg_t<float> b) -> reg_t<float> {
+_AINLINE_ auto unpackhi_128(reg_t<float> a, reg_t<float> b) -> reg_t<float> {
     return _mm256_permute2f128_ps(a, b, 0b00110001);
 };
-inline auto unpacklo_128(reg_t<double> a, reg_t<double> b) -> reg_t<double> {
+_AINLINE_ auto unpacklo_128(reg_t<double> a, reg_t<double> b) -> reg_t<double> {
     return _mm256_insertf128_pd(a, _mm256_extractf128_pd(b, 0), 1);
 };
-inline auto unpackhi_128(reg_t<double> a, reg_t<double> b) -> reg_t<double> {
+_AINLINE_ auto unpackhi_128(reg_t<double> a, reg_t<double> b) -> reg_t<double> {
     return _mm256_permute2f128_pd(a, b, 0b00110001);
 };
 
 template<bool Conj, uZ PackSize>
-inline auto unpack_ps(cx_reg<float, Conj, PackSize> a, cx_reg<float, Conj, PackSize> b) {
+_AINLINE_ auto unpack_ps(cx_reg<float, Conj, PackSize> a, cx_reg<float, Conj, PackSize> b) {
     auto real_lo = unpacklo_ps(a.real, b.real);
     auto real_hi = unpackhi_ps(a.real, b.real);
     auto imag_lo = unpacklo_ps(a.imag, b.imag);
@@ -119,7 +121,7 @@ inline auto unpack_ps(cx_reg<float, Conj, PackSize> a, cx_reg<float, Conj, PackS
 };
 
 template<typename T, bool Conj, uZ PackSize>
-inline auto unpack_pd(cx_reg<T, Conj, PackSize> a, cx_reg<T, Conj, PackSize> b) {
+_AINLINE_ auto unpack_pd(cx_reg<T, Conj, PackSize> a, cx_reg<T, Conj, PackSize> b) {
     auto real_lo = unpacklo_pd(a.real, b.real);
     auto real_hi = unpackhi_pd(a.real, b.real);
     auto imag_lo = unpacklo_pd(a.imag, b.imag);
@@ -130,7 +132,7 @@ inline auto unpack_pd(cx_reg<T, Conj, PackSize> a, cx_reg<T, Conj, PackSize> b) 
 };
 
 template<typename T, bool Conj, uZ PackSize>
-inline auto unpack_128(cx_reg<T, Conj, PackSize> a, cx_reg<T, Conj, PackSize> b) {
+_AINLINE_ auto unpack_128(cx_reg<T, Conj, PackSize> a, cx_reg<T, Conj, PackSize> b) {
     auto real_hi = unpackhi_128(a.real, b.real);
     auto real_lo = unpacklo_128(a.real, b.real);
     auto imag_hi = unpackhi_128(a.imag, b.imag);
@@ -140,34 +142,34 @@ inline auto unpack_128(cx_reg<T, Conj, PackSize> a, cx_reg<T, Conj, PackSize> b)
                            cx_reg<T, Conj, PackSize>({real_hi, imag_hi}));
 };
 
-inline constexpr auto float_swap_12 =
+constexpr auto float_swap_12 =
     []<bool Conj, uZ PackSize>(cx_reg<float, Conj, PackSize> reg) /* static */ {
         auto real = _mm256_shuffle_ps(reg.real, reg.real, 0b11011000);
         auto imag = _mm256_shuffle_ps(reg.imag, reg.imag, 0b11011000);
         return cx_reg<float, Conj, PackSize>({real, imag});
     };
 
-inline constexpr auto float_swap_24 =
+constexpr auto float_swap_24 =
     []<bool Conj, uZ PackSize>(cx_reg<float, Conj, PackSize> reg) /* static */ {
         auto real = _mm256_permute4x64_pd(_mm256_castps_pd(reg.real), 0b11011000);
         auto imag = _mm256_permute4x64_pd(_mm256_castps_pd(reg.imag), 0b11011000);
         return cx_reg<float, Conj, PackSize>({_mm256_castpd_ps(real), _mm256_castpd_ps(imag)});
     };
 
-inline constexpr auto float_swap_48 =
+constexpr auto float_swap_48 =
     []<bool Conj, uZ PackSize>(cx_reg<float, Conj, PackSize> reg) /* static */ {
         auto real = unpacklo_128(reg.real, reg.imag);
         auto imag = unpackhi_128(reg.real, reg.imag);
         return cx_reg<float, Conj, PackSize>({real, imag});
     };
 
-inline constexpr auto double_swap_12 = []<bool Conj, uZ PackSize>(cx_reg<double, Conj, PackSize> reg) {
+constexpr auto double_swap_12 = []<bool Conj, uZ PackSize>(cx_reg<double, Conj, PackSize> reg) {
     auto real = _mm256_permute4x64_pd(reg.real, 0b11011000);
     auto imag = _mm256_permute4x64_pd(reg.imag, 0b11011000);
     return cx_reg<double, Conj, PackSize>({real, imag});
 };
 
-inline constexpr auto double_swap_24 = []<bool Conj, uZ PackSize>(cx_reg<double, Conj, PackSize> reg) {
+constexpr auto double_swap_24 = []<bool Conj, uZ PackSize>(cx_reg<double, Conj, PackSize> reg) {
     auto real = avx2::unpacklo_128(reg.real, reg.imag);
     auto imag = avx2::unpackhi_128(reg.real, reg.imag);
     return cx_reg<double, Conj, PackSize>({real, imag});
@@ -178,7 +180,7 @@ inline constexpr auto double_swap_24 = []<bool Conj, uZ PackSize>(cx_reg<double,
 
 template<uZ PackFrom, uZ PackTo, bool... Conj>
     requires((PackFrom > 0) && (PackTo > 0))
-inline auto repack(cx_reg<float, Conj>... args) {
+_AINLINE_ auto repack(cx_reg<float, Conj>... args) {
     auto tup = std::make_tuple(args...);
     if constexpr (PackFrom == PackTo || (PackFrom >= 8 && PackTo >= 8)) {
         return tup;
@@ -240,7 +242,7 @@ inline auto repack(cx_reg<float, Conj>... args) {
 
 template<uZ PackTo, uZ PackFrom, bool... Conj>
     requires pack_size<PackTo> && (PackTo <= reg<float>::size)
-inline auto repack2(cx_reg<float, Conj, PackFrom>... args) {
+_AINLINE_ auto repack2(cx_reg<float, Conj, PackFrom>... args) {
     auto tup = std::make_tuple(args...);
 
     constexpr auto swap_12 = []<bool Conj_, uZ PackSize>(cx_reg<float, Conj_, PackSize> reg) /* static */ {
@@ -323,7 +325,7 @@ inline auto repack2(cx_reg<float, Conj, PackFrom>... args) {
 
 template<uZ PackFrom, uZ PackTo, bool... Conj>
     requires((PackFrom > 0) && (PackTo > 0))
-static inline auto repack(cx_reg<double, Conj>... args) {
+_AINLINE_ static auto repack(cx_reg<double, Conj>... args) {
     auto tup = std::make_tuple(args...);
     if constexpr (PackFrom == PackTo || (PackFrom >= 4 && PackTo >= 4)) {
         return tup;
@@ -363,7 +365,7 @@ static inline auto repack(cx_reg<double, Conj>... args) {
 // TODO: remove nested if since they are constexpr anyway
 template<uZ PackTo, uZ PackFrom, bool... Conj>
     requires pack_size<PackTo> && (PackTo <= reg<double>::size)
-static inline auto repack2(cx_reg<double, Conj, PackFrom>... args) {
+_AINLINE_ static auto repack2(cx_reg<double, Conj, PackFrom>... args) {
     constexpr auto swap_12 = []<bool Conj_, uZ PackSize>(cx_reg<double, Conj_, PackSize> reg) {
         auto real = _mm256_permute4x64_pd(reg.real, 0b11011000);
         auto imag = _mm256_permute4x64_pd(reg.imag, 0b11011000);
@@ -415,7 +417,7 @@ static inline auto repack2(cx_reg<double, Conj, PackFrom>... args) {
 };
 
 template<uZ SrcSize, uZ PackSize, typename T>
-inline auto cxload(const T* ptr) {
+_AINLINE_ auto cxload(const T* ptr) {
     constexpr auto LoadSize  = std::max(SrcSize, reg<T>::size);
     constexpr auto PackSize_ = std::min(PackSize, reg<T>::size);
 
@@ -424,7 +426,7 @@ inline auto cxload(const T* ptr) {
     return data;
 }
 template<uZ DestSize, uZ PackSize_, typename T>
-inline void cxstore(T* ptr, cx_reg<T, false, PackSize_> data) {
+_AINLINE_ void cxstore(T* ptr, cx_reg<T, false, PackSize_> data) {
     constexpr auto StoreSize = std::max(DestSize, reg<T>::size);
 
     auto [data_] = repack2<std::min(DestSize, reg<T>::size)>(data);
@@ -433,86 +435,86 @@ inline void cxstore(T* ptr, cx_reg<T, false, PackSize_> data) {
 }
 
 template<uZ PackSize, typename T, bool Conj>
-inline auto cxloadstore(T* ptr, cx_reg<T, Conj, PackSize> reg) -> cx_reg<T, false, PackSize> {
+_AINLINE_ auto cxloadstore(T* ptr, cx_reg<T, Conj, PackSize> reg) -> cx_reg<T, false, PackSize> {
     auto tmp = cxload<PackSize>(ptr);
     cxstore<PackSize>(ptr, reg);
     return tmp;
 }
 template<uZ LoadSize, uZ StoreSize, typename T, bool Conj, uZ PackSize>
-inline auto cxloadstore(T* ptr, cx_reg<T, Conj, PackSize> reg) -> cx_reg<T, false, LoadSize> {
+_AINLINE_ auto cxloadstore(T* ptr, cx_reg<T, Conj, PackSize> reg) -> cx_reg<T, false, LoadSize> {
     auto tmp = cxload<LoadSize>(ptr);
     cxstore<StoreSize>(ptr, reg);
     return tmp;
 }
 
 template<>
-inline auto add(reg_t<float> lhs, reg_t<float> rhs) -> reg_t<float> {
+_AINLINE_ auto add(reg_t<float> lhs, reg_t<float> rhs) -> reg_t<float> {
     return _mm256_add_ps(lhs, rhs);
 }
 template<>
-inline auto add(reg_t<double> lhs, reg_t<double> rhs) -> reg_t<double> {
+_AINLINE_ auto add(reg_t<double> lhs, reg_t<double> rhs) -> reg_t<double> {
     return _mm256_add_pd(lhs, rhs);
 }
 template<>
-inline auto sub(reg_t<float> lhs, reg_t<float> rhs) -> reg_t<float> {
+_AINLINE_ auto sub(reg_t<float> lhs, reg_t<float> rhs) -> reg_t<float> {
     return _mm256_sub_ps(lhs, rhs);
 }
 template<>
-inline auto sub(reg_t<double> lhs, reg_t<double> rhs) -> reg_t<double> {
+_AINLINE_ auto sub(reg_t<double> lhs, reg_t<double> rhs) -> reg_t<double> {
     return _mm256_sub_pd(lhs, rhs);
 }
 template<>
-inline auto mul(reg_t<float> lhs, reg_t<float> rhs) -> reg_t<float> {
+_AINLINE_ auto mul(reg_t<float> lhs, reg_t<float> rhs) -> reg_t<float> {
     return _mm256_mul_ps(lhs, rhs);
 }
 template<>
-inline auto mul(reg_t<double> lhs, reg_t<double> rhs) -> reg_t<double> {
+_AINLINE_ auto mul(reg_t<double> lhs, reg_t<double> rhs) -> reg_t<double> {
     return _mm256_mul_pd(lhs, rhs);
 }
 template<>
-inline auto div(reg_t<float> lhs, reg_t<float> rhs) -> reg_t<float> {
+_AINLINE_ auto div(reg_t<float> lhs, reg_t<float> rhs) -> reg_t<float> {
     return _mm256_div_ps(lhs, rhs);
 }
 template<>
-inline auto div(reg_t<double> lhs, reg_t<double> rhs) -> reg_t<double> {
+_AINLINE_ auto div(reg_t<double> lhs, reg_t<double> rhs) -> reg_t<double> {
     return _mm256_div_pd(lhs, rhs);
 }
 
 template<>
-inline auto fmadd(reg_t<float> a, reg_t<float> b, reg_t<float> c) -> reg_t<float> {
+_AINLINE_ auto fmadd(reg_t<float> a, reg_t<float> b, reg_t<float> c) -> reg_t<float> {
     return _mm256_fmadd_ps(a, b, c);
 }
 template<>
-inline auto fmadd(reg_t<double> a, reg_t<double> b, reg_t<double> c) -> reg_t<double> {
+_AINLINE_ auto fmadd(reg_t<double> a, reg_t<double> b, reg_t<double> c) -> reg_t<double> {
     return _mm256_fmadd_pd(a, b, c);
 }
 template<>
-inline auto fnmadd(reg_t<float> a, reg_t<float> b, reg_t<float> c) -> reg_t<float> {
+_AINLINE_ auto fnmadd(reg_t<float> a, reg_t<float> b, reg_t<float> c) -> reg_t<float> {
     return _mm256_fnmadd_ps(a, b, c);
 }
 template<>
-inline auto fnmadd(reg_t<double> a, reg_t<double> b, reg_t<double> c) -> reg_t<double> {
+_AINLINE_ auto fnmadd(reg_t<double> a, reg_t<double> b, reg_t<double> c) -> reg_t<double> {
     return _mm256_fnmadd_pd(a, b, c);
 }
 template<>
-inline auto fmsub(reg_t<float> a, reg_t<float> b, reg_t<float> c) -> reg_t<float> {
+_AINLINE_ auto fmsub(reg_t<float> a, reg_t<float> b, reg_t<float> c) -> reg_t<float> {
     return _mm256_fmsub_ps(a, b, c);
 }
 template<>
-inline auto fmsub(reg_t<double> a, reg_t<double> b, reg_t<double> c) -> reg_t<double> {
+_AINLINE_ auto fmsub(reg_t<double> a, reg_t<double> b, reg_t<double> c) -> reg_t<double> {
     return _mm256_fmsub_pd(a, b, c);
 }
 template<>
-inline auto fnmsub(reg_t<float> a, reg_t<float> b, reg_t<float> c) -> reg_t<float> {
+_AINLINE_ auto fnmsub(reg_t<float> a, reg_t<float> b, reg_t<float> c) -> reg_t<float> {
     return _mm256_fnmsub_ps(a, b, c);
 }
 template<>
-inline auto fnmsub(reg_t<double> a, reg_t<double> b, reg_t<double> c) -> reg_t<double> {
+_AINLINE_ auto fnmsub(reg_t<double> a, reg_t<double> b, reg_t<double> c) -> reg_t<double> {
     return _mm256_fnmsub_pd(a, b, c);
 }
 
 template<uZ PackSize, bool Conj_>
-auto apply_conj(cx_reg<float, Conj_, PackSize> reg) -> cx_reg<float, false, PackSize> {
+_AINLINE_ auto apply_conj(cx_reg<float, Conj_, PackSize> reg) -> cx_reg<float, false, PackSize> {
     if constexpr (!Conj_) {
         return reg;
     } else if constexpr (PackSize >= 8) {
@@ -535,7 +537,7 @@ auto apply_conj(cx_reg<float, Conj_, PackSize> reg) -> cx_reg<float, false, Pack
     }
 }
 template<uZ PackSize, bool Conj_>
-auto apply_conj(cx_reg<double, Conj_, PackSize> reg) -> cx_reg<double, false, PackSize> {
+_AINLINE_ auto apply_conj(cx_reg<double, Conj_, PackSize> reg) -> cx_reg<double, false, PackSize> {
     if constexpr (!Conj_) {
         return reg;
     } else if constexpr (PackSize >= 4) {
@@ -554,4 +556,5 @@ auto apply_conj(cx_reg<double, Conj_, PackSize> reg) -> cx_reg<double, false, Pa
 }
 }    // namespace pcx::simd
 
+#undef _AINLINE_
 #endif

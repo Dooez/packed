@@ -1,9 +1,10 @@
 #ifndef SIMD_FFT_HPP
 #define SIMD_FFT_HPP
 
-
 #include "simd_common.hpp"
 #include "types.hpp"
+
+#define _AINLINE_ [[gnu::always_inline, clang::always_inline]]
 
 namespace pcx::detail_ {
 template<typename T, typename... U>
@@ -29,7 +30,7 @@ namespace pcx::simd {
   */
 template<uZ RhsRotI = 0, uZ PackSize, typename T>
     requires(RhsRotI < 4)
-inline auto ibtfly(cx_reg<T, false, PackSize> lhs, cx_reg<T, false, PackSize> rhs) {
+_AINLINE_ auto ibtfly(cx_reg<T, false, PackSize> lhs, cx_reg<T, false, PackSize> rhs) {
     cx_reg<T, false, PackSize> s;
     cx_reg<T, false, PackSize> d;
     if constexpr (RhsRotI == 0) {
@@ -72,7 +73,7 @@ inline auto ibtfly(cx_reg<T, false, PackSize> lhs, cx_reg<T, false, PackSize> rh
   */
 template<uint RhsRotI = 0, uZ PackSize, typename T>
     requires(RhsRotI < 4)
-inline auto btfly(cx_reg<T, false, PackSize> lhs, cx_reg<T, false, PackSize> rhs) {
+_AINLINE_ auto btfly(cx_reg<T, false, PackSize> lhs, cx_reg<T, false, PackSize> rhs) {
     cx_reg<T, false, PackSize> s;
     cx_reg<T, false, PackSize> d;
     if constexpr (RhsRotI == 0) {
@@ -192,4 +193,7 @@ static inline void tform_sort(T* dest, const T* source, uZ size, const auto& sor
 
 }    // namespace size_specific
 }    // namespace pcx::simd
+
+#undef _AINLINE_
+
 #endif
