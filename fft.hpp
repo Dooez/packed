@@ -2576,7 +2576,7 @@ public:
                 if constexpr (std::is_pointer_v<rv::range_value_t<DestR_>>) {
                     std::swap(dest[m_sort[i]], dest[m_sort[i + 1]]);
                 } else {
-                    rv::swap(dest[m_sort[i]], dest[m_sort[i + 1]]);
+                    rv::swap_ranges(dest[m_sort[i]], dest[m_sort[i + 1]]);
                 }
             }
         }
