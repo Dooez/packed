@@ -126,7 +126,7 @@ public:
     template<bool OConst>
     [[nodiscard]] friend auto
     operator-(const iterator& lhs, const iterator<T, OConst, PackSize>& rhs) noexcept -> difference_type {
-        return lhs.m_idx - rhs.m_idx;
+        return lhs.m_ptr - rhs.m_ptr;
     }
 
     [[nodiscard]] bool aligned(difference_type idx = 0) const noexcept {
