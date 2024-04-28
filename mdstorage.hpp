@@ -27,8 +27,8 @@ struct basis_base {};
 
 /**
  * @brief Identifies layout mapping of `basis` class template.
- * `left` layout results in leftmost axis (first declared axis) being most contigious in memory.
- * `right` layout results in rightmost axis (last declared axis) being most contigious in memory.
+ * `left` layout results in leftmost axis (first declared axis) being most contiguous in memory.
+ * `right` layout results in rightmost axis (last declared axis) being most contiguous in memory.
  *
  */
 enum class layout {
@@ -39,11 +39,11 @@ enum class layout {
 /**
  * @brief Helper class for defining multidimentional storage with static extents.
  *
- * @tparam Layout   Controls which axis is the most contigious in memory.
+ * @tparam Layout   Controls which axis is the most contiguous in memory.
  * @tparam Axes...  Identifiers of axes. 
  * 
- * In `left` layout the first identifier in `Axes...` identifies the axis most contigious in memory.
- * In `right` layout the last identifier in `Axes...` identifies the axis most contigious in memory.
+ * In `left` layout the first identifier in `Axes...` identifies the axis most contiguous in memory.
+ * In `right` layout the last identifier in `Axes...` identifies the axis most contiguous in memory.
  * Helper aliases `left_basis` and `right_basis` are provided for each layout respectively.
  * 
  * Each axis identifier is a compile time constant of an arbitrary type.
@@ -52,7 +52,7 @@ enum class layout {
  *
  * There are two ways to order axes: declaration order and layout order, generating
  * declaration indexes and layout indexes respectively.
- * In layot order, axis most contigious in memory has the index 0.
+ * In layot order, axis most contiguous in memory has the index 0.
  * For `left` layout declaration order and layout order are equal.
  * For `right` layout declaration order and layout order are reversals of each other. 
  *
@@ -72,12 +72,16 @@ public:
     using layout_order = std::conditional_t<Layout == layout::left,    //
                                             std::make_index_sequence<size>,
                                             meta::value_to_index_sequence<            //
-                                                meta::reverse_value_sequence<         //
+                                                meta::reverse_value_sequence_t<       //
                                                     meta::index_to_value_sequence<    //
                                                         std::make_index_sequence<size>>>>>;
 
 private:
     using layout_order_as_vseq = meta::index_to_value_sequence<layout_order>;
+
+    using axes_layout_seq = std::conditional_t<Layout == layout::left,
+                                               meta::value_sequence<Axes...>,
+                                               meta::reverse_value_sequence_t<meta::value_sequence<Axes...>>>;
 
     template<uZ... Is>
     constexpr explicit basis(std::index_sequence<Is...>, auto... extents)
@@ -96,7 +100,6 @@ private:
         static constexpr auto decl_index = meta::index_into_sequence<0, layout_order_as_vseq>;
         static constexpr auto value      = meta::index_into_values<decl_index, Axes...>;
     };
-
     template<uZ LayoutIndex, typename Sliced>
     struct inner_remaining_impl {
         static constexpr auto decl_index = meta::index_into_sequence<LayoutIndex, layout_order_as_vseq>;
@@ -109,6 +112,32 @@ private:
     struct inner_remaining_impl<size - 1, Sliced> {
         static constexpr auto decl_index = meta::index_into_sequence<size - 1, layout_order_as_vseq>;
         static constexpr auto value      = meta::index_into_values<decl_index, Axes...>;
+    };
+
+    template<typename Sliced, typename SortedSliced, auto AxisRem, auto... AxesRem>
+    struct sorted_sliced_impl {
+        using type = std::conditional_t<
+            meta::contains_value<Sliced, AxisRem>,
+            typename sorted_sliced_impl<Sliced,
+                                        meta::expand_value_sequence_t<SortedSliced, AxisRem>,
+                                        AxesRem...>::type,
+            typename sorted_sliced_impl<Sliced,    //
+                                        SortedSliced,
+                                        AxesRem...>::type>;
+    };
+
+    template<typename Sliced, typename SortedSliced, auto AxisRem>
+    struct sorted_sliced_impl<Sliced, SortedSliced, AxisRem> {
+        using type = std::conditional_t<meta::contains_value<Sliced, AxisRem>,
+                                        typename meta::expand_value_sequence_t<SortedSliced, AxisRem>,
+                                        SortedSliced>;
+    };
+
+    template<typename SlicedAxes, typename BasisAxes>
+    struct sorted_sliced;
+    template<typename SlicedAxes, auto... BasisAxes>
+    struct sorted_sliced<SlicedAxes, meta::value_sequence<BasisAxes...>> {
+        using type = typename sorted_sliced_impl<SlicedAxes, meta::value_sequence<>, BasisAxes...>::type;
     };
 
 public:
@@ -150,7 +179,7 @@ public:
     }
     /**
      * @brief Returns the axis identifier in layout order.
-     * Index 0 corresponds to the most contigious (inner) axis.
+     * Index 0 corresponds to the most contiguous (inner) axis.
      * 
      * @tparam Index Layout index. 
      */
@@ -181,7 +210,7 @@ public:
 
     /**
      * @brief Returns the axis layout index 0-indexed from inner to outer axis. 
-     * Index 0 corresponds to the most contigious (inner) axis.
+     * Index 0 corresponds to the most contiguous (inner) axis.
      * 
      * @param axis      Axis identifier.
      * @return uZ       Axis layout index.
@@ -217,23 +246,23 @@ public:
     }
 
     /**
-     * @brief Identifier of the most contigious axis.
+     * @brief Identifier of the most contiguous axis.
      */
     static constexpr auto inner_axis = axis<0>();
     /**
-     * @brief Identifier of the least contigious axis.
+     * @brief Identifier of the least contiguous axis.
      */
     static constexpr auto outer_axis = axis<size - 1>();
 
     /**
-     * @brief Identifier of the most contigious axis after making a slice from all of the axes in `Sliced`.
+     * @brief Identifier of the most contiguous axis after making a slice from all of the axes in `Sliced`.
      * 
      * @tparam Sliced Sequence of identifiers of axis that were taken a slice from.
      */
     template<meta::value_sequence_of_unique Sliced>
     static constexpr auto inner_axis_remaining = outer_remaining_impl<0, Sliced>::value;
     /**
-     * @brief Identifier of the least contigious axis after making a slice from all of the axes in `Sliced`.
+     * @brief Identifier of the least contiguous axis after making a slice from all of the axes in `Sliced`.
      * 
      * @tparam Sliced Sequence of identifiers of axis that were taken a slice from.
      */
@@ -241,8 +270,35 @@ public:
     static constexpr auto outer_axis_remaining = outer_remaining_impl<size - 1, Sliced>::value;
 
     /**
+     * @brief Expanded sequence of sliced value. Values in the sequence are in the layout order.
+     *
+     * @tparam Sliced Sequence of identifiers of axis that were taken a slice from.
+     * @tparam Axis   Identifier of the axis to take a slice from.
+     */
+    template<meta::value_sequence_of_unique Sliced, auto Axis>
+        requires(contains(Axis))
+    using sorted_expand_sliced_sequence_t =
+        typename sorted_sliced<meta::expand_value_sequence_t<Sliced, Axis>, axes_layout_seq>::type;
+
+    /**
+     * @brief Tests if `Sliced` axes were taken only from the outer axes.
+     *
+     * @tparam Sliced Sequence of identifiers of axis that were taken a slice from.
+     */
+    template<meta::value_sequence_of_unique Sliced>
+    static constexpr bool contiguous = [] {
+        return []<uZ... Is>(std::index_sequence<Is...>) {
+            using sliced_reversed = meta::reverse_value_sequence_t<Sliced>;
+            using axes_reversed   = meta::reverse_value_sequence_t<axes_layout_seq>;
+            return ((meta::index_into_sequence<Is, sliced_reversed> ==
+                     meta::index_into_sequence<Is, axes_reversed>) &&
+                    ...);
+        }(std::make_index_sequence<Sliced::size>{});
+    }();
+
+
+    /**
      * @brief Axis extents in layout order.
-     * 
      */
     std::array<uZ, size> extents{};
 };
@@ -374,7 +430,7 @@ protected:
     ~iter_base() noexcept                           = default;
 
     using slice_base = static_::slice_base<Basis,    //
-                                           meta::expand_value_sequence<SlicedAxes, outer_axis>,
+                                           meta::expand_value_sequence_t<SlicedAxes, outer_axis>,
                                            PackSize,
                                            Alignment>;
 
@@ -409,6 +465,8 @@ public:
     static constexpr bool vector_like = (SlicedAxes::size == Basis.size - 1)    //
                                         && !meta::contains_value<SlicedAxes, Basis.inner_axis>;
 
+    static constexpr bool contiguous = Basis.template contiguous<SlicedAxes>;
+
 protected:
     explicit slice_base(auto) noexcept {};
 
@@ -431,7 +489,7 @@ protected:
 
     template<auto Axis>
     using new_slice_base = slice_base<Basis,    //
-                                      meta::expand_value_sequence<SlicedAxes, Axis>,
+                                      meta::expand_value_sequence_t<SlicedAxes, Axis>,
                                       PackSize,
                                       Alignment>;
 
@@ -534,7 +592,7 @@ protected:
 
     using slice_base = dynamic::slice_base<Const,    //
                                            Basis,
-                                           meta::expand_value_sequence<SlicedAxes, outer_axis>,
+                                           meta::expand_value_sequence_t<SlicedAxes, outer_axis>,
                                            PackSize>;
 
     _NDINLINE_ auto slice_base_args() const noexcept {
@@ -578,6 +636,8 @@ public:
     static constexpr bool vector_like = (SlicedAxes::size == Basis.size - 1)    //
                                         && !meta::contains_value<SlicedAxes, Basis.inner_axis>;
 
+    static constexpr bool contiguous = Basis.template contiguous<SlicedAxes>;
+
 protected:
     explicit slice_base(extents_ptr_type extents_ptr) noexcept
     : m_extents_ptr(extents_ptr){};
@@ -600,7 +660,11 @@ protected:
     }
 
     template<auto Axis>
-    using new_slice_base = slice_base<Const, Basis, meta::expand_value_sequence<SlicedAxes, Axis>, PackSize>;
+    using new_slice_base =
+        slice_base<Const,
+                   Basis,
+                   typename decltype(Basis)::template sorted_expand_sliced_sequence_t<SlicedAxes, Axis>,
+                   PackSize>;
 
     _NDINLINE_ auto new_slice_base_args() const noexcept {
         return m_extents_ptr;
@@ -910,7 +974,7 @@ private:
 
 /**
  * @brief Non-owning slice of multidimensional packed complex data.
- * Models a view over slices of outer (least contigious) non-sliced axis of `Basis`.
+ * Models a view over slices of outer (least contiguous) non-sliced axis of `Basis`.
  * 
  * @tparam Const    If true, referenced data cannot be changed throough slice. 
  * @tparam Basis    `basis` object of the whole storage of data.
@@ -1003,7 +1067,7 @@ public:
         }
     }
     /**
-     * @brief Returns a sub-slice of the data from the outer (least contigious) non-sliced axis.
+     * @brief Returns a sub-slice of the data from the outer (least contiguous) non-sliced axis.
      */
     [[nodiscard]] auto operator[](uZ index) const noexcept {
         return slice<Base::outer_axis>(index);
@@ -1024,7 +1088,7 @@ public:
         return begin() += size();
     }
     /**
-     * @brief Return the extent of the outer (leat contigious) non-slicesd axis.
+     * @brief Return the extent of the outer (leat contiguous) non-slicesd axis.
      */
     [[nodiscard]] auto size() const noexcept -> uZ {
         return extent<Base::outer_axis>();
@@ -1036,6 +1100,24 @@ public:
         requires /**/ (Basis.contains(Axis) && !sliced(Axis))
     [[nodiscard]] auto extent() const noexcept -> uZ {
         return Base::template get_extent<Axis>();
+    }
+
+    [[nodiscard]] auto flat_view() const noexcept {
+        static constexpr uZ s_stride = [] {
+            // constexpr auto f = []<uZ I>(auto f, uZ_constant<I>) {
+            //     constexpr auto axis = Basis.template axis<I>();
+            //     if constexpr (equal_values<outer_axis, axis>) {
+            //         return Basis.extent(axis);
+            //     } else {
+            //         return Basis.extent(axis) * f(f, uZ_constant<I - 1>{});
+            //     }
+            // };
+            // constexpr auto div = f(f, uZ_constant<Basis.size - 1>{});
+            //
+            // constexpr auto size   = detail_::static_storage_size<Basis, PackSize, Alignment>();
+            // constexpr auto stride = size / div;
+            // return stride;
+        };
     }
 
 private:

@@ -312,13 +312,13 @@ template<typename T>
 concept value_sequence_of_unique = detail_::is_value_sequence_of_unique<T>::value;
 
 template<typename Sequence, auto... NewValues>
-using expand_value_sequence = typename detail_::expand_value_sequence_impl<Sequence, NewValues...>::type;
+using expand_value_sequence_t = typename detail_::expand_value_sequence_impl<Sequence, NewValues...>::type;
 
 template<typename Sequence1, typename Sequence2>
-using concat_value_sequences = typename detail_::concat_value_sequences_impl<Sequence1, Sequence2>::type;
+using concat_value_sequences_t = typename detail_::concat_value_sequences_impl<Sequence1, Sequence2>::type;
 
 template<typename Sequence>
-using reverse_value_sequence = typename detail_::reverse_value_sequence_impl<Sequence>::type;
+using reverse_value_sequence_t = typename detail_::reverse_value_sequence_impl<Sequence>::type;
 
 namespace detail_ {
 template<uZ I, auto Vmatch, auto V, auto... Vs>
@@ -348,9 +348,10 @@ struct filter_impl {
 };
 template<typename S, auto Vfilter, auto V, auto... Vs>
 struct filter_impl<S, Vfilter, V, Vs...> {
-    using type = std::conditional_t<equal_values<Vfilter, V>,
-                                    concat_value_sequences<S, filter_impl<value_sequence<>, Vfilter, Vs...>>,
-                                    typename filter_impl<expand_value_sequence<S, V>, Vfilter, Vs...>::type>;
+    using type =
+        std::conditional_t<equal_values<Vfilter, V>,
+                           concat_value_sequences_t<S, filter_impl<value_sequence<>, Vfilter, Vs...>>,
+                           typename filter_impl<expand_value_sequence_t<S, V>, Vfilter, Vs...>::type>;
 };
 // template<typename S, auto Vfilter>
 // struct filter_impl<S, Vfilter> {
