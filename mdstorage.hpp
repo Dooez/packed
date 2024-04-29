@@ -983,12 +983,9 @@ public:
     [[nodiscard]] auto operator<=>(const iterator<Const_, Basis, T, PackSize, Base>& other) const noexcept {
         return m_ptr <=> other.m_ptr;
     };
-
-    [[nodiscard]] auto operator==(const iterator& other) const noexcept -> bool {
-        return m_ptr == other.m_ptr;
-    };
+    template<bool Const_>
     [[nodiscard]] auto
-    operator==(const iterator<!Const, Basis, T, PackSize, Base>& other) const noexcept -> bool {
+    operator==(const iterator<Const_, Basis, T, PackSize, Base>& other) const noexcept -> bool {
         return m_ptr == other.m_ptr;
     };
 
@@ -1132,6 +1129,20 @@ public:
         return Base::template get_extent<Axis>();
     }
 
+    /**
+     * @brief Returns a contiguous view over the whole slice. 
+     * A slice must be contiguous, meaning that all sliced axes are outside axes.
+     * Example:
+     * For right basis with axes <outer, middle2, middle1, middle0, inner> if the sliced axes are:
+     * - <outer, middle2, middle1>, then the slice is contiguous,
+     * - <outer, middle2, middle0>, then the slice is not contiguous,
+     * - <middle1, middle0, inner>, then the slice is not contiguous,
+     *
+     * `flat_view()` is intended to be used for performing the same operation contiguously 
+     * over the whole slice.
+     * `flat_view()` cannot not be meaningfully indexed because of padding values inside
+     * the storage to ensure data alignment of slices.
+     */
     [[nodiscard]] auto flat_view() const noexcept
         requires(Base::contiguous)
     {
