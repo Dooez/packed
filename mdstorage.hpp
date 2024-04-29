@@ -799,7 +799,7 @@ protected:
         }
     }
 
-    ~storage_base() noexcept {
+    _INLINE_ ~storage_base() noexcept {
         deallocate();
     }
 
@@ -899,22 +899,22 @@ class iterator : Base {
         requires detail_::md_basis<decltype(Basis_)>
     friend class storage;
 
-    friend class iterator<false, Basis, T, PackSize, Base>;
+    friend class iterator<!Const, Basis, T, PackSize, Base>;
 
     template<typename... U>
     explicit iterator(pointer ptr, U&&... other) noexcept
     : Base(std::forward<U>(other)...)
     , m_ptr(ptr){};
 
+    using sslice = md::sslice<Const, Basis, T, PackSize, typename Base::slice_base>;
+
+public:
     // NOLINTNEXTLINE(*explicit*)
-    iterator(const iterator<true, Basis, T, PackSize, Base>& other)
+    iterator(const iterator<false, Basis, T, PackSize, Base>& other)
         requires /**/ (Const)
     : Base(static_cast<const Base&>(other))
     , m_ptr(other.m_ptr) {}
 
-    using sslice = md::sslice<Const, Basis, T, PackSize, typename Base::slice_base>;
-
-public:
     iterator() noexcept                           = default;
     iterator(const iterator&) noexcept            = default;
     iterator(iterator&&) noexcept                 = default;
@@ -972,15 +972,15 @@ public:
         return lhs + (-rhs);
     };
 
-    [[nodiscard]] friend auto operator-(const iterator& lhs,
-                                        const iterator& rhs) noexcept -> difference_type {
+    template<bool ConstRhs>
+    [[nodiscard]] friend auto
+    operator-(const iterator&                                     lhs,
+              const iterator<ConstRhs, Basis, T, PackSize, Base>& rhs) noexcept -> difference_type {
         return (lhs.m_ptr - rhs.m_ptr) / lhs.stride();
     };
 
-    [[nodiscard]] auto operator<=>(const iterator& other) const noexcept {
-        return m_ptr <=> other.m_ptr;
-    };
-    [[nodiscard]] auto operator<=>(const iterator<!Const, Basis, T, PackSize, Base>& other) const noexcept {
+    template<bool Const_>
+    [[nodiscard]] auto operator<=>(const iterator<Const_, Basis, T, PackSize, Base>& other) const noexcept {
         return m_ptr <=> other.m_ptr;
     };
 
@@ -1057,6 +1057,12 @@ class sslice
 public:
     sslice()
     : Base(){};
+
+    //NOLINTNEXTLINE (*explicit*)
+    sslice(const sslice<false, Basis, T, PackSize, Base>& other)
+        requires(Const)
+    : Base(other)
+    , m_start(other.m_start){};
 
     sslice(const sslice&) noexcept            = default;
     sslice(sslice&&) noexcept                 = default;
@@ -1150,7 +1156,7 @@ private:
  * @tparam Alignment    Data alignment.
  * @tparam Base         
  *
- * `storage` can be viewed as a range of slices from the outermost axis.
+ * `storage` can be viewed as a range of slices from the outer axis.
  * `storage` satisfies following concepts:
  * TODO: add list of concepts
  *
@@ -1269,7 +1275,7 @@ public:
     }
 
     /**
-     * @brief Returns an iterator over the outermost axis;
+     * @brief Returns an iterator over the outer axis;
      */
     [[nodiscard]] auto begin() noexcept -> iterator {
         if constexpr (vector_like) {
@@ -1279,13 +1285,13 @@ public:
         }
     }
     /**
-     * @brief Returns a const iterator over the outermost axis;
+     * @brief Returns a const iterator over the outer axis;
      */
     [[nodiscard]] auto begin() const noexcept -> const_iterator {
         return cbegin();
     }
     /**
-     * @brief Returns a const iterator over the outermost axis;
+     * @brief Returns a const iterator over the outer axis;
      */
     [[nodiscard]] auto cbegin() const noexcept -> const_iterator {
         if constexpr (vector_like) {
@@ -1295,19 +1301,19 @@ public:
         }
     }
     /**
-     * @brief Returns an iterator over the outermost axis;
+     * @brief Returns an iterator over the outer axis;
      */
     [[nodiscard]] auto end() noexcept -> iterator {
         return begin() + size();
     }
     /**
-     * @brief Returns a const iterator over the outermost axis;
+     * @brief Returns a const iterator over the outer axis;
      */
     [[nodiscard]] auto end() const noexcept -> const_iterator {
         return cend();
     }
     /**
-     * @brief Returns a const iterator over the outermost axis;
+     * @brief Returns a const iterator over the outer axis;
      */
     [[nodiscard]] auto cend() const noexcept -> const_iterator {
         return cbegin() + size();

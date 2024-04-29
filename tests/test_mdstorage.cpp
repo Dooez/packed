@@ -219,12 +219,30 @@ int main() {
     // std::cout << "double:\n";
     // do_tests<double>();
 
+
     using enum ax1;
     using T = double;
 
     constexpr auto           left_basis = pcx::md::left_basis<x, y, z>{7U, 2U, 3U};
     const std::array<T, 128> beging{};
     auto                     static_storage_l = pcx::md::static_storage<T, left_basis>{};
+
+    auto v = static_storage_l.as_slice().flat_view();
+
+    auto it  = static_storage_l.begin();
+    auto cit = static_storage_l.cbegin();
+
+    constexpr auto test_iterator_op = [](auto lhs, auto rhs) {
+        auto tmp0 = lhs == rhs;
+        auto tmp1 = lhs < rhs;
+        auto tmp2 = lhs > rhs;
+        auto tmp3 = lhs - rhs;
+    };
+
+    test_iterator_op(it, cit);
+    test_iterator_op(cit, it);
+        
+
     // std::cout << static_storage_l.extent<x>() << "\n";
     // std::cout << static_storage_l.extent<y>() << "\n";
     // std::cout << static_storage_l.extent<z>() << "\n";
