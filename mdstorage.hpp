@@ -506,6 +506,14 @@ protected:
     _NDINLINE_ static constexpr auto get_extent() noexcept -> uZ {
         return Basis.extent(Axis);
     }
+    _NDINLINE_ static constexpr auto get_flat_view_size() noexcept -> uZ
+        requires(contiguous)
+    {
+        constexpr auto size = static_storage_size<Basis, PackSize, Alignment>();
+        return size / []<uZ... Is>(std::index_sequence<Is...>) {
+            return (Basis.extent(meta::index_into_sequence<Is, SlicedAxes>) * ... * 1);
+        }(std::make_index_sequence<SlicedAxes::size>{});
+    }
 
 private:
 };
@@ -569,6 +577,10 @@ protected:
         return Basis.extent(Axis);
     }
 
+    _NDINLINE_ static constexpr auto get_storage_size() noexcept -> uZ {
+        return storage_size;
+    }
+
 private:
     std::array<T, storage_size> m_data;
 };
@@ -579,8 +591,7 @@ template<bool Const, auto Basis, meta::value_sequence_of_unique SlicedAxes, uZ P
 class iter_base {
     static constexpr auto outer_axis = Basis.template outer_axis_remaining<SlicedAxes>;
 
-    using extents_type     = detail_::dynamic_extents_info<Basis.size>;
-    using extents_ptr_type = std::conditional_t<Const, const extents_type*, extents_type*>;
+    using extents_type = detail_::dynamic_extents_info<Basis.size>;
 
 protected:
     iter_base() noexcept                            = default;
@@ -599,7 +610,7 @@ protected:
         return m_extents_ptr;
     };
 
-    explicit iter_base(extents_ptr_type extents_ptr) noexcept
+    explicit iter_base(const extents_type* extents_ptr) noexcept
     : m_stride(calc_stride(extents_ptr))
     , m_extents_ptr(extents_ptr){};
 
@@ -624,13 +635,12 @@ private:
         return stride / div;
     }
 
-    uZ               m_stride{};
-    extents_ptr_type m_extents_ptr{};
+    uZ                  m_stride{};
+    const extents_type* m_extents_ptr{};
 };
 template<bool Const, auto Basis, meta::value_sequence_of_unique SlicedAxes, uZ PackSize>
 class slice_base {
-    using extents_type     = detail_::dynamic_extents_info<Basis.size>;
-    using extents_ptr_type = std::conditional_t<Const, const extents_type*, extents_type*>;
+    using extents_type = detail_::dynamic_extents_info<Basis.size>;
 
 public:
     static constexpr bool vector_like = (SlicedAxes::size == Basis.size - 1)    //
@@ -639,7 +649,7 @@ public:
     static constexpr bool contiguous = Basis.template contiguous<SlicedAxes>;
 
 protected:
-    explicit slice_base(extents_ptr_type extents_ptr) noexcept
+    explicit slice_base(const extents_type* extents_ptr) noexcept
     : m_extents_ptr(extents_ptr){};
 
     slice_base() noexcept                             = default;
@@ -683,8 +693,18 @@ protected:
         return m_extents_ptr->extents[Basis.index_of(Axis)];
     }
 
+    _NDINLINE_ auto get_flat_view_size() const noexcept -> uZ
+        requires(contiguous)
+    {
+        constexpr auto f = []<uZ... Is>(std::index_sequence<Is...>, const auto& extents) {
+            return (extents[Basis.size - Is] * ...);
+        };
+        return m_extents_ptr->storage_size /
+               f(std::make_index_sequence<SlicedAxes::size>{}, m_extents_ptr->extents);
+    }
+
 private:
-    extents_ptr_type m_extents_ptr;
+    const extents_type* m_extents_ptr;
 };
 template<typename T, auto Basis, uZ PackSize, uZ Alignment, typename Allocator>
 class storage_base {
@@ -827,6 +847,10 @@ protected:
     _NDINLINE_ auto get_extent() const noexcept -> uZ {
         constexpr auto index = Basis.index_of(Axis);
         return m_extents.extents[index];
+    }
+
+    _NDINLINE_ auto get_storage_size() const noexcept -> uZ {
+        return m_extents.storage_size;
     }
 
 private:
@@ -1102,22 +1126,12 @@ public:
         return Base::template get_extent<Axis>();
     }
 
-    [[nodiscard]] auto flat_view() const noexcept {
-        static constexpr uZ s_stride = [] {
-            // constexpr auto f = []<uZ I>(auto f, uZ_constant<I>) {
-            //     constexpr auto axis = Basis.template axis<I>();
-            //     if constexpr (equal_values<outer_axis, axis>) {
-            //         return Basis.extent(axis);
-            //     } else {
-            //         return Basis.extent(axis) * f(f, uZ_constant<I - 1>{});
-            //     }
-            // };
-            // constexpr auto div = f(f, uZ_constant<Basis.size - 1>{});
-            //
-            // constexpr auto size   = detail_::static_storage_size<Basis, PackSize, Alignment>();
-            // constexpr auto stride = size / div;
-            // return stride;
-        };
+    [[nodiscard]] auto flat_view() const noexcept
+        requires(Base::contiguous)
+    {
+        auto begin = pcx::detail_::make_iterator<T, Const, PackSize>(m_start, 0U);
+        auto end   = begin + Base::get_flat_view_size();
+        return rv::subrange(begin, end);
     }
 
 private:
@@ -1173,7 +1187,7 @@ class storage
 
 public:
     /**
-     * @brief Constructs dynamic storage using `allocator` for memory allocation.
+     * @brief Constructs a zero-initialized dynamic storage using `allocator` for memory allocation.
      * 
      * @param extents Axis extents in the basis axis declaration order. See `storage(U... extents)`.
      */
@@ -1183,7 +1197,7 @@ public:
     : Base(std::move(alloca), extents...) {}
 
     /**
-     * @brief Constructs uninitialized dynamic storage using `allocator` for memory allocation.
+     * @brief Constructs an uninitialized dynamic storage using `allocator` for memory allocation.
      * 
      * @param extents Axis extents in the basis axis declaration order. See `storage(U... extents)`.
      */
@@ -1194,7 +1208,7 @@ public:
         return storage(uninitialized_tag{}, std::move(alloca), extents...);
     }
     /**
-     * @brief Constructs dynamic storage.
+     * @brief Constructs a zero-initialized dynamic storage.
      * 
      * @param extents Axis extents in the basis axis declaration order.
      * 
@@ -1214,7 +1228,7 @@ public:
     : storage(typename Base::allocator{}, extents...) {}
 
     /**
-     * @brief Constructs dynamic storage.
+     * @brief Returns an uninialized dynamic storage.
      * 
      * @param extents Axis extents in the basis axis declaration order.
      * 
@@ -1235,8 +1249,14 @@ public:
         return storage(uninitialized_tag{}, allocator{}, extents...);
     }
 
+    /**
+     * @brief Constructs a zero-initialized storage.
+     */
     storage() = default;
 
+    /**
+     * @brief Returns an uninitialized storage.
+     */
     static storage uninitialized() {
         return storage(uninitialized_tag{});
     }
@@ -1248,6 +1268,9 @@ public:
         return *this;
     }
 
+    /**
+     * @brief Returns an iterator over the outermost axis;
+     */
     [[nodiscard]] auto begin() noexcept -> iterator {
         if constexpr (vector_like) {
             return pcx::detail_::make_iterator<T, false, PackSize>(data(), 0);
@@ -1255,9 +1278,15 @@ public:
             return iterator(data(), Base::iterator_base_args());
         }
     }
+    /**
+     * @brief Returns a const iterator over the outermost axis;
+     */
     [[nodiscard]] auto begin() const noexcept -> const_iterator {
         return cbegin();
     }
+    /**
+     * @brief Returns a const iterator over the outermost axis;
+     */
     [[nodiscard]] auto cbegin() const noexcept -> const_iterator {
         if constexpr (vector_like) {
             return pcx::detail_::make_iterator<T, true, PackSize>(data(), 0);
@@ -1265,12 +1294,21 @@ public:
             return const_iterator(data(), Base::iterator_base_args());
         }
     }
+    /**
+     * @brief Returns an iterator over the outermost axis;
+     */
     [[nodiscard]] auto end() noexcept -> iterator {
         return begin() + size();
     }
+    /**
+     * @brief Returns a const iterator over the outermost axis;
+     */
     [[nodiscard]] auto end() const noexcept -> const_iterator {
         return cend();
     }
+    /**
+     * @brief Returns a const iterator over the outermost axis;
+     */
     [[nodiscard]] auto cend() const noexcept -> const_iterator {
         return cbegin() + size();
     }
@@ -1325,7 +1363,7 @@ public:
 
     /**
      * @brief Returns a read-only slice from `Axis` at `index`.
-     * If `Basis.size` equals 1 the returned slice type is `pcx::cx_ref`.
+     * If `Basis.size == 1` the returned slice type is `pcx::cx_ref`.
      */
     template<auto Axis>
         requires /**/ (Basis.contains(Axis))
@@ -1334,7 +1372,7 @@ public:
     }
     /**
      * @brief Returns a read-only slice from `Axis` at `index`.
-     * If `Basis.size` equals 1 the returned slice type is `pcx::cx_ref`.
+     * If `Basis.size == 1` the returned slice type is `pcx::cx_ref`.
      */
     template<auto Axis>
         requires /**/ (Basis.contains(Axis))
@@ -1349,6 +1387,32 @@ public:
             return slice_type(slice_start, Base::slice_base_args());
         }
     }
+
+    /**
+     * @brief Returns a contiguous view over the whole storage. 
+     * `flat_view()` is intended to be used for performing the same operation contiguously 
+     * over the whole storage.
+     * `flat_view()` cannot not be meaningfully indexed because of padding values inside
+     * the storage to ensure data alignment of slices.
+     */
+    auto flat_view() noexcept {
+        auto begin = pcx::detail_::make_iterator<T, false, PackSize>(Base::get_data());
+        auto end   = begin + Base::get_storage_size();
+        return rv::subrange(begin, end);
+    }
+    /**
+     * @brief Returns a read-only contiguous view over the whole storage. 
+     * `flat_view()` is intended to be used for performing the same operation contiguously 
+     * over the whole storage.
+     * `flat_view()` cannot not be meaningfully indexed because of padding values inside
+     * the storage to ensure data alignment of slices.
+     */
+    auto flat_view() const noexcept {
+        auto begin = pcx::detail_::make_iterator<T, true, PackSize>(Base::get_data());
+        auto end   = begin + Base::get_storage_size();
+        return rv::subrange(begin, end);
+    }
+
     /**
      * @brief Returns a slice from outer axis at `index`
      *
