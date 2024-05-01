@@ -424,6 +424,37 @@ template<typename S>
 using value_to_index_sequence = typename detail_::value_to_index_sequence_impl<S>::type;
 template<typename S>
 using index_to_value_sequence = typename detail_::index_to_value_sequence_impl<S>::type;
+
+template<typename... Ts>
+struct any_types {
+    static constexpr auto size = sizeof...(Ts);
+};
+namespace detail_ {
+template<typename... Ts>
+struct expand_types;
+template<typename Tl, typename Tr>
+struct expand_types<Tl, Tr> {
+    using type = any_types<Tl, Tr>;
+};
+template<typename... Ts, typename Tr>
+struct expand_types<any_types<Ts...>, Tr> {
+    using type = any_types<Ts..., Tr>;
+};
+template<typename Tl, typename... Ts>
+struct expand_types<Tl, any_types<Ts...>> {
+    using type = any_types<Tl, Ts...>;
+};
+template<typename Tl, typename... Ts>
+struct expand_types<Tl, Ts...> {
+    using type = typename expand_types<Tl, typename expand_types<Ts...>::type>::type;
+};
+template<>
+struct expand_types<> {
+    using type = any_types<>;
+};
+}    // namespace detail_
+template<typename... Ts>
+using expand_types_t = typename detail_::expand_types<Ts...>::type;
 }    // namespace meta
 
 }    // namespace pcx
