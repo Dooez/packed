@@ -151,11 +151,16 @@ concept nonzero_size = nonzero_tuple_size_if_any<T>::value;
 
 template<uZ I, typename T>
 struct get_type {
-    using type = std::conditional_t<std_tuple<T>, std::tuple_element_t<I, T>, T>;
+    using type = T;
+};
+template<uZ I, typename T>
+    requires std_tuple<std::remove_cvref_t<T>>
+struct get_type<I, T> {
+    using type = std::tuple_element_t<I, std::remove_reference_t<T>>;
 };
 
 template<typename F, typename... Args>
-concept mass_invocable =
+concept mass_invocable =                             //
     same_size<select_std_tuples_t<Args...>>          //
     && nonzero_size<select_std_tuples_t<Args...>>    //
     && ([]<uZ... Is>(std::index_sequence<Is...>) {
