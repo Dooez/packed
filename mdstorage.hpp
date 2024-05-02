@@ -509,7 +509,7 @@ protected:
     _NDINLINE_ static constexpr auto get_flat_view_size() noexcept -> uZ
         requires(contiguous)
     {
-        constexpr auto size = static_storage_size<Basis, PackSize, Alignment>();
+        constexpr auto size = static_storage_size<Basis, PackSize, Alignment>() / 2;
         return size / []<uZ... Is>(std::index_sequence<Is...>) {
             return (Basis.extent(meta::index_into_sequence<Is, SlicedAxes>) * ... * 1);
         }(std::make_index_sequence<SlicedAxes::size>{});
@@ -699,7 +699,7 @@ protected:
         constexpr auto f = []<uZ... Is>(std::index_sequence<Is...>, const auto& extents) {
             return (extents[Basis.size - Is] * ...);
         };
-        return m_extents_ptr->storage_size /
+        return m_extents_ptr->storage_size / 2 /
                f(std::make_index_sequence<SlicedAxes::size>{}, m_extents_ptr->extents);
     }
 
@@ -1413,8 +1413,8 @@ public:
      * the storage to ensure data alignment of slices.
      */
     auto flat_view() noexcept {
-        auto begin = pcx::detail_::make_iterator<T, false, PackSize>(Base::get_data());
-        auto end   = begin + Base::get_storage_size();
+        auto begin = pcx::detail_::make_iterator<T, false, PackSize>(data(), 0);
+        auto end   = begin + Base::get_storage_size() / 2;
         return rv::subrange(begin, end);
     }
     /**
