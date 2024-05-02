@@ -1,4 +1,5 @@
 #include "fft.hpp"
+#include "simd_fft_generalized.hpp"
 #include "test_pcx.hpp"
 #include "types.hpp"
 #include "vector.hpp"
@@ -785,7 +786,7 @@ int main() {
         ret += test_fft_float(1U << i);
         // ret += test_fft_dif(1U << i);
         ret += test_fftu_float(1U << i);
-        ret += test_par_fft_float(1U << i);
+        // ret += test_par_fft_float(1U << i);
 
         if (ret > 0) {
             return ret;

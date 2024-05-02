@@ -278,13 +278,15 @@ _AINLINE_ auto mul_pairs(cx_reg<T, Conj, PackSize>... args) {
     };
     auto prod_real_rhs = pcx::detail_::apply_for_each(mul_real_rhs, lhs_tup, rhs_tup);
     return pcx::detail_::apply_for_each(mul_imag_rhs, prod_real_rhs, lhs_tup, rhs_tup);
+    // auto prod_real_rhs = pcx::detail_::mass_invoke(mul_real_rhs, lhs_tup, rhs_tup);
+    // return pcx::detail_::mass_invoke(mul_imag_rhs, prod_real_rhs, lhs_tup, rhs_tup);
 };
 
 
 template<typename T, uZ PackSize>
     requires(PackSize >= reg<T>::size)
 _AINLINE_ auto div(cx_reg<T, false, PackSize> lhs,
-                cx_reg<T, false, PackSize> rhs) -> cx_reg<T, false, PackSize> {
+                   cx_reg<T, false, PackSize> rhs) -> cx_reg<T, false, PackSize> {
     auto rhs_abs = mul(rhs.real, rhs.real);
     auto real_   = mul(lhs.real, rhs.real);
     auto imag_   = mul(lhs.real, rhs.imag);
@@ -297,7 +299,8 @@ _AINLINE_ auto div(cx_reg<T, false, PackSize> lhs,
 }
 template<typename T, uZ PackSize>
     requires(PackSize >= reg<T>::size)
-_AINLINE_ auto div(cx_reg<T, true, PackSize> lhs, cx_reg<T, false, PackSize> rhs) -> cx_reg<T, false, PackSize> {
+_AINLINE_ auto div(cx_reg<T, true, PackSize>  lhs,
+                   cx_reg<T, false, PackSize> rhs) -> cx_reg<T, false, PackSize> {
     auto rhs_abs = mul(rhs.real, rhs.real);
     auto real_   = mul(lhs.real, rhs.real);
     auto imag_   = mul(lhs.real, rhs.imag);
@@ -310,7 +313,8 @@ _AINLINE_ auto div(cx_reg<T, true, PackSize> lhs, cx_reg<T, false, PackSize> rhs
 }
 template<typename T, uZ PackSize>
     requires(PackSize >= reg<T>::size)
-_AINLINE_ auto div(cx_reg<T, false, PackSize> lhs, cx_reg<T, true, PackSize> rhs) -> cx_reg<T, false, PackSize> {
+_AINLINE_ auto div(cx_reg<T, false, PackSize> lhs,
+                   cx_reg<T, true, PackSize>  rhs) -> cx_reg<T, false, PackSize> {
     auto rhs_abs = mul(rhs.real, rhs.real);
     auto real_   = mul(lhs.real, rhs.real);
     auto imag_   = mul(lhs.real, rhs.imag);
@@ -323,7 +327,8 @@ _AINLINE_ auto div(cx_reg<T, false, PackSize> lhs, cx_reg<T, true, PackSize> rhs
 }
 template<typename T, uZ PackSize>
     requires(PackSize >= reg<T>::size)
-_AINLINE_ auto div(cx_reg<T, true, PackSize> lhs, cx_reg<T, true, PackSize> rhs) -> cx_reg<T, false, PackSize> {
+_AINLINE_ auto div(cx_reg<T, true, PackSize> lhs,
+                   cx_reg<T, true, PackSize> rhs) -> cx_reg<T, false, PackSize> {
     auto rhs_abs = mul(rhs.real, rhs.real);
     auto real_   = mul(lhs.real, rhs.real);
     auto imag_   = mul(lhs.real, rhs.imag);

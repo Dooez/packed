@@ -1198,7 +1198,7 @@ class storage
         requires(dynamic && sizeof...(U) == Basis.size)
     : Base(ut, std::move(allocator), extents...) {}
 
-    storage(uninitialized_tag ut)
+    explicit storage(uninitialized_tag ut)
     : Base(ut){};
 
 

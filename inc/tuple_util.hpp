@@ -156,7 +156,7 @@ struct get_type {
 template<uZ I, typename T>
     requires std_tuple<std::remove_cvref_t<T>>
 struct get_type<I, T> {
-    using type = std::tuple_element_t<I, std::remove_reference_t<T>>;
+    using type = std::tuple_element_t<I, std::remove_cvref_t<T>>;
 };
 
 template<typename F, typename... Args>
