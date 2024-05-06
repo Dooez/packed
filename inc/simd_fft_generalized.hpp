@@ -2,17 +2,60 @@
 
 #include "avx2_common.hpp"
 #include "simd_common.hpp"
+#include "simd_fft.hpp"
 #include "tuple_util.hpp"
 #include "types.hpp"
 
-namespace pcx::simd {
+namespace pcx::detail_::fft {
+
+// constexpr auto log2i(u64 num) -> uZ {
+//     u64 order = 0;
+//     for (u8 shift = 32; shift > 0; shift /= 2) {
+//         if (num >> shift > 0) {
+//             order += num >> shift > 0 ? shift : 0;
+//             num >>= shift;
+//         }
+//     }
+//     return order;
+// }
+//
+// constexpr auto powi(uint64_t num, uint64_t pow) -> uint64_t {
+//     auto res = (pow % 2) == 1 ? num : 1UL;
+//     if (pow > 1) {
+//         auto half_pow = powi(num, pow / 2UL);
+//         res *= half_pow * half_pow;
+//     }
+//     return res;
+// }
+//
+// constexpr auto reverse_bit_order(u64 num, u64 depth) -> u64 {
+//     //TODO(Timofey): possibly find better solution to prevent UB
+//     if (depth == 0)
+//         return 0;
+//     num = num >> 32U | num << 32U;
+//     // NOLINTBEGIN (*magic-numbers*)
+//     num = (num & 0xFFFF0000FFFF0000U) >> 16U | (num & 0x0000FFFF0000FFFFU) << 16U;
+//     num = (num & 0xFF00FF00FF00FF00U) >> 8U | (num & 0x00FF00FF00FF00FFU) << 8U;
+//     num = (num & 0xF0F0F0F0F0F0F0F0U) >> 4U | (num & 0x0F0F0F0F0F0F0F0FU) << 4U;
+//     num = (num & 0xCCCCCCCCCCCCCCCCU) >> 2U | (num & 0x3333333333333333U) << 2U;
+//     num = (num & 0xAAAAAAAAAAAAAAAAU) >> 1U | (num & 0x5555555555555555U) << 1U;
+//     // NOLINTEND (*magic-numbers*)
+//     return num >> (64 - depth);
+// }
+//
+// /**
+//  * @brief Returns number of unique bit-reversed pairs from 0 to max-1
+//  */
+// constexpr auto n_reversals(uZ max) -> uZ {
+//     return max - (1U << ((log2i(max) + 1) / 2));
+// }
 
 template<typename T, typename... U>
 concept has_type = (std::same_as<T, U> || ...);
 
 template<uZ Size, bool DecInTime>
-struct order {
-    static constexpr std::array<uZ, Size> data = [] {
+struct order2 {
+    static constexpr auto data = [] {
         std::array<uZ, Size> order;
         for (uZ i = 0; i < Size; ++i) {
             if constexpr (DecInTime) {
@@ -24,16 +67,16 @@ struct order {
         return order;
     }();
 
-    static constexpr std::array<uZ, Size - 1> tw = []<uZ... N>(std::index_sequence<N...>) {
+    static constexpr auto tw = []<uZ... N>(std::index_sequence<N...>) -> std::array<uZ, sizeof...(N)> {
         if constexpr (DecInTime) {
-            return std::array<uZ, sizeof...(N)>{(
-                N > 0
-                    ? (1U << log2i(N + 1)) - 1 + reverse_bit_order(1 + N - (1U << log2i(N + 1)), log2i(N + 1))
-                    : 0)...};
+            return {(N > 0 ? (1U << log2i(N + 1)) - 1 +
+                                 reverse_bit_order(1 + N - (1U << log2i(N + 1)), log2i(N + 1))
+                           : 0)...};
         } else {
-            return std::array<uZ, sizeof...(N)>{N...};
+            return {N...};
         }
-    }(std::make_index_sequence<Size - 1>{});
+    }
+    (std::make_index_sequence<Size - 1>{});
 };
 
 template<uZ NodeSize>
@@ -55,7 +98,6 @@ struct newnode {
         return std::index_sequence<M * I...>{};
     }
 
-
     struct settings {
         uZ   pack_dest;
         uZ   pack_src;
@@ -76,7 +118,7 @@ struct newnode {
         constexpr bool Tw    = has_type<tw_type, Args...>;
         constexpr bool Scale = has_type<simd::reg_t<T>, Args...>;
 
-        constexpr auto& data_idx = order<4, DIT>::data;
+        constexpr auto& data_idx = order2<4, DIT>::data;
         // NOLINTNEXTLINE(*-declaration)
         simd::cx_reg<T, false, PSrc> p0_, p1_, p2_, p3_;
         if constexpr (Src) {
@@ -155,9 +197,14 @@ struct newnode {
         constexpr bool Tw    = has_type<tw_type, Args...>;
         constexpr bool Scale = has_type<simd::reg_t<T>, Args...>;
 
-        constexpr auto& data_idx = order<NodeSize, Settings.dit>::data;
+        constexpr auto& data_idx = order2<NodeSize, Settings.dit>::data;
     }
 };
+
+}    // namespace pcx::detail_::fft
+
+namespace pcx::simd {
+
 
 inline void tform() {
     constexpr uZ btfly_size = 4;
