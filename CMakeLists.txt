@@ -20,6 +20,8 @@ if( CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR )
     add_executable(test_fft tests/test_fft.cpp)
     add_executable(test_fxcorr tests/test_fxcorr.cpp)
     add_executable(test_avx512 tests/test_avx512.cpp)
+    
+    add_executable(test_gener tests/test_generalized.cpp)
 
     target_link_libraries(test_vector PUBLIC packed)
     target_link_libraries(test_mdstorage PUBLIC packed)
