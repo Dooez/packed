@@ -194,6 +194,18 @@ public:
         cxstore<PDest>(dest[data_idx[3]], b3_);
     };
 
+    /**
+     * @brief 
+     *
+     * @tparam T 
+     * @tparam Args 
+     * @param dest 
+     * @param args  optionally contains:
+     *              source: std::array<const T*, NodeSize>
+     *              twiddles: std::array<simd::cx_reg<T>, NodeSize>: twiddles for each 
+     *                  level of transforms, e.g. for NodeSize == 8 twiddles go in order
+     *                  [tw00, tw10, tw11, tw20, tw21, tw23, tw24]
+     */
     template<typename T, settings Settings, typename... Args>
     static inline void perform(std::array<T*, NodeSize> dest, Args&&... args) {
         constexpr auto reg_size = simd::reg<T>::size;
@@ -226,15 +238,12 @@ public:
             }(make_uZ_seq<NodeSize>{}, dest, args...);
         };
 
-        auto p0 = load(dest, args...);
-        auto p1 = simd::inverse<Settings.conj_tw>(p0);
-
-
         /**
-         * @param data 
+         * @param data std::tuple containing simd vectors of input data.
+         * @param tw   std::tuple of simd vectors of twiddles.
          */
-        constexpr auto bfly = []<uZ L>(uZ_constant<L>, const auto& data, const auto& tw) {
-            constexpr uZ stride = NodeSize / powi(2, L);
+        constexpr auto bfly = []<uZ Level>(uZ_constant<Level>, const auto& data, const auto& tw) {
+            constexpr uZ stride = NodeSize / powi(2, Level);
 
             constexpr auto get_half = []<uZ Start>(uZ_constant<Start>, const auto& data) {
                 return []<uZ... Grp>(uZ_seq<Grp...>, const auto& data) {
@@ -252,26 +261,36 @@ public:
 
             auto tws = []<uZ... Itw>(uZ_seq<Itw...>, const auto& tw) {
                 constexpr auto make_rep = []<uZ... Reps, uZ I>(uZ_seq<Reps...>, uZ_constant<I>, auto tw) {
-                    return std::make_tuple(((void)Reps, tw[powi(2UL, L) - 1 + I])...);
+                    return std::make_tuple(((void)Reps, tw[powi(2UL, Level) - 1 + I])...);
                 };
                 return std::tuple_cat(
                     make_rep(make_uZ_seq<NodeSize / sizeof...(Itw)>{}, uZ_constant<Itw>{}, tw)...);
-            }(make_uZ_seq<powi(2UL, L)>{}, tw);
+            }(make_uZ_seq<powi(2UL, Level)>{}, tw);
             auto bottom_tw = std::apply(simd::mul_pairs, zip_tuples(bottom, tws));
             auto top       = get_half(uZ_constant<0>{}, data);
 
             return mass_invoke(simd::btfly, top, bottom_tw);
         };
 
-        auto res0 = []<uZ I>(uZ_constant<I>, const auto& data, const auto& tw) {
-            if constexpr (powi(2, I + 1) == NodeSize) {
-                return btfly(uZ_constant<I>{}, data, tw);
+        auto p0 = load(dest, args...);
+        auto p1 = simd::inverse<Settings.conj_tw>(p0);
+
+        auto recursive_bfly = []<uZ Level>(uZ_constant<Level>,    //
+                                           const auto& f,
+                                           const auto& data,
+                                           const auto& tw) {
+            if constexpr (powi(2, Level) == NodeSize) {
+                return bfly(uZ_constant<Level>{}, data, tw);
             } else {
-                auto tmp = btfly(uZ_constant<I>{}, data, tw);
-                return btfly(uZ_constant<I + 1>{}, tmp, tw);
+                auto tmp = bfly(uZ_constant<Level>{}, data, tw);
+                return f(uZ_constant<Level + 1>{}, f, tmp, tw);
             }
-        }(uZ_constant<0>{}, p1, std::get<tw_type&>(std::tie(args...)));
-        auto res1 = simd::inverse<Settings.conj_tw>(res0);
+        };
+
+        auto res =
+            recursive_bfly(uZ_constant<1U>{}, recursive_bfly, p1, std::get<tw_type&>(std::tie(args...)));
+
+        auto res1 = simd::inverse<Settings.conj_tw>(res);
     }
 };
 
