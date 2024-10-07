@@ -42,16 +42,16 @@ public:
 private:
     iterator(real_pointer data_ptr, difference_type index) noexcept
     : m_ptr(data_ptr)
-    , m_idx(index){};
+    , m_idx(index) {};
 
 public:
     iterator() noexcept = default;
 
     // NOLINTNEXTLINE(*explicit*)
-    explicit iterator(const iterator<T, false, PackSize>& other) noexcept
+    iterator(const iterator<T, false, PackSize>& other) noexcept
         requires Const
     : m_ptr(other.m_ptr)
-    , m_idx(other.m_idx){};
+    , m_idx(other.m_idx) {};
 
     iterator(const iterator& other) noexcept = default;
     iterator(iterator&& other) noexcept      = default;
@@ -131,7 +131,7 @@ public:
          * The simple solution works for two iterators from the same range.
          */
         // return (lhs.m_ptr - rhs.m_ptr) >> 1U;
-        return lhs.m_idx - rhs.m_idx; 
+        return lhs.m_idx - rhs.m_idx;
     }
 
     [[nodiscard]] bool aligned(difference_type idx = 0) const noexcept {
@@ -181,7 +181,7 @@ public:
 
 private:
     explicit iterator(real_pointer data_ptr, difference_type) noexcept
-    : m_ptr(data_ptr){};
+    : m_ptr(data_ptr) {};
 
 public:
     iterator() noexcept = default;
@@ -189,7 +189,7 @@ public:
     // NOLINTNEXTLINE(*explicit*)
     iterator(const iterator<T, false, 1>& other) noexcept
         requires Const
-    : m_ptr(other.m_ptr){};
+    : m_ptr(other.m_ptr) {};
 
     iterator(const iterator& other) noexcept = default;
     iterator(iterator&& other) noexcept      = default;
@@ -327,7 +327,7 @@ public:
 
 private:
     explicit cx_ref(real_pointer ptr) noexcept
-    : m_ptr(ptr){};
+    : m_ptr(ptr) {};
 
 public:
     cx_ref() = delete;
@@ -335,7 +335,7 @@ public:
     // NOLINTNEXTLINE (*explicit*)
     cx_ref(const cx_ref<T, false, PackSize>& other) noexcept
         requires Const
-    : m_ptr(other.m_ptr){};
+    : m_ptr(other.m_ptr) {};
 
     cx_ref(const cx_ref&) noexcept = default;
     cx_ref(cx_ref&&) noexcept      = default;

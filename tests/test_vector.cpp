@@ -109,11 +109,16 @@ constexpr void concept_test() {
     using namespace pcx;
     constexpr std::size_t pack_size = 8;
 
-    using vector_t         = vector<T>;
+    using vector_t         = vector<T, pack_size>;
     using iterator_t       = iterator<T, false, pack_size>;
-    using cont_iterator_t  = iterator<T, true, pack_size>;
+    using const_iterator_t = iterator<T, true, pack_size>;
     using subrange_t       = pcx::subrange<T, false, pack_size>;
     using const_subrange_t = pcx::subrange<T, true, pack_size>;
+
+    static_assert(std::same_as<decltype(cbegin(std::declval<vector_t&>())), const_iterator_t>);
+    /*static_assert(std::same_as<std::ranges::const_iterator_t<vector_t>, const_iterator_t>);*/
+    static_assert(std::convertible_to<iterator_t, const_iterator_t>);
+
 
     static_assert(complex_vector<vector_t>);
     static_assert(complex_vector<subrange_t>);
@@ -126,9 +131,10 @@ constexpr void concept_test() {
     static_assert(!output_range<const vector_t, std::complex<T>>);
     static_assert(random_access_range<vector_t>);
     static_assert(common_range<vector_t>);
+    static_assert(constant_range<const vector_t>);
 
     static_assert(std::random_access_iterator<iterator_t>);
-    static_assert(!std::output_iterator<cont_iterator_t, std::complex<T>>);
+    static_assert(!std::output_iterator<const_iterator_t, std::complex<T>>);
 
     static_assert(range<subrange_t>);
     static_assert(sized_range<subrange_t>);
@@ -137,6 +143,7 @@ constexpr void concept_test() {
     static_assert(random_access_range<subrange_t>);
     static_assert(common_range<subrange_t>);
     static_assert(viewable_range<subrange_t>);
+    static_assert(!constant_range<subrange_t>);
 
     static_assert(range<const_subrange_t>);
     static_assert(sized_range<const_subrange_t>);
@@ -145,7 +152,7 @@ constexpr void concept_test() {
     static_assert(random_access_range<const_subrange_t>);
     static_assert(common_range<const_subrange_t>);
     static_assert(viewable_range<const_subrange_t>);
-    // static_assert(constant_range<const_subrange_t>); c++23
+    static_assert(constant_range<const_subrange_t>);
 };
 
 int main() {

@@ -82,7 +82,8 @@ struct expr_traits<R> {
 
     using real_type        = R::real_type;
     using iterator_t       = rv::iterator_t<R>;
-    using const_iterator_t = decltype(rv::cbegin(std::declval<R&>()));
+    using const_iterator_t = const_iterator_t<R>;
+    /*using const_iterator_t = rv::const_iterator_t<R>;*/
 
     template<uZ PackSize, typename Iter>
         requires iterator_of<Iter, R> &&
@@ -128,7 +129,7 @@ class bi_expr_base
 
 protected:
     explicit bi_expr_base(uZ size)
-    : m_size(size){};
+    : m_size(size) {};
 
     using lhs_traits = expr_traits<LhsExpr>;
     using rhs_traits = expr_traits<RhsExpr>;
@@ -174,7 +175,7 @@ protected:
     using expr_traits   = expr_traits<Expr>;
     using expr_iterator = typename expr_traits::const_iterator_t;
     explicit sca_expr_base(uZ size)
-    : m_size(size){};
+    : m_size(size) {};
 
 public:
     using real_type = expr_traits::real_type;
@@ -216,7 +217,7 @@ protected:
     using expr_traits   = expr_traits<Expr>;
     using expr_iterator = typename expr_traits::const_iterator_t;
     explicit un_expr_base(uZ size)
-    : m_size(size){};
+    : m_size(size) {};
 
 public:
     using real_type = expr_traits::real_type;
@@ -256,7 +257,7 @@ protected:
 
     bi_iter_base(const LhsIter& lhs, const RhsIter& rhs)
     : m_lhs(lhs)
-    , m_rhs(rhs){};
+    , m_rhs(rhs) {};
 
 public:
     using difference_type  = iZ;
@@ -333,7 +334,7 @@ protected:
     Iter m_iter;    // NOLINT(*non-private*)
 
     explicit un_iter_base(const Iter& iter)
-    : m_iter(iter){};
+    : m_iter(iter) {};
 
 public:
     using difference_type  = iZ;
@@ -520,9 +521,11 @@ private:
         friend class bi_expr_base<add, ELhs, ERhs>;
 
         iterator(const lhs_iterator& lhs, const rhs_iterator& rhs)
-        : bi_iter_base<iterator, lhs_iterator, rhs_iterator>(lhs, rhs){};
+        : bi_iter_base<iterator, lhs_iterator, rhs_iterator>(lhs, rhs) {};
 
     public:
+        using value_type = const value_type;
+
         iterator() = default;
         [[nodiscard]] auto operator*() const -> value_type {
             return value_type(*this->m_lhs) + value_type(*this->m_rhs);
@@ -586,9 +589,11 @@ private:
         friend class bi_expr_base<sub, ELhs, ERhs>;
 
         iterator(const lhs_iterator& lhs, const rhs_iterator& rhs)
-        : bi_iter_base<iterator, lhs_iterator, rhs_iterator>(lhs, rhs){};
+        : bi_iter_base<iterator, lhs_iterator, rhs_iterator>(lhs, rhs) {};
 
     public:
+        using value_type = const value_type;
+
         iterator() = default;
         [[nodiscard]] auto operator*() const -> value_type {
             return value_type(*this->m_lhs) - value_type(*this->m_rhs);
@@ -650,9 +655,11 @@ private:
         friend class bi_expr_base<mul, ELhs, ERhs>;
 
         iterator(const lhs_iterator& lhs, const rhs_iterator& rhs)
-        : bi_iter_base<iterator, lhs_iterator, rhs_iterator>(lhs, rhs){};
+        : bi_iter_base<iterator, lhs_iterator, rhs_iterator>(lhs, rhs) {};
 
     public:
+        using value_type = const value_type;
+
         iterator() = default;
         [[nodiscard]] auto operator*() const -> value_type {
             return value_type(*this->m_lhs) * value_type(*this->m_rhs);
@@ -714,9 +721,11 @@ private:
         friend class bi_expr_base<div, ELhs, ERhs>;
 
         iterator(const lhs_iterator& lhs, const rhs_iterator& rhs)
-        : bi_iter_base<iterator, lhs_iterator, rhs_iterator>(lhs, rhs){};
+        : bi_iter_base<iterator, lhs_iterator, rhs_iterator>(lhs, rhs) {};
 
     public:
+        using value_type = const value_type;
+
         iterator() = default;
         [[nodiscard]] auto operator*() const -> value_type {
             return value_type(*this->m_lhs) / value_type(*this->m_rhs);
@@ -780,9 +789,11 @@ private:
 
         iterator(S scalar, expr_iterator iter)
         : un_iter_base<iterator, expr_iterator>(iter)
-        , m_scalar(scalar){};
+        , m_scalar(scalar) {};
 
     public:
+        using value_type = const value_type;
+
         iterator() = default;
         [[nodiscard]] auto operator*() const -> value_type {
             return m_scalar + value_type(*this->m_iter);
@@ -804,7 +815,7 @@ private:
     explicit scalar_add(S scalar, const E& expr)
     : sca_expr_base<scalar_add, E>(rv::size(expr))
     , m_scalar(scalar)
-    , m_iter(rv::cbegin(expr)){};
+    , m_iter(rv::cbegin(expr)) {};
 
 public:
     [[nodiscard]] auto operator[](uZ idx) const {
@@ -837,9 +848,11 @@ private:
 
         iterator(S scalar, expr_iterator iter)
         : un_iter_base<iterator, expr_iterator>(iter)
-        , m_scalar(scalar){};
+        , m_scalar(scalar) {};
 
     public:
+        using value_type = const value_type;
+
         iterator() = default;
         [[nodiscard]] auto operator*() const -> value_type {
             return m_scalar - value_type(*this->m_iter);
@@ -861,7 +874,7 @@ private:
     explicit scalar_sub(S scalar, const E& expr)
     : sca_expr_base<scalar_sub, E>(rv::size(expr))
     , m_scalar(scalar)
-    , m_iter(rv::cbegin(expr)){};
+    , m_iter(rv::cbegin(expr)) {};
 
 public:
     [[nodiscard]] auto operator[](uZ idx) const {
@@ -898,9 +911,11 @@ private:
 
         iterator(S scalar, expr_iterator iter)
         : un_iter_base<iterator, expr_iterator>(iter)
-        , m_scalar(scalar){};
+        , m_scalar(scalar) {};
 
     public:
+        using value_type = const value_type;
+
         iterator() = default;
         [[nodiscard]] auto operator*() const -> value_type {
             return m_scalar * value_type(*this->m_iter);
@@ -922,7 +937,7 @@ private:
     explicit scalar_mul(S scalar, const E& expr)
     : sca_expr_base<scalar_mul, E>(rv::size(expr))
     , m_scalar(scalar)
-    , m_iter(rv::cbegin(expr)){};
+    , m_iter(rv::cbegin(expr)) {};
 
 public:
     [[nodiscard]] auto operator[](uZ idx) const {
@@ -955,9 +970,11 @@ private:
 
         iterator(S scalar, expr_iterator iter)
         : un_iter_base<iterator, expr_iterator>(iter)
-        , m_scalar(scalar){};
+        , m_scalar(scalar) {};
 
     public:
+        using value_type = const value_type;
+
         iterator() = default;
         [[nodiscard]] auto operator*() const -> value_type {
             return m_scalar / value_type(*this->m_iter);
@@ -979,7 +996,7 @@ private:
     explicit scalar_div(S scalar, const E& expr)
     : sca_expr_base<scalar_div, E>(rv::size(expr))
     , m_scalar(scalar)
-    , m_iter(rv::cbegin(expr)){};
+    , m_iter(rv::cbegin(expr)) {};
 
 public:
     [[nodiscard]] auto operator[](uZ idx) const {
@@ -1010,9 +1027,11 @@ private:
         friend class un_expr_base<conjugate, E>;
 
         explicit iterator(expr_iterator iter)
-        : un_iter_base<iterator, expr_iterator>(iter){};
+        : un_iter_base<iterator, expr_iterator>(iter) {};
 
     public:
+        using value_type = const value_type;
+
         iterator() = default;
         [[nodiscard]] auto operator*() const -> value_type {
             return std::conj(value_type(*(this->m_iter)));
@@ -1031,7 +1050,7 @@ private:
 
     explicit conjugate(const E& expr)
     : un_expr_base<conjugate, E>(rv::size(expr))
-    , m_iter(rv::cbegin(expr)){};
+    , m_iter(rv::cbegin(expr)) {};
 
 public:
     [[nodiscard]] auto operator[](uZ idx) const {
