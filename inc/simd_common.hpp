@@ -282,6 +282,18 @@ _AINLINE_ auto mul_pairs(cx_reg<T, Conj, PackSize>... args) {
     // return pcx::detail_::mass_invoke(mul_imag_rhs, prod_real_rhs, lhs_tup, rhs_tup);
 };
 
+template<typename T, bool... ConjL, bool... ConjR, uZ PackSize>
+    requires(sizeof...(ConjL) == sizeof...(ConjR) && PackSize >= reg<T>::size)
+_AINLINE_ auto mul_tuples(std::tuple<cx_reg<T, ConjL, PackSize>...> lhs,
+                          std::tuple<cx_reg<T, ConjR, PackSize>...> rhs) {
+    auto mul_real_rhs = [](auto&& lhs, auto&& rhs) { return detail_::mul_real_rhs(lhs, rhs); };
+    auto mul_imag_rhs = [](auto&& prod, auto&& lhs, auto&& rhs) {
+        return detail_::mul_imag_rhs(prod, lhs, rhs);
+    };
+    auto prod_real_rhs = pcx::detail_::apply_for_each(mul_real_rhs, lhs, rhs);
+    return pcx::detail_::apply_for_each(mul_imag_rhs, prod_real_rhs, lhs, rhs);
+};
+
 
 template<typename T, uZ PackSize>
     requires(PackSize >= reg<T>::size)
