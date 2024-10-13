@@ -196,7 +196,7 @@ struct node {
     //             auto [a3, a7] = simd::btfly(p3, p7);
     //
     //             std::tie(b1, b3) = simd::btfly(a1, a3);
-    //             std::tie(b5, b7) = simd::btfly<3>(a5, a7);
+    //             std::tie(b5, b7) = simd::btfly_t<3>{}(a5, a7);
     //             auto b5_tw       = simd::cx_reg<T>{simd::add(b5.real, b5.imag), simd::sub(b5.imag, b5.real)};
     //             auto b7_tw       = simd::cx_reg<T>{simd::sub(b7.real, b7.imag), simd::add(b7.real, b7.imag)};
     //             auto twsq2       = simd::broadcast(sq2);
@@ -237,10 +237,10 @@ struct node {
     //             auto [a2, a6] = simd::btfly(p2, p6);
     //
     //             auto [b0, b2]    = simd::btfly(a0, a2);
-    //             std::tie(b4, b6) = simd::btfly<3>(a4, a6);
+    //             std::tie(b4, b6) = simd::btfly_t<3>{}(a4, a6);
     //
     //             std::tie(c0, c1) = simd::btfly(b0, b1);
-    //             std::tie(c2, c3) = simd::btfly<3>(b2, b3);
+    //             std::tie(c2, c3) = simd::btfly_t<3>{}(b2, b3);
     //         }
     //         if constexpr (Scale) {
     //             auto& scaling = std::get<simd::reg_t<T>&>(std::tie(args...));
@@ -263,7 +263,7 @@ struct node {
     //             std::tie(c6, c7) = simd::btfly(b6, b7);
     //         } else {
     //             std::tie(c4, c5) = simd::btfly(b4, b5);
-    //             std::tie(c6, c7) = simd::btfly<2>(b6, b7);
+    //             std::tie(c6, c7) = simd::btfly_t<2>{}(b6, b7);
     //         }
     //         if constexpr (Scale) {
     //             auto& scaling = std::get<simd::reg_t<T>&>(std::tie(args...));
@@ -399,7 +399,7 @@ struct node<4> {
                 auto [a0, a2]    = simd::btfly(p0, p2);
                 auto [a1, a3]    = simd::btfly(p1, p3);
                 std::tie(b0, b1) = simd::btfly(a0, a1);
-                std::tie(b2, b3) = simd::btfly<3>(a2, a3);
+                std::tie(b2, b3) = simd::btfly_t<3>{}(a2, a3);
             }
         }
         if constexpr (Scale) {
@@ -587,7 +587,7 @@ struct node<8> {
                 auto [a3, a7] = simd::btfly(p3, p7);
 
                 std::tie(b1, b3) = simd::btfly(a1, a3);
-                std::tie(b5, b7) = simd::btfly<3>(a5, a7);
+                std::tie(b5, b7) = simd::btfly_t<3>{}(a5, a7);
                 auto b5_tw       = simd::cx_reg<T>{simd::add(b5.real, b5.imag), simd::sub(b5.imag, b5.real)};
                 auto b7_tw       = simd::cx_reg<T>{simd::sub(b7.real, b7.imag), simd::add(b7.real, b7.imag)};
                 auto twsq2       = simd::broadcast(sq2);
@@ -628,10 +628,10 @@ struct node<8> {
                 auto [a2, a6] = simd::btfly(p2, p6);
 
                 auto [b0, b2]    = simd::btfly(a0, a2);
-                std::tie(b4, b6) = simd::btfly<3>(a4, a6);
+                std::tie(b4, b6) = simd::btfly_t<3>{}(a4, a6);
 
                 std::tie(c0, c1) = simd::btfly(b0, b1);
-                std::tie(c2, c3) = simd::btfly<3>(b2, b3);
+                std::tie(c2, c3) = simd::btfly_t<3>{}(b2, b3);
             }
             if constexpr (Scale) {
                 auto& scaling = std::get<simd::reg_t<T>&>(std::tie(args...));
@@ -654,7 +654,7 @@ struct node<8> {
                 std::tie(c6, c7) = simd::btfly(b6, b7);
             } else {
                 std::tie(c4, c5) = simd::btfly(b4, b5);
-                std::tie(c6, c7) = simd::btfly<2>(b6, b7);
+                std::tie(c6, c7) = simd::btfly_t<2>{}(b6, b7);
             }
             if constexpr (Scale) {
                 auto& scaling = std::get<simd::reg_t<T>&>(std::tie(args...));
@@ -745,14 +745,14 @@ public:
         requires(SubSize != pcx::dynamic_size)
     : m_size(check_size(fft_size))
     , m_sort(get_sort(size(), static_cast<sort_allocator_type>(allocator)))
-    , m_twiddles(get_twiddles(size(), sub_size(), allocator)){};
+    , m_twiddles(get_twiddles(size(), sub_size(), allocator)) {};
 
     explicit fft_unit(uZ fft_size, uZ sub_size = 2048, allocator_type allocator = allocator_type())
         requires(SubSize == pcx::dynamic_size)
     : m_size(check_size(fft_size))
     , m_sub_size(check_sub_size(sub_size))
     , m_sort(get_sort(size(), static_cast<sort_allocator_type>(allocator)))
-    , m_twiddles(get_twiddles(size(), sub_size, allocator)){};
+    , m_twiddles(get_twiddles(size(), sub_size, allocator)) {};
 
     fft_unit(const fft_unit& other)     = default;
     fft_unit(fft_unit&& other) noexcept = default;
@@ -2342,7 +2342,7 @@ public:
     fft_unit_par(uZ size, allocator_type allocator = allocator_type{})
     : m_size(size)
     , m_sort(get_sort(size, allocator))
-    , m_twiddles(get_twiddles(size, allocator)){};
+    , m_twiddles(get_twiddles(size, allocator)) {};
 
     template<typename DestR_, typename SrcR_>
         requires range_of_complex_vector_of<T, DestR_> && range_of_complex_vector_of<T, SrcR_>

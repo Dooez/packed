@@ -444,6 +444,10 @@ template<typename Tl, typename... Ts>
 struct expand_types<Tl, any_types<Ts...>> {
     using type = any_types<Tl, Ts...>;
 };
+template<typename... Tls, typename... Trs>
+struct expand_types<any_types<Tls...>, any_types<Trs...>> {
+    using type = any_types<Tls..., Trs...>;
+};
 template<typename Tl, typename... Ts>
 struct expand_types<Tl, Ts...> {
     using type = typename expand_types<Tl, typename expand_types<Ts...>::type>::type;
@@ -455,6 +459,18 @@ struct expand_types<> {
 }    // namespace detail_
 template<typename... Ts>
 using expand_types_t = typename detail_::expand_types<Ts...>::type;
+
+namespace detail_ {
+template<typename T>
+struct any_types_to_tuple;
+template<typename... Ts>
+struct any_types_to_tuple<any_types<Ts...>> {
+    using type = std::tuple<Ts...>;
+};
+}    // namespace detail_
+template<typename T>
+using any_types_to_tuple_t = detail_::any_types_to_tuple<T>::type;
+
 }    // namespace meta
 
 }    // namespace pcx

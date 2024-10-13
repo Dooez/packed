@@ -44,6 +44,7 @@ if( CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR )
     target_compile_options(test_fft PRIVATE -save-temps -march=native)
     target_compile_options(test_fxcorr PRIVATE -save-temps -march=native)
     target_compile_options(test_avx512 PRIVATE -save-temps -mavx512f)
+    target_compile_options(test_generalized PRIVATE -save-temps -march=native)
     ENABLE_TESTING()
 
     add_test(NAME test_vector COMMAND test_vector)

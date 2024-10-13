@@ -217,6 +217,86 @@ constexpr auto mass_invoke(F&& f, Args&&... args) {
     };
     return iterate(std::make_index_sequence<count>{}, std::forward<F>(f), std::forward<Args>(args)...);
 }
+
+template<typename... Ts>
+struct flattened_types {
+    using type = meta::expand_types_t<typename flattened_types<Ts>::type...>;
+};
+template<typename T>
+struct flattened_types<T> {
+    using type               = T;
+    static constexpr uZ size = 1;
+};
+template<typename... Ts>
+struct flattened_types<meta::any_types<Ts...>> {
+    using type = meta::any_types<Ts...>;
+
+    static constexpr uZ size = sizeof...(Ts);
+};
+template<typename... Ts>
+struct flattened_types<std::tuple<Ts...>> {
+    using type = flattened_types<Ts...>::type;
+
+    static constexpr uZ size = (flattened_types<Ts>::size + ...);
+};
+template<typename... Ts>
+struct flattened_types<std::tuple<Ts...>&> {
+    using type = flattened_types<Ts&...>::type;
+
+    static constexpr uZ size = (flattened_types<Ts&>::size + ...);
+};
+template<typename... Ts>
+struct flattened_types<std::tuple<Ts...>&&> {
+    using type = flattened_types<Ts&&...>::type;
+
+    static constexpr uZ size = (flattened_types<Ts&&>::size + ...);
+};
+template<typename... Ts>
+struct flattened_types<const std::tuple<Ts...>&> {
+    using type = flattened_types<const Ts&...>::type;
+
+    static constexpr uZ size = (flattened_types<const Ts&>::size + ...);
+};
+template<typename... Ts>
+struct flattened_types<const std::tuple<Ts...>&&> {
+    using type = flattened_types<const Ts&&...>::type;
+
+    static constexpr uZ size = (flattened_types<const Ts&&>::size + ...);
+};
+
+template<typename... Ts>
+using flat_tuple_t = meta::any_types_to_tuple_t<typename flattened_types<Ts...>::type>;
+
+template<typename... Ts>
+constexpr uZ flat_size_v = flattened_types<Ts...>::size;
+
+template<uZ I, typename T>
+auto flat_get(T&& val) {
+    if constexpr (std_tuple<std::remove_cvref_t<T>>) {
+        constexpr auto recurse = []<uZ Level, uZ K, typename U>(
+                                     this auto&& f, uZ_constant<Level>, uZ_constant<K>, U&& tuple) {
+            constexpr uZ current_size = flat_size_v<std::tuple_element_t<Level, std::remove_cvref_t<T>>>;
+            if constexpr (K < current_size) {
+                return flat_get<K>(std::get<Level>(std::forward<U>(tuple)));
+            } else {
+                return f(uZ_constant<Level + 1>{}, uZ_constant<K - current_size>{}, std::forward<U>(tuple));
+            }
+        };
+        return recurse(uZ_constant<0>{}, uZ_constant<I>{}, std::forward<T>(val));
+    } else {
+        return std::forward<T>(val);
+    }
+}
+
+template<typename T>
+    requires std_tuple<std::remove_cvref_t<T>>
+auto flatten_tuple(T&& tuple) -> flat_tuple_t<T> {
+    return []<uZ... Is>(std::index_sequence<Is...>, T&& tuple) -> flat_tuple_t<T> {
+        return {flat_get<Is>(std::forward<T>(tuple))...};
+    }(std::make_index_sequence<flat_size_v<T>>{}, std::forward<T>(tuple));
+}
+
+
 }    // namespace pcx::detail_
 
 #endif

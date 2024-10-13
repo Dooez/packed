@@ -208,11 +208,10 @@ struct newnode {
                     return std::make_tuple(simd::cxload<Settings.pack_src, reg_size>(dest[data_idx[Is]])...);
                 }
             };
-        constexpr auto store =
-            []<uZ... Is>(std::index_sequence<Is...>, const auto& dest, const auto&... data) {
-                constexpr auto& data_idx = order2<NodeSize, Settings.dit>::data;
-                (simd::cxstore<Settings.pack_dest>(dest[data_idx[Is]], std::get<Is>(data)), ...);
-            };
+        constexpr auto store = []<uZ... Is>(std::index_sequence<Is...>, const auto& dest, const auto& data) {
+            constexpr auto& data_idx = order2<NodeSize, Settings.dit>::data;
+            (simd::cxstore<Settings.pack_dest>(dest[data_idx[Is]], std::get<Is>(data)), ...);
+        };
 
 
         constexpr auto btfly = []<uZ Level>(uZ_constant<Level>, const auto& data, const auto& tw) {
@@ -238,22 +237,23 @@ struct newnode {
                     []<uZ... Reps, uZ I>(std::index_sequence<Reps...>, uZ_constant<I>, auto tw) {
                         return std::make_tuple(((void)Reps, tw[powi(2UL, Level) - 1 + I])...);
                     };
-                return std::tuple_cat(make_rep(std::make_index_sequence<NodeSize / sizeof...(Itw)>{},    //
-                                               uZ_constant<Itw>{},
-                                               tw)...);
+                return std::tuple_cat(
+                    make_rep(std::make_index_sequence<NodeSize / 2 / sizeof...(Itw)>{},    //
+                             uZ_constant<Itw>{},
+                             tw)...);
             }(std::make_index_sequence<powi(2UL, Level)>{}, tw);
             /*auto bottom_tw = std::apply(simd::mul_pairs, zip_tuples(bottom, tws));*/
             auto bottom_tw = simd::mul_tuples(bottom, tws);
             auto top       = get_half(uZ_constant<0>{}, data);
 
-            return mass_invoke(simd::btfly, top, bottom_tw);
+            return detail_::flatten_tuple(mass_invoke(simd::btfly, top, bottom_tw));
         };
 
         auto p0 = load(std::make_index_sequence<NodeSize>{}, dest, args...);
         /*auto p1 = std::apply(&simd::inverse<Settings.conj_tw>, p0);*/
 
         auto p1   = p0;
-        auto res0 = []<uZ I>(uZ_constant<I>, const auto& data, const auto& tw) {
+        auto res0 = [btfly]<uZ I>(uZ_constant<I>, const auto& data, const auto& tw) {
             if constexpr (powi(2, I + 1) == NodeSize) {
                 return btfly(uZ_constant<I>{}, data, tw);
             } else {
@@ -263,7 +263,7 @@ struct newnode {
         }(uZ_constant<0>{}, p1, std::get<tw_type&>(std::tie(args...)));
         /*auto res1 = std::apply(&simd::inverse<Settings.conj_tw>, res0);*/
         auto res1 = res0;
-        store(dest, res1);
+        store(std::make_index_sequence<NodeSize>{}, dest, res1);
     }
 };
 

@@ -67,46 +67,51 @@ _AINLINE_ auto ibtfly(cx_reg<T, false, PackSize> lhs, cx_reg<T, false, PackSize>
 }
 
 /**
-  * @brief Multiplies rhs by imaginary unit RhsRotI times, then performs butterfly operation;
-  *
-  * @tparam RhsRotI Number of multiplications by imaginary unity
-  */
-template<uint RhsRotI = 0, uZ PackSize, typename T>
-    requires(RhsRotI < 4)
-_AINLINE_ auto btfly(cx_reg<T, false, PackSize> lhs, cx_reg<T, false, PackSize> rhs) {
-    cx_reg<T, false, PackSize> s;
-    cx_reg<T, false, PackSize> d;
-    if constexpr (RhsRotI == 0) {
-        auto s_re = add(lhs.real, rhs.real);
-        auto d_re = sub(lhs.real, rhs.real);
-        auto s_im = add(lhs.imag, rhs.imag);
-        auto d_im = sub(lhs.imag, rhs.imag);
-        s         = {s_re, s_im};
-        d         = {d_re, d_im};
-    } else if constexpr (RhsRotI == 1) {
-        auto s_re = sub(lhs.real, rhs.imag);
-        auto d_re = add(lhs.real, rhs.imag);
-        auto s_im = add(lhs.imag, rhs.real);
-        auto d_im = sub(lhs.imag, rhs.real);
-        s         = {s_re, s_im};
-        d         = {d_re, d_im};
-    } else if constexpr (RhsRotI == 2) {
-        auto s_re = sub(lhs.real, rhs.real);
-        auto d_re = add(lhs.real, rhs.real);
-        auto s_im = sub(lhs.imag, rhs.imag);
-        auto d_im = add(lhs.imag, rhs.imag);
-        s         = {s_re, s_im};
-        d         = {d_re, d_im};
-    } else {
-        auto s_re = add(lhs.real, rhs.imag);
-        auto d_re = sub(lhs.real, rhs.imag);
-        auto s_im = sub(lhs.imag, rhs.real);
-        auto d_im = add(lhs.imag, rhs.real);
-        s         = {s_re, s_im};
-        d         = {d_re, d_im};
+ * @brief Multiplies rhs by imaginary unit RhsRotI times, then performs butterfly operation;
+ *
+ * @tparam RhsRotI Number of multiplications by imaginary unity
+ */
+template<uZ RhsRotI = 0>
+struct btfly_t {
+    template<uZ PackSize, typename T>
+        requires(RhsRotI < 4)
+    _AINLINE_ static auto operator()(cx_reg<T, false, PackSize> lhs, cx_reg<T, false, PackSize> rhs) {
+        cx_reg<T, false, PackSize> s;
+        cx_reg<T, false, PackSize> d;
+        if constexpr (RhsRotI == 0) {
+            auto s_re = add(lhs.real, rhs.real);
+            auto d_re = sub(lhs.real, rhs.real);
+            auto s_im = add(lhs.imag, rhs.imag);
+            auto d_im = sub(lhs.imag, rhs.imag);
+            s         = {s_re, s_im};
+            d         = {d_re, d_im};
+        } else if constexpr (RhsRotI == 1) {
+            auto s_re = sub(lhs.real, rhs.imag);
+            auto d_re = add(lhs.real, rhs.imag);
+            auto s_im = add(lhs.imag, rhs.real);
+            auto d_im = sub(lhs.imag, rhs.real);
+            s         = {s_re, s_im};
+            d         = {d_re, d_im};
+        } else if constexpr (RhsRotI == 2) {
+            auto s_re = sub(lhs.real, rhs.real);
+            auto d_re = add(lhs.real, rhs.real);
+            auto s_im = sub(lhs.imag, rhs.imag);
+            auto d_im = add(lhs.imag, rhs.imag);
+            s         = {s_re, s_im};
+            d         = {d_re, d_im};
+        } else {
+            auto s_re = add(lhs.real, rhs.imag);
+            auto d_re = sub(lhs.real, rhs.imag);
+            auto s_im = sub(lhs.imag, rhs.real);
+            auto d_im = add(lhs.imag, rhs.real);
+            s         = {s_re, s_im};
+            d         = {d_re, d_im};
+        }
+        return std::make_tuple(s, d);
     }
-    return std::make_tuple(s, d);
-}
+};
+
+inline constexpr btfly_t btfly;
 
 /* Collection of functions that perfrom fixed size FFT.
 FFT size is determined by hardware simd size.

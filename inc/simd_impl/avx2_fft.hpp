@@ -112,7 +112,7 @@ template<>
 inline constexpr uZ unsorted_size<double> = 16;
 
 template<uZ PDest, uZ PTform, bool BitReversed>
-_AINLINE_  auto unsorted(float* dest, const float* twiddle_ptr, uZ size) -> const float* {
+_AINLINE_ auto unsorted(float* dest, const float* twiddle_ptr, uZ size) -> const float* {
     constexpr auto reg_size = reg<float>::size;
     using cx_reg            = cx_reg<float, false, reg_size>;
 
@@ -218,10 +218,10 @@ _AINLINE_  auto unsorted(float* dest, const float* twiddle_ptr, uZ size) -> cons
 
 template<uZ PTform, uZ PSrc, bool Scale, bool BitReversed>
 _AINLINE_ auto unsorted_reverse(float*       dest,    //
-                             const float* twiddle_ptr,
-                             uZ           size,
-                             uZ           fft_size,
-                             auto... optional) -> const float* {
+                                const float* twiddle_ptr,
+                                uZ           size,
+                                uZ           fft_size,
+                                auto... optional) -> const float* {
     constexpr auto reg_size = reg<float>::size;
     using cx_reg            = cx_reg<float, false, reg_size>;
     constexpr auto PLoad    = BitReversed ? PSrc : std::max(PSrc, reg_size);
@@ -484,7 +484,7 @@ _AINLINE_ static void tform_sort(float* data, uZ size, const auto& sort) {
         auto [a1, a5] = btfly(p1, p5);
         auto [a3, a7] = btfly(p3, p7);
 
-        auto [b5, b7] = btfly<3>(a5, a7);
+        auto [b5, b7] = btfly_t<3>{}(a5, a7);
 
         auto twsq2 = broadcast(sq2.real());
 
@@ -519,12 +519,12 @@ _AINLINE_ static void tform_sort(float* data, uZ size, const auto& sort) {
         auto [a2, a6] = btfly(p2, p6);
 
         auto [b0, b2] = btfly(a0, a2);
-        auto [b4, b6] = btfly<3>(a4, a6);
+        auto [b4, b6] = btfly_t<3>{}(a4, a6);
 
         auto [c0, c1] = btfly(b0, b1);
-        auto [c2, c3] = btfly<3>(b2, b3);
+        auto [c2, c3] = btfly_t<3>{}(b2, b3);
         auto [c4, c5] = btfly(b4, b5_tw);
-        auto [c6, c7] = btfly<2>(b6, b7_tw);
+        auto [c6, c7] = btfly_t<2>{}(b6, b7_tw);
 
         auto [sha0, sha4] = avx2::unpack_ps(c0, c4);
         auto [sha2, sha6] = avx2::unpack_ps(c2, c6);
@@ -596,7 +596,7 @@ _AINLINE_ static void tform_sort(float* data, uZ size, const auto& sort) {
         auto [x1, x5] = btfly(q1, q5);
         auto [x3, x7] = btfly(q3, q7);
 
-        auto [y5, y7] = btfly<3>(x5, x7);
+        auto [y5, y7] = btfly_t<3>{}(x5, x7);
 
         auto [y1, y3] = btfly(x1, x3);
 
@@ -611,12 +611,12 @@ _AINLINE_ static void tform_sort(float* data, uZ size, const auto& sort) {
         auto [x2, x6] = btfly(q2, q6);
 
         auto [y0, y2] = btfly(x0, x2);
-        auto [y4, y6] = btfly<3>(x4, x6);
+        auto [y4, y6] = btfly_t<3>{}(x4, x6);
 
         auto [z0, z1] = btfly(y0, y1);
-        auto [z2, z3] = btfly<3>(y2, y3);
+        auto [z2, z3] = btfly_t<3>{}(y2, y3);
         auto [z4, z5] = btfly(y4, y5_tw);
-        auto [z6, z7] = btfly<2>(y6, y7_tw);
+        auto [z6, z7] = btfly_t<2>{}(y6, y7_tw);
 
         auto [shx0, shx4] = avx2::unpack_ps(z0, z4);
         auto [shx1, shx5] = avx2::unpack_ps(z1, z5);
@@ -674,7 +674,7 @@ _AINLINE_ static void tform_sort(float* data, uZ size, const auto& sort) {
         auto [a1, a5] = btfly(p1, p5);
         auto [a3, a7] = btfly(p3, p7);
 
-        auto [b5, b7] = btfly<3>(a5, a7);
+        auto [b5, b7] = btfly_t<3>{}(a5, a7);
         auto [b1, b3] = btfly(a1, a3);
 
         auto twsq2 = broadcast(sq2.real());
@@ -697,12 +697,12 @@ _AINLINE_ static void tform_sort(float* data, uZ size, const auto& sort) {
         auto [a2, a6] = btfly(p2, p6);
 
         auto [b0, b2] = btfly(a0, a2);
-        auto [b4, b6] = btfly<3>(a4, a6);
+        auto [b4, b6] = btfly_t<3>{}(a4, a6);
 
         auto [c0, c1] = btfly(b0, b1);
-        auto [c2, c3] = btfly<3>(b2, b3);
+        auto [c2, c3] = btfly_t<3>{}(b2, b3);
         auto [c4, c5] = btfly(b4, b5_tw);
-        auto [c6, c7] = btfly<2>(b6, b7_tw);
+        auto [c6, c7] = btfly_t<2>{}(b6, b7_tw);
 
         auto [sha0, sha4] = avx2::unpack_ps(c0, c4);
         auto [sha2, sha6] = avx2::unpack_ps(c2, c6);
