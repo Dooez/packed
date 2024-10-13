@@ -187,26 +187,28 @@ struct newnode {
     /*    cxstore<PDest>(dest[data_idx[3]], b3_);*/
     /*};*/
 
-    template<typename T, settings Settings, typename... Args>
-    static inline void perform(std::array<T*, NodeSize> dest, Args&&... args) {
+    template<typename T, settings Settings>
+    static inline void perform(std::array<T*, NodeSize>                         dest,
+                               const std::array<simd::cx_reg<T>, NodeSize - 1>& tw) {
         constexpr auto reg_size = simd::reg<T>::size;
         using cx_reg            = simd::cx_reg<T, false, reg_size>;
 
-        using src_type       = std::array<const T*, NodeSize>;
-        using tw_type        = std::array<simd::cx_reg<T>, NodeSize - 1>;
-        constexpr bool Src   = has_type<src_type, Args...>;
-        constexpr bool Tw    = has_type<tw_type, Args...>;
-        constexpr bool Scale = has_type<simd::reg_t<T>, Args...>;
+        using src_type = std::array<const T*, NodeSize>;
+        using tw_type  = std::array<simd::cx_reg<T>, NodeSize - 1>;
+        /*constexpr bool Src   = has_type<src_type, Args...>;*/
+        /*constexpr bool Tw    = has_type<tw_type, Args...>;*/
+        /*constexpr bool Scale = has_type<simd::reg_t<T>, Args...>;*/
+        constexpr bool Src = false;
 
         constexpr auto load =
             []<uZ... Is>(std::index_sequence<Is...>, const auto& dest, const auto&... args) {
                 constexpr auto& data_idx = order2<NodeSize, Settings.dit>::data;
-                if constexpr (Src) {
-                    auto& src = std::get<src_type&>(std::tie(args...));
-                    return std::make_tuple(simd::cxload<Settings.pack_src, reg_size>(src[data_idx[Is]])...);
-                } else {
-                    return std::make_tuple(simd::cxload<Settings.pack_src, reg_size>(dest[data_idx[Is]])...);
-                }
+                /*if constexpr (Src) {*/
+                /*    auto& src = std::get<src_type&>(std::tie(args...));*/
+                /*    return std::make_tuple(simd::cxload<Settings.pack_src, reg_size>(src[data_idx[Is]])...);*/
+                /*} else {*/
+                return std::make_tuple(simd::cxload<Settings.pack_src, reg_size>(dest[data_idx[Is]])...);
+                /*}*/
             };
         constexpr auto store = []<uZ... Is>(std::index_sequence<Is...>, const auto& dest, const auto& data) {
             constexpr auto& data_idx = order2<NodeSize, Settings.dit>::data;
@@ -246,24 +248,25 @@ struct newnode {
             auto bottom_tw = simd::mul_tuples(bottom, tws);
             auto top       = get_half(uZ_constant<0>{}, data);
 
-            return detail_::flatten_tuple(mass_invoke(simd::btfly, top, bottom_tw));
+            return detail_::make_flat_tuple(mass_invoke(simd::btfly, top, bottom_tw));
+            /*return detail_::forward_as_flat_tuple(mass_invoke(simd::btfly, top, bottom_tw));*/
         };
 
-        auto p0 = load(std::make_index_sequence<NodeSize>{}, dest, args...);
+        auto p0 = load(std::make_index_sequence<NodeSize>{}, dest);
         /*auto p1 = std::apply(&simd::inverse<Settings.conj_tw>, p0);*/
 
         auto p1   = p0;
-        auto res0 = [btfly]<uZ I>(uZ_constant<I>, const auto& data, const auto& tw) {
+        auto res0 = [btfly]<uZ I>(this auto&& f, uZ_constant<I>, const auto& data, const auto& tw) {
             if constexpr (powi(2, I + 1) == NodeSize) {
                 return btfly(uZ_constant<I>{}, data, tw);
             } else {
                 auto tmp = btfly(uZ_constant<I>{}, data, tw);
-                return btfly(uZ_constant<I + 1>{}, tmp, tw);
+                return f(uZ_constant<I + 1>{}, tmp, tw);
             }
-        }(uZ_constant<0>{}, p1, std::get<tw_type&>(std::tie(args...)));
+        }(uZ_constant<0>{}, p1, tw);
         /*auto res1 = std::apply(&simd::inverse<Settings.conj_tw>, res0);*/
-        auto res1 = res0;
-        store(std::make_index_sequence<NodeSize>{}, dest, res1);
+        auto& res1 = res0;
+        store(std::make_index_sequence<NodeSize>{}, dest, res0);
     }
 };
 
