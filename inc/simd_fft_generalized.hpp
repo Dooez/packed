@@ -244,12 +244,10 @@ struct newnode {
                              uZ_constant<Itw>{},
                              tw)...);
             }(std::make_index_sequence<powi(2UL, Level)>{}, tw);
-            /*auto bottom_tw = std::apply(simd::mul_pairs, zip_tuples(bottom, tws));*/
             auto bottom_tw = simd::mul_tuples(bottom, tws);
             auto top       = get_half(uZ_constant<0>{}, data);
 
             return detail_::make_flat_tuple(mass_invoke(simd::btfly, top, bottom_tw));
-            /*return detail_::forward_as_flat_tuple(mass_invoke(simd::btfly, top, bottom_tw));*/
         };
 
         auto p0 = load(std::make_index_sequence<NodeSize>{}, dest);
@@ -265,7 +263,6 @@ struct newnode {
             }
         }(uZ_constant<0>{}, p1, tw);
         /*auto res1 = std::apply(&simd::inverse<Settings.conj_tw>, res0);*/
-        auto& res1 = res0;
         store(std::make_index_sequence<NodeSize>{}, dest, res0);
     }
 };

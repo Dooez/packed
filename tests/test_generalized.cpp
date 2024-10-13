@@ -24,10 +24,10 @@ void new_node(std::array<float, 2 * reg_size * 4>& data, std::array<pcx::simd::c
         .conj_tw   = false,
         .dit       = false,
     };
-    pcx::detail_::fft::newnode<4>::perform<float, sett>(dest, tw);
+    /*pcx::detail_::fft::newnode<4>::perform<float, sett>(dest, tw);*/
     /*pcx::detail_::fft::node<4>::perform<float, sett>(dest, tw);*/
 
-    /*pcx::detail_::fft::node<4>::template perform<float, 8, 8, false, false, false>(dest, tw);*/
+    pcx::detail_::fft::node<4>::template perform<float, 8, 8, false, false, false>(dest, tw);
 }
 
 int main() {
