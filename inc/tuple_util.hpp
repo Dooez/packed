@@ -229,9 +229,8 @@ auto make_flat_tuple(T&& tuple) {
     }
 }
 template<typename... Ts>
-    requires(sizeof...(Ts) > 1)
 auto make_flat_tuple(Ts&&... args) {
-    return make_flat_tuple(std::forward_as_tuple(std::forward<Ts>(args)...));
+    return std::tuple_cat(make_flat_tuple(std::forward<Ts>(args))...);
 }
 
 template<typename T>
@@ -245,9 +244,8 @@ auto forward_as_flat_tuple(T&& tuple) {
     }
 }
 template<typename... Ts>
-    requires(sizeof...(Ts) > 1)
 auto forward_as_flat_tuple(Ts&&... args) {
-    return forward_as_flat_tuple(std::forward_as_tuple(std::forward<Ts>(args)...));
+    return std::tuple_cat(forward_as_flat_tuple(std::forward<Ts>(args))...);
 }
 
 }    // namespace pcx::detail_
