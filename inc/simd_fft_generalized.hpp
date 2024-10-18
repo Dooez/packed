@@ -155,6 +155,7 @@ private:
             return std::make_tuple(simd::cxload<Settings.pack_src, reg_size>(data[data_idx[Is]])...);
         }(std::make_index_sequence<NodeSize>{}, data);
     }
+
     template<settings Settings>
     static void store(const std::array<T*, NodeSize>& dest, const auto& data) {
         []<uZ... Is>(std::index_sequence<Is...>, const auto& dest, const auto& data) {
@@ -163,24 +164,34 @@ private:
         }(std::make_index_sequence<NodeSize>{}, dest, data);
     }
 
+    template<uZ Level, bool Top>
+    static inline auto get_half(const auto& data) {
+        constexpr uZ stride = NodeSize / powi(2, Level);
+        constexpr uZ start  = Top ? 0 : stride / 2;
+
+        return []<uZ... Grp>(std::index_sequence<Grp...>, const auto& data) {
+            constexpr auto iterate = []<uZ... Iters, uZ Offset>(std::index_sequence<Iters...>,
+                                                                uZ_constant<Offset>,
+                                                                const auto& data) {
+                return std::make_tuple(std::get<start + Offset + Iters>(data)...);
+            };
+            return std::tuple_cat(iterate(std::make_index_sequence<stride / 2>{},    //
+                                          uZ_constant<Grp * stride>{},
+                                          data)...);
+        }(std::make_index_sequence<NodeSize / stride>{}, data);
+    }
+    template<uZ Level>
+    static inline auto get_top_half(const auto& data) {
+        return get_half<Level, true>(data);
+    }
+    template<uZ Level>
+    static inline auto get_bot_half(const auto& data) {
+        return get_half<Level, false>(data);
+    }
+
     template<uZ Level>
     static auto btfly(const auto& data, const auto& tw) {
-        constexpr uZ stride = NodeSize / powi(2, Level);
-
-        constexpr auto get_half = []<uZ Start>(uZ_constant<Start>, const auto& data) {
-            return []<uZ... Grp>(std::index_sequence<Grp...>, const auto& data) {
-                constexpr auto iterate = []<uZ... Iters, uZ Offset>(std::index_sequence<Iters...>,
-                                                                    uZ_constant<Offset>,
-                                                                    const auto& data) {
-                    return std::make_tuple(std::get<Start + Offset + Iters>(data)...);
-                };
-                return std::tuple_cat(iterate(std::make_index_sequence<stride / 2>{},    //
-                                              uZ_constant<Grp * stride>{},
-                                              data)...);
-            }(std::make_index_sequence<NodeSize / stride>{}, data);
-        };
-
-        auto bottom = get_half(uZ_constant<stride / 2>{}, data);
+        auto bottom = get_bot_half<Level>(data);
 
         auto tws = []<uZ... Itw>(std::index_sequence<Itw...>, const auto& tw) {
             constexpr auto make_rep =
@@ -192,7 +203,7 @@ private:
                                            tw)...);
         }(std::make_index_sequence<powi(2UL, Level)>{}, tw);
         auto bottom_tw = simd::mul_tuples(bottom, tws);
-        auto top       = get_half(uZ_constant<0>{}, data);
+        auto top       = get_top_half<Level>(data);
 
         return detail_::make_flat_tuple(mass_invoke(simd::btfly, top, bottom_tw));
     };
@@ -201,26 +212,14 @@ private:
     static auto btfly_pruned(const auto& data, const auto& tw) {
         constexpr uZ stride = NodeSize / powi(2, Level);
 
-        constexpr auto get_half = []<uZ Start>(uZ_constant<Start>, const auto& data) {
-            return []<uZ... Grp>(std::index_sequence<Grp...>, const auto& data) {
-                constexpr auto iterate = []<uZ... Iters, uZ Offset>(std::index_sequence<Iters...>,
-                                                                    uZ_constant<Offset>,
-                                                                    const auto& data) {
-                    return std::make_tuple(std::get<Start + Offset + Iters>(data)...);
-                };
-                return std::tuple_cat(iterate(std::make_index_sequence<stride / 2>{},    //
-                                              uZ_constant<Grp * stride>{},
-                                              data)...);
-            }(std::make_index_sequence<NodeSize / stride>{}, data);
-        };
-
-        auto bottom = get_half(uZ_constant<stride / 2>{}, data);
+        auto bottom = get_bot_half<Level>(data);
 
         if constexpr (Level == 0) {
-            auto top = get_half(uZ_constant<0>{}, data);
+            auto top = get_top_half<Level>(data);
             return detail_::make_flat_tuple(mass_invoke(simd::btfly, top, bottom));
         } else if constexpr (Level == 1) {
-            auto           top = get_half(uZ_constant<0>{}, data);
+            auto top = get_top_half<Level>(data);
+
             constexpr auto btfly180 =
                 []<uZ... Is>(std::index_sequence<Is...>, const auto& top, const auto& bottom) {
                     return std::make_tuple(simd::btfly(std::get<Is>(top), std::get<Is>(bottom))...);
@@ -245,7 +244,7 @@ private:
                              tw)...);
             }(std::make_index_sequence<powi(2UL, Level)>{}, tw);
             auto bottom_tw = simd::mul_tuples(bottom, tws);
-            auto top       = get_half(uZ_constant<0>{}, data);
+            auto top       = get_top_half<Level>(data);
 
             return detail_::make_flat_tuple(mass_invoke(simd::btfly, top, bottom_tw));
         }
