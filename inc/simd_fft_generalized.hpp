@@ -91,15 +91,15 @@ struct newnode {
         bool dit;
     };
 
-    using full_tw_t    = std::array<simd::cx_reg<T>, NodeSize - 1>;
-    using reduced_tw_t = std::conditional_t<(NodeSize > 4),    //
-                                            std::array<simd::cx_reg<T>, NodeSize / 4 - 1>,
-                                            decltype([] {})>;
-    using dest_t       = std::array<T*, NodeSize>;
+    using full_tw_t   = std::array<simd::cx_reg<T>, NodeSize - 1>;
+    using pruned_tw_t = std::conditional_t<(NodeSize > 4),    //
+                                           std::array<simd::cx_reg<T>, NodeSize / 4 - 1>,
+                                           decltype([] {})>;
+    using dest_t      = std::array<T*, NodeSize>;
 
 
     template<settings Settings>
-    static inline void perform(const dest_t& dest, const reduced_tw_t& tw) {
+    static inline void perform(const dest_t& dest, const pruned_tw_t& tw) {
         auto data_tup = load<Settings>(dest);
     };
 
@@ -112,14 +112,14 @@ struct newnode {
 
         auto p1 = data_tup;
 
-        auto res = []<uZ I>(this auto&& f, uZ_constant<I>, const auto& data, const auto& tw) {
-            if constexpr (powi(2, I + 1) == NodeSize) {
-                return btfly<I>(data, tw);
+        auto res = []<uZ L = 0>(this auto&& f, const auto& data, const auto& tw, uZ_constant<L> = {}) {
+            if constexpr (powi(2, L + 1) == NodeSize) {
+                return btfly<L>(data, tw);
             } else {
-                auto tmp = btfly<I>(data, tw);
-                return f(uZ_constant<I + 1>{}, tmp, tw);
+                auto tmp = btfly<L>(data, tw);
+                return f(tmp, tw, uZ_constant<L + 1>{});
             }
-        }(uZ_constant<0>{}, p1, tw);
+        }(p1, tw);
 
         /*auto res1 = std::apply(&simd::inverse<Settings.conj_tw>, res0);*/
         store<Settings>(dest, res);
@@ -164,9 +164,10 @@ private:
         }(std::make_index_sequence<NodeSize>{}, dest, data);
     }
 
-    template<uZ Level, bool Top>
-    static inline auto get_half(const auto& data) {
-        constexpr uZ stride = NodeSize / powi(2, Level);
+    template<uZ Level, bool Top, typename... Ts>
+    static auto get_half(const std::tuple<Ts...>& data) {
+        constexpr uZ size   = sizeof...(Ts);
+        constexpr uZ stride = size / powi(2, Level);
         constexpr uZ start  = Top ? 0 : stride / 2;
 
         return []<uZ... Grp>(std::index_sequence<Grp...>, const auto& data) {
@@ -178,14 +179,14 @@ private:
             return std::tuple_cat(iterate(std::make_index_sequence<stride / 2>{},    //
                                           uZ_constant<Grp * stride>{},
                                           data)...);
-        }(std::make_index_sequence<NodeSize / stride>{}, data);
+        }(std::make_index_sequence<size / stride>{}, data);
     }
     template<uZ Level>
-    static inline auto get_top_half(const auto& data) {
+    static auto get_top_half(const auto& data) {
         return get_half<Level, true>(data);
     }
     template<uZ Level>
-    static inline auto get_bot_half(const auto& data) {
+    static auto get_bot_half(const auto& data) {
         return get_half<Level, false>(data);
     }
 
@@ -202,15 +203,60 @@ private:
                                            uZ_constant<Itw>{},
                                            tw)...);
         }(std::make_index_sequence<powi(2UL, Level)>{}, tw);
+
         auto bottom_tw = simd::mul_tuples(bottom, tws);
         auto top       = get_top_half<Level>(data);
 
         return detail_::make_flat_tuple(mass_invoke(simd::btfly, top, bottom_tw));
     };
 
+    template<uZ ITw>
+    struct btfly_pruned_impl {
+        template<uZ Offset, uZ... Is>
+        static auto perform(const auto& top,    //
+                            const auto& bottom,
+                            uZ_constant<Offset>,
+                            std::index_sequence<Is...>) {
+            return std::make_tuple(simd::btfly(std::get<Offset + Is>(top), std::get<Offset + Is>(bottom))...);
+        }
+
+    };
+    template<>
+    struct btfly_pruned_impl<0> {
+        template<uZ Offset, uZ... Is>
+        static auto perform(const auto& top,    //
+                            const auto& bottom,
+                            uZ_constant<Offset>,
+                            std::index_sequence<Is...>) {
+            return std::make_tuple(simd::btfly(std::get<Offset + Is>(top), std::get<Offset + Is>(bottom))...);
+        }
+    };
+    template<>
+    struct btfly_pruned_impl<1> {
+        template<uZ Offset, uZ... Is>
+        static auto perform(const auto& top,    //
+                            const auto& bottom,
+                            uZ_constant<Offset>,
+                            std::index_sequence<Is...>) {
+            return std::make_tuple(simd::btfly_t<3>{}(std::get<Offset + Is>(top),    //
+                                                      std::get<Offset + Is>(bottom))...);
+        }
+    };
+
     template<uZ Level>
     static auto btfly_pruned(const auto& data, const auto& tw) {
         constexpr uZ stride = NodeSize / powi(2, Level);
+
+        constexpr auto btfly180 =
+            []<uZ... Is>(std::index_sequence<Is...>, const auto& top, const auto& bottom) {
+                return std::make_tuple(simd::btfly(std::get<Is>(top), std::get<Is>(bottom))...);
+            };
+        constexpr auto btfly90 =
+            []<uZ... Is>(std::index_sequence<Is...>, const auto& top, const auto& bottom) {
+                return std::make_tuple(simd::btfly_t<3>{}(std::get<Is + stride / 2>(top),    //
+                                                          std::get<Is + stride / 2>(bottom))...);
+            };
+        constexpr auto idxs = std::make_index_sequence<stride / 2>{};
 
         auto bottom = get_bot_half<Level>(data);
 
