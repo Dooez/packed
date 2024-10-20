@@ -210,29 +210,94 @@ private:
         return detail_::make_flat_tuple(mass_invoke(simd::btfly, top, bottom_tw));
     };
 
-    template<uZ ITw>
-    struct btfly_pruned_impl {
-        template<uZ Offset, uZ... Is>
-        static auto perform(const auto& top,    //
-                            const auto& bottom,
-                            uZ_constant<Offset>,
-                            std::index_sequence<Is...>) {
-            return std::make_tuple(simd::btfly(std::get<Offset + Is>(top), std::get<Offset + Is>(bottom))...);
-        }
 
-    };
-    template<>
-    struct btfly_pruned_impl<0> {
+    static constexpr auto next_pow_2(u64 v) {
+        v--;
+        v |= v >> 1U;
+        v |= v >> 2U;
+        v |= v >> 4U;
+        v |= v >> 8U;
+        v |= v >> 16U;
+        v |= v >> 32U;
+        v++;
+        return v;
+    }
+
+    /**
+     * @brief Provides butterfly operations for a compile time constant indexes.
+     * Indexes are bit-reversed, and thus independent on the actual transform size e.g.
+     * if twiddle is defined as tw = exp(-2 * pi * i * k / N)
+     * `ITw == 0` => k == 0
+     * `ITw == 1` => k == N/2
+     * `ITw == 2` => k == N/4
+     * `ITw == 3` => k == 3N/4
+     * ...
+     * Low index butterflies are optimized. 
+     */
+    template<uZ ITw>
+    struct fixed_btfly {
+        static constexpr uZ min_fft_size = next_pow_2(ITw);
+        static constexpr uZ real_index   = reverse_bit_order(ITw, min_fft_size);
+
+        static T tw_value = static_cast<std::complex<T>>(    //
+            std::exp(                                        //
+                std::complex<double>{0,                      //
+                                     2. * std::numbers::pi* static_cast<double>(real_index) /
+                                         static_cast<double>(min_fft_size)}));
+
         template<uZ Offset, uZ... Is>
-        static auto perform(const auto& top,    //
-                            const auto& bottom,
-                            uZ_constant<Offset>,
-                            std::index_sequence<Is...>) {
-            return std::make_tuple(simd::btfly(std::get<Offset + Is>(top), std::get<Offset + Is>(bottom))...);
+        static auto step0(const auto& bottom,    //
+                          uZ_constant<Offset>,
+                          std::index_sequence<Is...>) {
+            auto tw = simd::broadcast(tw_value);
+            return std::make_tuple(simd::detail_::mul_real_rhs(std::get<Offset + Is>(bottom), tw)...);
+        }
+        template<uZ Offset, uZ... Is>
+        static auto step1(const auto& tmp,    //
+                          const auto& bottom,
+                          uZ_constant<Offset>,
+                          std::index_sequence<Is...>) {
+            auto tw = simd::broadcast(tw_value);
+            return std::make_tuple(simd::detail_::mul_imag_rhs(std::get<Offset + Is>(tmp),    //
+                                                               std::get<Offset + Is>(bottom),
+                                                               tw)...);
+        }
+        template<uZ Offset, uZ... Is>
+        static auto step2(const auto& top,    //
+                          const auto& bottom_tw,
+                          uZ_constant<Offset>,
+                          std::index_sequence<Is...>) {
+            std::make_tuple(simd::btfly(std::get<Offset + Is>(top),    //
+                                        std::get<Offset + Is>(bottom_tw))...);
+        }
+    };
+
+    template<>
+    struct fixed_btfly<0> {
+        template<uZ Offset, uZ... Is>
+        static auto step0(const auto& bottom,    //
+                          uZ_constant<Offset>,
+                          std::index_sequence<Is...>) {
+            return [] {};
+        }
+        template<uZ Offset, uZ... Is>
+        static auto step1(const auto& tmp,    //
+                          const auto& bottom,
+                          uZ_constant<Offset>,
+                          std::index_sequence<Is...>) {
+            return bottom;
+        }
+        template<uZ Offset, uZ... Is>
+        static auto step2(const auto& top,    //
+                          const auto& bottom_tw,
+                          uZ_constant<Offset>,
+                          std::index_sequence<Is...>) {
+            std::make_tuple(simd::btfly(std::get<Offset + Is>(top),    //
+                                        std::get<Offset + Is>(bottom_tw))...);
         }
     };
     template<>
-    struct btfly_pruned_impl<1> {
+    struct fixed_btfly<1> {
         template<uZ Offset, uZ... Is>
         static auto perform(const auto& top,    //
                             const auto& bottom,
