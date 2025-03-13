@@ -161,7 +161,7 @@ public:
         requires /**/ (sizeof...(Unsigned) == size)
     consteval explicit basis(Unsigned... extents) noexcept
     : basis(layout_order{}, extents...) {
-        for (auto e: basis::extents) {
+        for ([[maybe_unused]] auto e: basis::extents) {
             assert(e != 0);
         }
     };
