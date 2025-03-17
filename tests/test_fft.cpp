@@ -14,16 +14,16 @@
 
 // NOLINTBEGIN
 
-void test_que(pcx::fft_unit<float, pcx::fft_order::normal>& unit, std::vector<std::complex<float>>& v1) {
+void test_que(pcxo::fft_unit<float, pcxo::fft_order::normal>& unit, std::vector<std::complex<float>>& v1) {
     unit(v1);
 }
 
 template<typename T>
 auto fmul(std::complex<T> lhs, std::complex<T> rhs) -> std::complex<T> {
-    auto lhsv = pcx::simd::broadcast(lhs);
-    auto rhsv = pcx::simd::broadcast(rhs);
+    auto lhsv = pcxo::simd::broadcast(lhs);
+    auto rhsv = pcxo::simd::broadcast(rhs);
 
-    auto resv = pcx::simd::mul(lhsv, rhsv);
+    auto resv = pcxo::simd::mul(lhsv, rhsv);
 
     T re;
     T im;
@@ -64,8 +64,8 @@ inline auto wnk(std::size_t n, std::size_t k) -> std::complex<T> {
     return exp(std::complex<T>(0, -2 * pi * static_cast<double>(k) / static_cast<double>(n)));
 }
 template<typename T, typename Allocator, std::size_t PackSize>
-auto fft(const pcx::vector<T, PackSize, Allocator>& vector) {
-    using vector_t = pcx::vector<T, PackSize, Allocator>;
+auto fft(const pcxo::vector<T, PackSize, Allocator>& vector) {
+    using vector_t = pcxo::vector<T, PackSize, Allocator>;
     auto fft_size  = vector.size();
     auto res       = vector_t(fft_size);
     if (fft_size == 1) {
@@ -99,7 +99,7 @@ auto fft(const pcx::vector<T, PackSize, Allocator>& vector) {
 }
 
 template<typename T, typename Allocator, std::size_t PackSize>
-auto fftu(const pcx::vector<T, PackSize, Allocator>& vector) {
+auto fftu(const pcxo::vector<T, PackSize, Allocator>& vector) {
     auto        size       = vector.size();
     auto        u          = vector;
     std::size_t n_groups   = 1;
@@ -132,7 +132,7 @@ auto fftu(const pcx::vector<T, PackSize, Allocator>& vector) {
 }
 
 template<typename T, typename Allocator, std::size_t PackSize>
-auto ifftu(const pcx::vector<T, PackSize, Allocator>& vector) {
+auto ifftu(const pcxo::vector<T, PackSize, Allocator>& vector) {
     auto        size       = vector.size();
     auto        u          = vector;
     std::size_t n_groups   = size / 2;
@@ -167,9 +167,9 @@ auto ifftu(const pcx::vector<T, PackSize, Allocator>& vector) {
     return u;
 }
 
-template<pcx::uZ NodeSize>
+template<pcxo::uZ NodeSize>
 auto fft_dif(auto& vector) {
-    using namespace pcx;
+    using namespace pcxo;
     using T = typename cx_vector_traits<std::remove_cvref_t<decltype(vector)>>::real_type;
 
     constexpr auto load = []<uZ Node>(auto&& vec, uZ i, uZ grp_size, uZ_constant<Node>) {
@@ -287,14 +287,14 @@ auto fft_dif(auto& vector) {
 
 template<std::size_t PackSize = 8>
 int test_fft_float(std::size_t size) {
-    constexpr float  pi  = 3.14159265358979323846;
-    constexpr double dpi = 3.14159265358979323846;
+    constexpr float pi = 3.14159265358979323846;
+    // constexpr double dpi = 3.14159265358979323846;
 
     auto depth = log2i(size);
 
-    auto vec      = pcx::vector<float, PackSize, std::allocator<float>>(size);
+    auto vec      = pcxo::vector<float, PackSize, std::allocator<float>>(size);
     auto svec     = std::vector<std::complex<float>>(size);
-    auto vec_out  = pcx::vector<float, PackSize, std::allocator<float>>(size);
+    auto vec_out  = pcxo::vector<float, PackSize, std::allocator<float>>(size);
     auto svec_out = std::vector<std::complex<float>>(size);
     for (uint i = 0; i < size; ++i) {
         vec[i]  = std::exp(std::complex(0.F, 2 * pi * i / size * 13.37F));
@@ -304,7 +304,7 @@ int test_fft_float(std::size_t size) {
     auto ff = fft(vec);
 
     for (std::size_t sub_size = 64; sub_size <= size * 2; sub_size *= 2) {
-        auto unit = pcx::fft_unit<float, pcx::fft_order::normal>(size, sub_size);
+        auto unit = pcxo::fft_unit<float, pcxo::fft_order::normal>(size, sub_size);
         int  ret  = 0;
 
         vec_out = vec;
@@ -440,8 +440,8 @@ int test_fftu_float(std::size_t size) {
 
     auto depth = log2i(size);
 
-    auto vec      = pcx::vector<float, PackSize, std::allocator<float>>(size);
-    auto vec_out  = pcx::vector<float, PackSize, std::allocator<float>>(size);
+    auto vec      = pcxo::vector<float, PackSize, std::allocator<float>>(size);
+    auto vec_out  = pcxo::vector<float, PackSize, std::allocator<float>>(size);
     auto svec_out = std::vector<std::complex<float>>(size);
     for (uint i = 0; i < size; ++i) {
         vec[i]      = std::exp(std::complex(0.F, 2 * pi * i / size * 13.37F));
@@ -451,8 +451,8 @@ int test_fftu_float(std::size_t size) {
     for (std::size_t sub_size = 64; sub_size <= size; sub_size *= 2) {
         // for (std::size_t sub_size = size; sub_size <= size; sub_size *= 2) {
 
-        auto vec      = pcx::vector<float, PackSize, std::allocator<float>>(size);
-        auto vec_out  = pcx::vector<float, PackSize, std::allocator<float>>(size);
+        auto vec      = pcxo::vector<float, PackSize, std::allocator<float>>(size);
+        auto vec_out  = pcxo::vector<float, PackSize, std::allocator<float>>(size);
         auto svec_out = std::vector<std::complex<float>>(size);
         for (uint i = 0; i < size; ++i) {
             vec[i]      = std::exp(std::complex(0.F, 2 * pi * i / size * 13.37F));
@@ -460,8 +460,8 @@ int test_fftu_float(std::size_t size) {
         }
         vec_out = vec;
 
-        auto unit   = pcx::fft_unit<float, pcx::fft_order::bit_reversed>(size, sub_size);
-        auto unit_u = pcx::fft_unit<float, pcx::fft_order::unordered>(size, sub_size);
+        auto unit   = pcxo::fft_unit<float, pcxo::fft_order::bit_reversed>(size, sub_size);
+        auto unit_u = pcxo::fft_unit<float, pcxo::fft_order::unordered>(size, sub_size);
 
 
         auto eps_u = 1U << (depth - 1);
@@ -644,8 +644,8 @@ int test_fftu_float_0(std::size_t size) {
 
     auto depth = log2i(size);
 
-    auto vec      = pcx::vector<float, PackSize, std::allocator<float>>(size);
-    auto vec_out  = pcx::vector<float, PackSize, std::allocator<float>>(size);
+    auto vec      = pcxo::vector<float, PackSize, std::allocator<float>>(size);
+    auto vec_out  = pcxo::vector<float, PackSize, std::allocator<float>>(size);
     auto svec_out = std::vector<std::complex<float>>(size);
     for (uint i = 0; i < size; ++i) {
         vec[i]      = std::exp(std::complex(0.F, 2 * pi * i / size * 13.37F));
@@ -655,19 +655,19 @@ int test_fftu_float_0(std::size_t size) {
     for (std::size_t sub_size = 64; sub_size <= size * 2; sub_size *= 2) {
         vec_out = vec;
 
-        auto unit = pcx::fft_unit<float, pcx::fft_order::bit_reversed>(size, sub_size);
+        auto unit = pcxo::fft_unit<float, pcxo::fft_order::bit_reversed>(size, sub_size);
 
         auto ffu   = fftu(vec);
         auto eps_u = 1U << (depth - 1);
 
-        for (auto n_empty = size / 2; n_empty < std::min(size, size / 2 + pcx::simd::reg<float>::size);
+        for (auto n_empty = size / 2; n_empty < std::min(size, size / 2 + pcxo::simd::reg<float>::size);
              ++n_empty) {
-            auto vec_short = pcx::vector<float, PackSize, std::allocator<float>>(size - n_empty);
-            auto vec_zero  = pcx::vector<float, PackSize, std::allocator<float>>(size);
+            auto vec_short = pcxo::vector<float, PackSize, std::allocator<float>>(size - n_empty);
+            auto vec_zero  = pcxo::vector<float, PackSize, std::allocator<float>>(size);
 
-            vec_short = pcx::subrange(vec.begin(), vec_short.size());
-            pcx::subrange(vec_zero.begin(), vec_short.size())
-                .assign(pcx::subrange(vec.begin(), vec_short.size()));
+            vec_short = pcxo::subrange(vec.begin(), vec_short.size());
+            pcxo::subrange(vec_zero.begin(), vec_short.size())
+                .assign(pcxo::subrange(vec.begin(), vec_short.size()));
 
             for (uint i = 0; i < size; ++i) {
                 svec_out[i] = vec_zero[i];
@@ -700,29 +700,29 @@ int test_fftu_float_0(std::size_t size) {
 
 template<std::size_t PackSize = 8>
 int test_par_fft_float(std::size_t size) {
-    constexpr float  pi  = 3.14159265358979323846;
-    constexpr double dpi = 3.14159265358979323846;
+    constexpr float pi = 3.14159265358979323846;
+    // constexpr double dpi = 3.14159265358979323846;
 
 
-    auto test_1 = []<pcx::fft_order order>(std::size_t size) {
-        auto depth     = log2i(size);
-        auto st_par    = std::vector<pcx::vector<float, PackSize>>(size);
-        auto vec_check = pcx::vector<float, PackSize>(size);
+    auto test_1 = []<pcxo::fft_order order>(std::size_t size) {
+        // auto depth     = log2i(size);
+        auto st_par    = std::vector<pcxo::vector<float, PackSize>>(size);
+        auto vec_check = pcxo::vector<float, PackSize>(size);
         for (uint i = 0; auto& vec: st_par) {
             vec.resize(128);
             auto val = std::exp(std::complex(0.F, 2 * pi * i / size * 13.37F));
-            pcx::subrange(vec).fill(val);
+            pcxo::subrange(vec).fill(val);
             vec_check[i] = val;
             ++i;
         }
 
-        pcx::fft_unit_par<float, order, pcx::aligned_allocator<float>, 4> par_unit(size);
-        pcx::fft_unit<float, order>                                       check_unit(size);
+        pcxo::fft_unit_par<float, order, pcxo::aligned_allocator<float>, 4> par_unit(size);
+        pcxo::fft_unit<float, order>                                        check_unit(size);
 
         const auto st_par_c{st_par};
 
         for (auto& iv: st_par) {
-            pcx::fill(iv.begin(), iv.end(), 0);
+            pcxo::fill(iv.begin(), iv.end(), 0);
         }
         par_unit(st_par, st_par_c);
         // check_unit(vec_check);
@@ -744,20 +744,20 @@ int test_par_fft_float(std::size_t size) {
         return 0;
     };
 
-    return test_1.template operator()<pcx::fft_order::normal>(size);    // +
-        //    test_1.template operator()<pcx::fft_order::bit_reversed>(size);
+    return test_1.template operator()<pcxo::fft_order::normal>(size);    // +
+        //    test_1.template operator()<pcxo::fft_order::bit_reversed>(size);
 }
 
-int test_fft_dif(pcx::uZ size) {
-    using namespace pcx;
+int test_fft_dif(pcxo::uZ size) {
+    using namespace pcxo;
     constexpr float pi  = 3.14159265358979323846;
-    auto            vec = pcx::vector<float>(size);
+    auto            vec = pcxo::vector<float>(size);
     for (uint i = 0; i < size; ++i) {
         vec[i] = std::exp(std::complex(0.F, 2 * pi * i / size * 13.37F));
     }
     auto vec2 = vec;
     fft_dif<4>(vec2);
-    auto unit = pcx::fft_unit<float, pcx::fft_order::normal>(size, 2048);
+    auto unit = pcxo::fft_unit<float, pcxo::fft_order::normal>(size, 2048);
     unit(vec);
     iZ ret = 0;
     for (uint i = 0; i < size; ++i) {
@@ -774,7 +774,7 @@ int test_fft_dif(pcx::uZ size) {
     return ret;
 }
 
-constexpr float pi = 3.14159265358979323846;
+// constexpr float pi = 3.14159265358979323846;
 
 int main() {
     int ret = 0;

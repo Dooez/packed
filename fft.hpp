@@ -29,7 +29,7 @@
 
 #define _AINLINE_ [[gnu::always_inline, clang::always_inline]] inline
 // NOLINTBEGIN (*magic-numbers)
-namespace pcx {
+namespace pcxo {
 
 namespace detail_ {
 namespace fft {
@@ -130,156 +130,6 @@ struct node {
     static inline auto mul_sequence(std::index_sequence<I...>) {
         return std::index_sequence<M * I...>{};
     }
-
-    //     template<typename T, uZ PDest, uZ PSrc, bool ConjTw, bool Reverse, bool DIT = false, typename... Args>
-    //     static inline void perform123(std::array<T*, 4> dest, Args... args) {
-    //         constexpr auto reg_size = simd::reg<T>::size;
-    //         using cx_reg            = simd::cx_reg<T, false, reg_size>;
-    //
-    //         using src_type = std::array<const T*, NodeSize>;
-    //         using tw_type  = std::array<simd::cx_reg<T>, NodeSize - 1>;
-    //
-    //         constexpr bool Inverse = ConjTw || Reverse;
-    //
-    //         constexpr bool Src   = has_type<src_type, Args...>;
-    //         constexpr bool Tw    = has_type<tw_type, Args...>;
-    //         constexpr bool Scale = has_type<simd::reg_t<T>, Args...>;
-    //
-    //         constexpr auto& data_idx = order<NodeSize, DIT>::data;
-    //         constexpr auto& tw_idx   = order<NodeSize, DIT>::tw;
-    //
-    //         constexpr auto load = [](auto&& dest, auto&&... args) {
-    //             constexpr auto load_impl = []<uZ... I>(auto&& src, std::index_sequence<I...>) {
-    //                 constexpr auto& data_idx = order<NodeSize, DIT>::data;
-    //                 return std::make_tuple(src[data_idx[I]]...);
-    //             };
-    //
-    //             if constexpr (Src) {
-    //                 auto& src = std::get<src_type&>(std::tie(args...));
-    //                 return load_impl(std::forward(src), std::make_index_sequence<NodeSize>{});
-    //             } else {
-    //                 return load_impl(std::forward(dest), std::make_index_sequence<NodeSize>{});
-    //             }
-    //         };
-    //         constexpr auto repack_lmbd  = [](auto&&... regs) { return simd::repack2<reg_size>(regs...); };
-    //         constexpr auto inverse_lmbd = [](auto&&... regs) { return simd::inverse<Inverse>(regs...); };
-    //
-    //         auto dat = load(std::forward(dest, args...));
-    //         dat      = std::apply(repack_lmbd, dat);
-    //         dat      = std::apply(inverse_lmbd, dat);
-    //
-    //         constexpr auto btfly = []<uZ Stride>(auto arg_tuple) {
-    //             constexpr auto extract = []<uZ... I>(auto tuple) {
-    //                 return std::make_tuple(std::get<I>(tuple)...);
-    //             };
-    //             constexpr auto n_g = NodeSize / Stride / 2;
-    //             constexpr auto l   = offset_seqence(mul_sequence<Stride * 2>(std::make_index_sequence<n_g>{}),
-    //                                               std::make_index_sequence<Stride>{});
-    //         };
-    //
-    //         cx_reg b1, b3, b5, b7;
-    //         if constexpr (Tw) {
-    //             auto& tw          = std::get<tw_type&>(std::tie(args...));
-    //             auto [p5tw, p7tw] = simd::mul({p5, tw[tw_idx[0]]}, {p7, tw[tw_idx[0]]});
-    //             auto [a1, a5]     = simd::btfly(p1, p5tw);
-    //             auto [a3, a7]     = simd::btfly(p3, p7tw);
-    //
-    //             auto [a3tw, a7tw] = simd::mul({a3, tw[tw_idx[1]]}, {a7, tw[tw_idx[2]]});
-    //             std::tie(b1, b3)  = simd::btfly(a1, a3tw);
-    //             std::tie(b5, b7)  = simd::btfly(a5, a7tw);
-    //
-    //             std::tie(b1, b3, b5, b7) =
-    //                 simd::mul({b1, tw[tw_idx[3]]}, {b3, tw[tw_idx[4]]}, {b5, tw[tw_idx[5]]}, {b7, tw[tw_idx[6]]});
-    //         } else {
-    //             const T sq2   = std::sqrt(double{2}) / 2;
-    //             auto [a1, a5] = simd::btfly(p1, p5);
-    //             auto [a3, a7] = simd::btfly(p3, p7);
-    //
-    //             std::tie(b1, b3) = simd::btfly(a1, a3);
-    //             std::tie(b5, b7) = simd::btfly<3>(a5, a7);
-    //             auto b5_tw       = simd::cx_reg<T>{simd::add(b5.real, b5.imag), simd::sub(b5.imag, b5.real)};
-    //             auto b7_tw       = simd::cx_reg<T>{simd::sub(b7.real, b7.imag), simd::add(b7.real, b7.imag)};
-    //             auto twsq2       = simd::broadcast(sq2);
-    //             b5               = simd::mul(b5_tw, twsq2);
-    //             b7               = simd::mul(b7_tw, twsq2);
-    //         }
-    //         simd::cx_reg<T, false, PSrc> p0_, p2_, p4_, p6_;
-    //         if constexpr (Src) {
-    //             auto& src = std::get<src_type&>(std::tie(args...));
-    //             p4_       = simd::cxload<PSrc>(src[data_idx[4]]);
-    //             p0_       = simd::cxload<PSrc>(src[data_idx[0]]);
-    //             p6_       = simd::cxload<PSrc>(src[data_idx[6]]);
-    //             p2_       = simd::cxload<PSrc>(src[data_idx[2]]);
-    //         } else {
-    //             p4_ = simd::cxload<PSrc>(dest[data_idx[4]]);
-    //             p0_ = simd::cxload<PSrc>(dest[data_idx[0]]);
-    //             p6_ = simd::cxload<PSrc>(dest[data_idx[6]]);
-    //             p2_ = simd::cxload<PSrc>(dest[data_idx[2]]);
-    //         }
-    //         auto [p4, p0, p6, p2]    = simd::repack2<reg_size>(p4_, p0_, p6_, p2_);
-    //         std::tie(p4, p0, p6, p2) = simd::inverse<Inverse>(p4, p0, p6, p2);
-    //
-    //         simd::cx_reg<T> c0, c1, c2, c3, b4, b6;
-    //         if constexpr (Tw) {
-    //             auto& tw          = std::get<tw_type&>(std::tie(args...));
-    //             auto [p4tw, p6tw] = simd::mul({p4, tw[tw_idx[0]]}, {p6, tw[tw_idx[0]]});
-    //             auto [a0, a4]     = simd::btfly(p0, p4tw);
-    //             auto [a2, a6]     = simd::btfly(p2, p6tw);
-    //
-    //             auto [a2tw, a6tw] = simd::mul({a2, tw[tw_idx[1]]}, {a6, tw[tw_idx[2]]});
-    //             auto [b0, b2]     = simd::btfly(a0, a2tw);
-    //             std::tie(b4, b6)  = simd::btfly(a4, a6tw);
-    //
-    //             std::tie(c0, c1) = simd::btfly(b0, b1);
-    //             std::tie(c2, c3) = simd::btfly(b2, b3);
-    //         } else {
-    //             auto [a0, a4] = simd::btfly(p0, p4);
-    //             auto [a2, a6] = simd::btfly(p2, p6);
-    //
-    //             auto [b0, b2]    = simd::btfly(a0, a2);
-    //             std::tie(b4, b6) = simd::btfly<3>(a4, a6);
-    //
-    //             std::tie(c0, c1) = simd::btfly(b0, b1);
-    //             std::tie(c2, c3) = simd::btfly<3>(b2, b3);
-    //         }
-    //         if constexpr (Scale) {
-    //             auto& scaling = std::get<simd::reg_t<T>&>(std::tie(args...));
-    //             c0            = simd::mul(c0, scaling);
-    //             c1            = simd::mul(c1, scaling);
-    //             c2            = simd::mul(c2, scaling);
-    //             c3            = simd::mul(c3, scaling);
-    //         }
-    //         std::tie(c0, c1, c2, c3)  = simd::inverse<Inverse>(c0, c1, c2, c3);
-    //         auto [c0_, c1_, c2_, c3_] = simd::repack2<PDest>(c0, c1, c2, c3);
-    //
-    //         cxstore<PDest>(dest[data_idx[0]], c0_);
-    //         cxstore<PDest>(dest[data_idx[1]], c1_);
-    //         cxstore<PDest>(dest[data_idx[2]], c2_);
-    //         cxstore<PDest>(dest[data_idx[3]], c3_);
-    //
-    //         simd::cx_reg<T> c4, c5, c6, c7;
-    //         if constexpr (Tw) {
-    //             std::tie(c4, c5) = simd::btfly(b4, b5);
-    //             std::tie(c6, c7) = simd::btfly(b6, b7);
-    //         } else {
-    //             std::tie(c4, c5) = simd::btfly(b4, b5);
-    //             std::tie(c6, c7) = simd::btfly<2>(b6, b7);
-    //         }
-    //         if constexpr (Scale) {
-    //             auto& scaling = std::get<simd::reg_t<T>&>(std::tie(args...));
-    //             c4            = simd::mul(c4, scaling);
-    //             c5            = simd::mul(c5, scaling);
-    //             c6            = simd::mul(c6, scaling);
-    //             c7            = simd::mul(c7, scaling);
-    //         }
-    //         std::tie(c4, c5, c6, c7)  = simd::inverse<Inverse>(c4, c5, c6, c7);
-    //         auto [c4_, c5_, c6_, c7_] = simd::repack2<PDest>(c4, c5, c6, c7);
-    //
-    //         cxstore<PDest>(dest[data_idx[4]], c4_);
-    //         cxstore<PDest>(dest[data_idx[5]], c5_);
-    //         cxstore<PDest>(dest[data_idx[6]], c6_);
-    //         cxstore<PDest>(dest[data_idx[7]], c7_);
-    //     }
 };
 template<>
 struct node<2> {
@@ -715,13 +565,13 @@ struct strategy8 {
 template<typename T,
          fft_order Order      = fft_order::normal,
          typename Allocator   = std::allocator<T>,
-         uZ SubSize           = pcx::dynamic_size,
+         uZ SubSize           = pcxo::dynamic_size,
          uZ NodeSizeRec       = 4,
          typename Strategy    = strategy42,
          typename StrategyRec = strategy42>
     requires(std::same_as<T, float> || std::same_as<T, double>) &&
-            (pcx::pack_size<SubSize> && SubSize >= pcx::default_pack_size<T> ||
-             (SubSize == pcx::dynamic_size))
+            ((pcxo::pack_size<SubSize> && SubSize >= pcxo::default_pack_size<T>) ||
+             (SubSize == pcxo::dynamic_size))
 class fft_unit {
 public:
     using real_type      = T;
@@ -729,7 +579,7 @@ public:
 
 private:
     using size_type              = uZ;
-    using subsize_t              = std::conditional_t<SubSize == pcx::dynamic_size, uZ, decltype([]() {})>;
+    using subsize_t              = std::conditional_t<SubSize == pcxo::dynamic_size, uZ, decltype([]() {})>;
     using sort_allocator_type    = typename std::allocator_traits<allocator_type>::template rebind_alloc<uZ>;
     static constexpr bool sorted = Order == fft_order::normal;
 
@@ -737,22 +587,22 @@ private:
                                          std::vector<uZ, sort_allocator_type>,
                                          decltype([]() {})>;
     using twiddle_t = std::conditional_t<sorted,
-                                         pcx::vector<real_type, simd::reg<T>::size, allocator_type>,
+                                         pcxo::vector<real_type, simd::reg<T>::size, allocator_type>,
                                          std::vector<real_type, allocator_type>>;
 
 public:
     explicit fft_unit(uZ fft_size, allocator_type allocator = allocator_type())
-        requires(SubSize != pcx::dynamic_size)
+        requires(SubSize != pcxo::dynamic_size)
     : m_size(check_size(fft_size))
     , m_sort(get_sort(size(), static_cast<sort_allocator_type>(allocator)))
-    , m_twiddles(get_twiddles(size(), sub_size(), allocator)){};
+    , m_twiddles(get_twiddles(size(), sub_size(), allocator)) {};
 
     explicit fft_unit(uZ fft_size, uZ sub_size = 2048, allocator_type allocator = allocator_type())
-        requires(SubSize == pcx::dynamic_size)
+        requires(SubSize == pcxo::dynamic_size)
     : m_size(check_size(fft_size))
     , m_sub_size(check_sub_size(sub_size))
     , m_sort(get_sort(size(), static_cast<sort_allocator_type>(allocator)))
-    , m_twiddles(get_twiddles(size(), sub_size, allocator)){};
+    , m_twiddles(get_twiddles(size(), sub_size, allocator)) {};
 
     fft_unit(const fft_unit& other)     = default;
     fft_unit(fft_unit&& other) noexcept = default;
@@ -1078,7 +928,7 @@ private:
                                                                     : simd::size_specific::unsorted_size<T>);
 
     [[nodiscard]] constexpr auto sub_size() const -> size_type {
-        if constexpr (SubSize == pcx::dynamic_size) {
+        if constexpr (SubSize == pcxo::dynamic_size) {
             return m_sub_size;
         } else {
             return SubSize;
@@ -1098,7 +948,7 @@ public:
         uZ n_groups   = 1;
 
         if constexpr (AlignSize > 1) {
-            constexpr auto align_ce = uZ_constant<AlignSize>{};
+            // constexpr auto align_ce = uZ_constant<AlignSize>{};
             if constexpr (Scale) {
                 group_size /= AlignSize;
                 auto scaling = simd::broadcast(static_cast<T>(1 / static_cast<double>(size())));
@@ -1424,8 +1274,8 @@ public:
             n_groups *= node_size;
         }
 
-        return simd::size_specific::unsorted<PDest, PTform, Order == fft_order::bit_reversed>(
-            dest, twiddle_ptr, size);
+        return simd::size_specific::unsorted < PDest, PTform,
+               Order == fft_order::bit_reversed > (dest, twiddle_ptr, size);
     };
 
     template<uZ PDest, uZ PSrc, bool First, bool Scale, uZ AlignSize>
@@ -1440,9 +1290,8 @@ public:
         constexpr auto PTform    = std::max(PDest, reg_size);
         constexpr auto node_size = Strategy::node_size;
 
-        twiddle_ptr =
-            simd::size_specific::unsorted_reverse<PTform, PSrc, Scale, Order == fft_order::bit_reversed>(
-                dest, twiddle_ptr, size, this->size(), optional...);
+        twiddle_ptr = simd::size_specific::unsorted_reverse < PTform, PSrc, Scale,
+        Order == fft_order::bit_reversed > (dest, twiddle_ptr, size, this->size(), optional...);
 
         uZ l_size   = simd::size_specific::unsorted_size<T>;
         uZ n_groups = size / l_size;
@@ -1885,7 +1734,7 @@ public:
              typename... Optional>
     inline static void node_along(T* dest, uZ l_size, uZ offset, Optional... optional) {
         constexpr auto PLoad  = std::max(PSrc, simd::reg<T>::size);
-        constexpr auto PStore = std::max(PDest, simd::reg<T>::size);
+        // constexpr auto PStore = std::max(PDest, simd::reg<T>::size);
 
         using source_type     = const T*;
         constexpr bool Src    = detail_::has_type<source_type, Optional...>;
@@ -1963,12 +1812,12 @@ private:
     }
 
     static constexpr auto check_sub_size(uZ sub_size) -> uZ {
-        if (sub_size >= pcx::default_pack_size<T> && (sub_size & (sub_size - 1)) == 0) {
+        if (sub_size >= pcxo::default_pack_size<T> && (sub_size & (sub_size - 1)) == 0) {
             return sub_size;
-        } else if (sub_size < pcx::default_pack_size<T>) {
+        } else if (sub_size < pcxo::default_pack_size<T>) {
             throw(std::invalid_argument("fft_sub_size (which is  " + std::to_string(sub_size) +
                                         ") is smaller than minimum (which is " +
-                                        std::to_string(pcx::default_pack_size<T>) + ")"));
+                                        std::to_string(pcxo::default_pack_size<T>) + ")"));
         } else if ((sub_size & (sub_size - 1)) != 0) {
             throw(std::invalid_argument("fft_sub_size (which is  " + std::to_string(sub_size) +
                                         ") is not an integer power of two"));
@@ -2006,8 +1855,8 @@ private:
 
     static auto get_subtform_idx_strategic_(uZ fft_size, uZ sub_size, uZ specific_size) {
         using detail_::fft::log2i;
-        constexpr auto n_rem     = log2i(Strategy::node_size);
-        constexpr auto n_rem_rec = log2i(StrategyRec::node_size);
+        // constexpr auto n_rem     = log2i(Strategy::node_size);
+        // constexpr auto n_rem_rec = log2i(StrategyRec::node_size);
 
         auto sub_size_ = std::min(fft_size, sub_size);
 
@@ -2064,7 +1913,7 @@ private:
         auto count2  = rec_cost.first + targ_cost.first;
         auto weight2 = rec_cost.second * targ_cost.second;
 
-        if ((count2 < count1) || (count2 == count1) && (weight2 > weight1)) {
+        if (count2 < count1 || (count2 == count1 && weight2 > weight1)) {
             sub_size_ /= 2;
         }
         auto misalign    = log2i(sub_size_ / specific_size) % log2i(Strategy::node_size);
@@ -2130,7 +1979,7 @@ private:
 
         const uZ n_twiddles = 8 * ((1U << (depth - tform_sort_depth)) - 1U);
 
-        auto twiddles = pcx::vector<real_type, simd::reg<T>::size, allocator_type>(n_twiddles, allocator);
+        auto twiddles = pcxo::vector<real_type, simd::reg<T>::size, allocator_type>(n_twiddles, allocator);
 
         auto tw_it = twiddles.begin();
 
@@ -2214,7 +2063,7 @@ private:
         using detail_::fft::wnk;
 
         if ((fft_size / l_size) < sub_size) {
-            uZ start_size = twiddles.size();
+            // uZ start_size = twiddles.size();
             uZ single_load_size =
                 fft_size / (simd::size_specific::unsorted_size<T> / 2);    // TODO: single load strategic
             uZ group_size = 1;
@@ -2318,7 +2167,7 @@ private:
 
 template<typename T,
          fft_order Order     = fft_order::normal,
-         typename Allocator  = pcx::aligned_allocator<T, std::align_val_t(64)>,
+         typename Allocator  = pcxo::aligned_allocator<T, std::align_val_t(64)>,
          uZ NodeSizeStrategy = 4>
     requires(std::same_as<T, float> || std::same_as<T, double>)
 class fft_unit_par {
@@ -2342,7 +2191,7 @@ public:
     fft_unit_par(uZ size, allocator_type allocator = allocator_type{})
     : m_size(size)
     , m_sort(get_sort(size, allocator))
-    , m_twiddles(get_twiddles(size, allocator)){};
+    , m_twiddles(get_twiddles(size, allocator)) {};
 
     template<typename DestR_, typename SrcR_>
         requires range_of_complex_vector_of<T, DestR_> && range_of_complex_vector_of<T, SrcR_>

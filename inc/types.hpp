@@ -6,7 +6,7 @@
 #include <ranges>
 #include <type_traits>
 
-namespace pcx {
+namespace pcxo {
 
 using f32 = float;
 using f64 = float;
@@ -169,7 +169,7 @@ namespace detail_ {
  *  methods of accessing packed simd registers and checking
  *  pack alignment.
  *
- *  `expr_traits` specialization for classes satisfying `pcx::complex_vector`
+ *  `expr_traits` specialization for classes satisfying `pcxo::complex_vector`
  *  is provided.
  */
 template<typename T>
@@ -210,5 +210,5 @@ template<detail_::vecexpr E, typename V>
     requires complex_vector_of<typename detail_::expr_traits<E>::real_type, V>
 void store(const E& src_expr, V& dest_vec);
 
-}    // namespace pcx
+}    // namespace pcxo
 #endif

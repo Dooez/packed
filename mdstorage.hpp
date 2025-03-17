@@ -19,7 +19,7 @@
 
 #define _INLINE_   inline __attribute__((always_inline))
 #define _NDINLINE_ [[nodiscard]] inline __attribute__((always_inline))
-namespace pcx::md {
+namespace pcxo::md {
 
 namespace detail_ {
 struct basis_base {};
@@ -151,7 +151,7 @@ public:
      * Example:
      * after executing
      ``` c++
-        constexpr auto basis    = pcx::md::left_basis<x, y, z>(2U, 4UL, 8U);
+        constexpr auto basis    = pcxo::md::left_basis<x, y, z>(2U, 4UL, 8U);
         constexpr auto x_extent = basis.extent(x);
         constexpr auto y_extent = basis.extent(y);
      ```
@@ -536,7 +536,7 @@ protected:
 
     static constexpr bool dynamic = false;
 
-    using allocator = pcx::null_allocator<T>;
+    using allocator = pcxo::null_allocator<T>;
 
     using iterator_base       = iter_base<Basis, meta::value_sequence<>, PackSize, Alignment>;
     using const_iterator_base = iterator_base;
@@ -612,7 +612,7 @@ protected:
 
     explicit iter_base(const extents_type* extents_ptr) noexcept
     : m_stride(calc_stride(extents_ptr))
-    , m_extents_ptr(extents_ptr){};
+    , m_extents_ptr(extents_ptr) {};
 
 
     _NDINLINE_ auto stride() const noexcept -> uZ {
@@ -650,7 +650,7 @@ public:
 
 protected:
     explicit slice_base(const extents_type* extents_ptr) noexcept
-    : m_extents_ptr(extents_ptr){};
+    : m_extents_ptr(extents_ptr) {};
 
     slice_base() noexcept                             = default;
     slice_base(const slice_base&) noexcept            = default;
@@ -739,9 +739,9 @@ private:
 
 protected:
     storage_base() noexcept
-    : m_ptr(nullptr){};
+    : m_ptr(nullptr) {};
     explicit storage_base(uninitialized_tag) noexcept
-    : m_ptr(nullptr){};
+    : m_ptr(nullptr) {};
 
     template<std::unsigned_integral... U>
     explicit storage_base(Allocator allocator, U... extents)
@@ -973,9 +973,9 @@ public:
     };
 
     template<bool ConstRhs>
-    [[nodiscard]] friend auto
-    operator-(const iterator&                                     lhs,
-              const iterator<ConstRhs, Basis, T, PackSize, Base>& rhs) noexcept -> difference_type {
+    [[nodiscard]] friend auto operator-(const iterator&                                     lhs,
+                                        const iterator<ConstRhs, Basis, T, PackSize, Base>& rhs) noexcept
+        -> difference_type {
         return (lhs.m_ptr - rhs.m_ptr) / lhs.stride();
     };
 
@@ -984,8 +984,8 @@ public:
         return m_ptr <=> other.m_ptr;
     };
     template<bool Const_>
-    [[nodiscard]] auto
-    operator==(const iterator<Const_, Basis, T, PackSize, Base>& other) const noexcept -> bool {
+    [[nodiscard]] auto operator==(const iterator<Const_, Basis, T, PackSize, Base>& other) const noexcept
+        -> bool {
         return m_ptr == other.m_ptr;
     };
 
@@ -1007,12 +1007,12 @@ private:
  * - TODO: Add concept list
  *
  * If the `Basis.inner_axis` is the only non-sliced axis, 
- * `sslice` satisfiest `pcx::complex_vector_of<T>` concept.
+ * `sslice` satisfiest `pcxo::complex_vector_of<T>` concept.
  */
 template<bool Const, auto Basis, typename T, uZ PackSize, typename Base>
 class sslice
 : public std::ranges::view_base
-, pcx::detail_::pack_aligned_base<Base::vector_like>
+, pcxo::detail_::pack_aligned_base<Base::vector_like>
 , Base {
     template<bool, auto, typename, uZ, typename>
     friend class md::iterator;
@@ -1023,7 +1023,7 @@ class sslice
 
     using iterator =
         std::conditional_t<Base::vector_like,
-                           pcx::iterator<T, Const, PackSize>,
+                           pcxo::iterator<T, Const, PackSize>,
                            md::iterator<Const, Basis, T, PackSize, typename Base::iterator_base>>;
 
     template<bool, auto, typename, uZ, typename>
@@ -1053,13 +1053,13 @@ class sslice
 
 public:
     sslice()
-    : Base(){};
+    : Base() {};
 
     //NOLINTNEXTLINE (*explicit*)
     sslice(const sslice<false, Basis, T, PackSize, Base>& other)
         requires(Const)
     : Base(other)
-    , m_start(other.m_start){};
+    , m_start(other.m_start) {};
 
     sslice(const sslice&) noexcept            = default;
     sslice(sslice&&) noexcept                 = default;
@@ -1068,7 +1068,7 @@ public:
     ~sslice()                                 = default;
 
     template<typename E>
-        requires Base::vector_like && pcx::detail_::vecexpr<E>
+        requires Base::vector_like && pcxo::detail_::vecexpr<E>
     auto operator=(const E& expression) -> sslice& {
         store(expression, *this);
         return *this;
@@ -1076,7 +1076,7 @@ public:
 
     /**
      * @brief Returns a sub-slice of the data from `Axis` at position `index`. 
-     * If there is only one axis remaining, the resulting slice is of type `pcx::cx_ref`.
+     * If there is only one axis remaining, the resulting slice is of type `pcxo::cx_ref`.
      * 
      * @tparam Axis 
      * @param index
@@ -1086,7 +1086,7 @@ public:
     [[nodiscard]] auto slice(uZ index) const noexcept {
         auto* new_start = m_start + Base::template new_slice_offset<Axis>(index);
         if constexpr (Basis.size - Base::sliced_axes::size == 1) {
-            return pcx::detail_::make_cx_ref<T, Const, PackSize>(new_start);
+            return pcxo::detail_::make_cx_ref<T, Const, PackSize>(new_start);
         } else {
             using new_base  = typename Base::template new_slice_base<Axis>;
             using new_slice = sslice<Const, Basis, T, PackSize, new_base>;
@@ -1105,7 +1105,7 @@ public:
 
     [[nodiscard]] auto begin() const noexcept -> iterator {
         if constexpr (Base::vector_like) {
-            return pcx::detail_::make_iterator<T, Const, PackSize>(m_start, 0);
+            return pcxo::detail_::make_iterator<T, Const, PackSize>(m_start, 0);
         } else {
             return iterator(m_start, Base::iterator_base_args());
         }
@@ -1146,7 +1146,7 @@ public:
     [[nodiscard]] auto flat_view() const noexcept
         requires(Base::contiguous)
     {
-        auto begin = pcx::detail_::make_iterator<T, Const, PackSize>(m_start, 0U);
+        auto begin = pcxo::detail_::make_iterator<T, Const, PackSize>(m_start, 0U);
         auto end   = begin + Base::get_flat_view_size();
         return rv::subrange(begin, end);
     }
@@ -1171,23 +1171,23 @@ private:
  * `storage` satisfies following concepts:
  * TODO: add list of concepts
  *
- * If `Basis.size` equals 1, the storage satisfies `pcx::complex_vector_t<T>`.
+ * If `Basis.size` equals 1, the storage satisfies `pcxo::complex_vector_t<T>`.
  */
 template<typename T, auto Basis, uZ PackSize, uZ Alignment, typename Base>
     requires detail_::md_basis<decltype(Basis)>
 class storage
 : Base
-, pcx::detail_::pack_aligned_base<Basis.size == 1> {
+, pcxo::detail_::pack_aligned_base<Basis.size == 1> {
     static constexpr bool vector_like = Basis.size == 1;
     static constexpr bool dynamic     = Base::dynamic;
 
     using iterator =
         std::conditional_t<vector_like,
-                           pcx::iterator<T, false, PackSize>,
+                           pcxo::iterator<T, false, PackSize>,
                            md::iterator<false, Basis, T, PackSize, typename Base::iterator_base>>;
     using const_iterator =
         std::conditional_t<vector_like,
-                           pcx::iterator<T, true, PackSize>,
+                           pcxo::iterator<T, true, PackSize>,
                            md::iterator<true, Basis, T, PackSize, typename Base::const_iterator_base>>;
 
     using allocator         = typename Base::allocator;
@@ -1199,7 +1199,7 @@ class storage
     : Base(ut, std::move(allocator), extents...) {}
 
     explicit storage(uninitialized_tag ut)
-    : Base(ut){};
+    : Base(ut) {};
 
 
 public:
@@ -1232,7 +1232,7 @@ public:
      * Example:
      * after executing
      ``` c++
-        constexpr auto basis    = pcx::md::left_basis<x, y, z>;
+        constexpr auto basis    = pcxo::md::left_basis<x, y, z>;
         auto           storage  = dynamic_storage<float, basis>(2U, 4UL, 8U);
         auto           x_extent = storage.extent<x>(); // 2
         auto           y_extent = storage.extent<y>(); // 4
@@ -1252,7 +1252,7 @@ public:
      * Example:
      * after executing
      ``` c++
-        constexpr auto basis    = pcx::md::left_basis<x, y, z>;
+        constexpr auto basis    = pcxo::md::left_basis<x, y, z>;
         auto           storage  = dynamic_storage<float, basis>(2U, 4UL, 8U);
         auto           x_extent = storage.extent<x>(); // 2
         auto           y_extent = storage.extent<y>(); // 4
@@ -1279,7 +1279,7 @@ public:
     }
 
     template<typename E>
-        requires vector_like && pcx::detail_::vecexpr<E>
+        requires vector_like && pcxo::detail_::vecexpr<E>
     auto operator=(const E& expression) -> storage& {
         store(expression, *this);
         return *this;
@@ -1290,7 +1290,7 @@ public:
      */
     [[nodiscard]] auto begin() noexcept -> iterator {
         if constexpr (vector_like) {
-            return pcx::detail_::make_iterator<T, false, PackSize>(data(), 0);
+            return pcxo::detail_::make_iterator<T, false, PackSize>(data(), 0);
         } else {
             return iterator(data(), Base::iterator_base_args());
         }
@@ -1306,7 +1306,7 @@ public:
      */
     [[nodiscard]] auto cbegin() const noexcept -> const_iterator {
         if constexpr (vector_like) {
-            return pcx::detail_::make_iterator<T, true, PackSize>(data(), 0);
+            return pcxo::detail_::make_iterator<T, true, PackSize>(data(), 0);
         } else {
             return const_iterator(data(), Base::iterator_base_args());
         }
@@ -1362,13 +1362,13 @@ public:
 
     /**
      * @brief Returns a sub-slice from `Axis` at `index`.
-     * If `Basis.size` equals 1 the returned slice type is `pcx::cx_ref`.
+     * If `Basis.size` equals 1 the returned slice type is `pcxo::cx_ref`.
      */
     template<auto Axis>
         requires /**/ (Basis.contains(Axis))
     [[nodiscard]] auto slice(uZ index) noexcept {
         if constexpr (vector_like) {
-            return pcx::detail_::make_cx_ref<T, false, PackSize>(data() + pcx::pidx<PackSize>(index));
+            return pcxo::detail_::make_cx_ref<T, false, PackSize>(data() + pcxo::pidx<PackSize>(index));
         } else {
             using slice_base = typename Base::template slice_base<Axis>;
             using slice_type = sslice<false, Basis, T, PackSize, slice_base>;
@@ -1380,7 +1380,7 @@ public:
 
     /**
      * @brief Returns a read-only slice from `Axis` at `index`.
-     * If `Basis.size == 1` the returned slice type is `pcx::cx_ref`.
+     * If `Basis.size == 1` the returned slice type is `pcxo::cx_ref`.
      */
     template<auto Axis>
         requires /**/ (Basis.contains(Axis))
@@ -1389,13 +1389,13 @@ public:
     }
     /**
      * @brief Returns a read-only slice from `Axis` at `index`.
-     * If `Basis.size == 1` the returned slice type is `pcx::cx_ref`.
+     * If `Basis.size == 1` the returned slice type is `pcxo::cx_ref`.
      */
     template<auto Axis>
         requires /**/ (Basis.contains(Axis))
     [[nodiscard]] auto cslice(uZ index) const noexcept {
         if constexpr (vector_like) {
-            return pcx::detail_::make_cx_ref<T, true, PackSize>(data() + pcx::pidx<PackSize>(index));
+            return pcxo::detail_::make_cx_ref<T, true, PackSize>(data() + pcxo::pidx<PackSize>(index));
         } else {
             using slice_base = typename Base::template const_slice_base<Axis>;
             using slice_type = sslice<true, Basis, T, PackSize, slice_base>;
@@ -1413,7 +1413,7 @@ public:
      * the storage to ensure data alignment of slices.
      */
     auto flat_view() noexcept {
-        auto begin = pcx::detail_::make_iterator<T, false, PackSize>(data(), 0);
+        auto begin = pcxo::detail_::make_iterator<T, false, PackSize>(data(), 0);
         auto end   = begin + Base::get_storage_size() / 2;
         return rv::subrange(begin, end);
     }
@@ -1425,7 +1425,7 @@ public:
      * the storage to ensure data alignment of slices.
      */
     auto flat_view() const noexcept {
-        auto begin = pcx::detail_::make_iterator<T, true, PackSize>(Base::get_data());
+        auto begin = pcxo::detail_::make_iterator<T, true, PackSize>(Base::get_data());
         auto end   = begin + Base::get_storage_size();
         return rv::subrange(begin, end);
     }
@@ -1477,8 +1477,8 @@ public:
 
 template<typename T,
          auto Basis,
-         uZ   PackSize  = pcx::default_pack_size<T>,
-         uZ   Alignment = pcx::default_pack_size<T>>
+         uZ   PackSize  = pcxo::default_pack_size<T>,
+         uZ   Alignment = pcxo::default_pack_size<T>>
     requires /**/ (Basis.has_extents())
 using static_storage = storage<T,    //
                                Basis,
@@ -1488,19 +1488,19 @@ using static_storage = storage<T,    //
 
 template<typename T,
          auto Basis,
-         uZ   PackSize      = pcx::default_pack_size<T>,
-         uZ   Alignment     = pcx::default_pack_size<T>,
-         typename Allocator = pcx::aligned_allocator<T>>
+         uZ   PackSize      = pcxo::default_pack_size<T>,
+         uZ   Alignment     = pcxo::default_pack_size<T>,
+         typename Allocator = pcxo::aligned_allocator<T>>
 using dynamic_storage = storage<T,    //
                                 Basis,
                                 PackSize,
                                 Alignment,
                                 detail_::dynamic::storage_base<T, Basis, PackSize, Alignment, Allocator>>;
-}    // namespace pcx::md
+}    // namespace pcxo::md
 
 namespace std::ranges {
-template<typename T, pcx::uZ PackSize, auto Basis, bool Const, typename Base>
-inline constexpr bool enable_borrowed_range<pcx::md::sslice<Const, Basis, T, PackSize, Base>> = true;
+template<typename T, pcxo::uZ PackSize, auto Basis, bool Const, typename Base>
+inline constexpr bool enable_borrowed_range<pcxo::md::sslice<Const, Basis, T, PackSize, Base>> = true;
 }
 #undef _INLINE_
 #undef _NDINLINE_

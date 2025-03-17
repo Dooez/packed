@@ -11,10 +11,10 @@
 #include <typeinfo>
 #include <utility>
 
-using pcx::uZ;
+using pcxo::uZ;
 
 void test_repack(float* data) {
-    using namespace pcx::simd;
+    using namespace pcxo::simd;
     auto a1 = cxload<8>(data);
     auto a2 = cxload<8>(data + 16);
     // auto a3   = cxload<8>(data + 16);
@@ -25,21 +25,21 @@ void test_repack(float* data) {
     // cxstore<8>(data + 16, d);
     // cxstore<8>(data + 24, e);
 }
-auto test_multi(pcx::simd::cx_reg<float, false> a1,
-                pcx::simd::cx_reg<float, false> a2,
-                pcx::simd::cx_reg<float, false> a3,
-                pcx::simd::cx_reg<float, false> a4) {
-    return pcx::simd::mul_pairs(a1, a2, a3, a4, a2, a3);
+auto test_multi(pcxo::simd::cx_reg<float, false> a1,
+                pcxo::simd::cx_reg<float, false> a2,
+                pcxo::simd::cx_reg<float, false> a3,
+                pcxo::simd::cx_reg<float, false> a4) {
+    return pcxo::simd::mul_pairs(a1, a2, a3, a4, a2, a3);
 }
 
-auto test_non_multi(pcx::simd::cx_reg<float, false> a1,
-                    pcx::simd::cx_reg<float, true>  a2,
-                    pcx::simd::cx_reg<float, false> a3,
-                    pcx::simd::cx_reg<float, false> a4) {
-    return std::make_tuple(pcx::simd::mul(a1, a2), pcx::simd::mul(a3, a4), pcx::simd::mul(a2, a3));
+auto test_non_multi(pcxo::simd::cx_reg<float, false> a1,
+                    pcxo::simd::cx_reg<float, true>  a2,
+                    pcxo::simd::cx_reg<float, false> a3,
+                    pcxo::simd::cx_reg<float, false> a4) {
+    return std::make_tuple(pcxo::simd::mul(a1, a2), pcxo::simd::mul(a3, a4), pcxo::simd::mul(a2, a3));
 }
 
-void asm_test_fun(pcx::vector<double>& v1, pcx::vector<double>& v2, std::complex<double> v3) {
+void asm_test_fun(pcxo::vector<double>& v1, pcxo::vector<double>& v2, std::complex<double> v3) {
     v1 = v1 + v2 * v1;
 }
 template<typename T>
@@ -87,11 +87,11 @@ auto get_type_name(const auto& obj) -> std::string {
 };
 
 template<typename T, uZ PackSize>
-    requires pcx::packed_floating_point<T, PackSize>
+    requires pcxo::packed_floating_point<T, PackSize>
 int test_bin_ops(uZ length) {
-    auto pcx_lhs = pcx::vector<T, PackSize, pcx::aligned_allocator<T>>(length);
-    auto pcx_rhs = pcx::vector<T, PackSize, pcx::aligned_allocator<T>>(length);
-    auto pcx_res = pcx::vector<T, PackSize, pcx::aligned_allocator<T>>(length);
+    auto pcx_lhs = pcxo::vector<T, PackSize, pcxo::aligned_allocator<T>>(length);
+    auto pcx_rhs = pcxo::vector<T, PackSize, pcxo::aligned_allocator<T>>(length);
+    auto pcx_res = pcxo::vector<T, PackSize, pcxo::aligned_allocator<T>>(length);
 
     auto std_lhs = std::vector<std::complex<T>>(length);
     auto std_rhs = std::vector<std::complex<T>>(length);
@@ -186,16 +186,16 @@ int test_bin_ops(uZ length) {
         }(std::make_index_sequence<std::tuple_size_v<std::remove_cvref_t<decltype(ops)>>>{});
     };
 
-    using subrange = pcx::subrange<T, false, PackSize>;
+    using subrange = pcxo::subrange<T, false, PackSize>;
     auto sub_lhs   = subrange(pcx_lhs);
     auto sub_rhs   = subrange(pcx_rhs);
     auto sub_res   = subrange(pcx_res);
 
 
-    constexpr auto r_bas       = pcx::md::right_basis<1, 2, 3>{};
-    constexpr auto l_bas       = pcx::md::left_basis<1, 2, 3>{};
-    auto           r_mdstorage = pcx::md::dynamic_storage<T, r_bas>{8U, 8U, length};
-    auto           l_mdstorage = pcx::md::dynamic_storage<T, l_bas>{8U, 8U, length};
+    constexpr auto r_bas       = pcxo::md::right_basis<1, 2, 3>{};
+    constexpr auto l_bas       = pcxo::md::left_basis<1, 2, 3>{};
+    auto           r_mdstorage = pcxo::md::dynamic_storage<T, r_bas>{8U, 8U, length};
+    auto           l_mdstorage = pcxo::md::dynamic_storage<T, l_bas>{8U, 8U, length};
 
     auto lslice_lhs = r_mdstorage.template slice<1>(0).template slice<2>(0);
     auto lslice_rhs = r_mdstorage.template slice<1>(0).template slice<2>(1);
@@ -205,14 +205,14 @@ int test_bin_ops(uZ length) {
     auto rslice_rhs = r_mdstorage.template slice<1>(0).template slice<2>(1);
     auto rslice_res = r_mdstorage.template slice<1>(0).template slice<2>(3);
 
-    pcx::rv::copy(pcx_lhs, lslice_lhs.begin());
-    pcx::rv::copy(pcx_rhs, lslice_rhs.begin());
-    pcx::rv::copy(pcx_lhs, rslice_lhs.begin());
-    pcx::rv::copy(pcx_rhs, rslice_rhs.begin());
+    pcxo::rv::copy(pcx_lhs, lslice_lhs.begin());
+    pcxo::rv::copy(pcx_rhs, lslice_rhs.begin());
+    pcxo::rv::copy(pcx_lhs, rslice_lhs.begin());
+    pcxo::rv::copy(pcx_rhs, rslice_rhs.begin());
 
-    reg_type_name(pcx_lhs, "pcx::vector<" + get_type_name(T{}) + ">");
-    reg_type_name(sub_lhs, "pcx::subrange<" + get_type_name(T{}) + ">");
-    reg_type_name(lslice_lhs, "pcx::md::slice<" + get_type_name(T{}) + ">");
+    reg_type_name(pcx_lhs, "pcxo::vector<" + get_type_name(T{}) + ">");
+    reg_type_name(sub_lhs, "pcxo::subrange<" + get_type_name(T{}) + ">");
+    reg_type_name(lslice_lhs, "pcxo::md::slice<" + get_type_name(T{}) + ">");
 
     return check_cx_s(pcx_lhs, pcx_rhs, pcx_res, std_lhs, std_rhs, cxops, std::true_type{})               //
            + check_cx_s(sub_lhs, sub_rhs, sub_res, std_lhs, std_rhs, cxops, std::false_type{})            //
@@ -228,15 +228,15 @@ int test_bin_ops(uZ length) {
 int main() {
     int res = 0;
 
-    auto x  = pcx::vector<double>(128);
-    auto y  = pcx::vector<double>(128);
+    auto x  = pcxo::vector<double>(128);
+    auto y  = pcxo::vector<double>(128);
     auto z  = x * y;
-    auto ze = pcx::rv::end(z);
+    auto ze = pcxo::rv::end(z);
 
     reg_type_name(0.F, "float");
     reg_type_name(0., "double");
 
-    // static_assert(pcx::rv::range<decltype(z)>);
+    // static_assert(pcxo::rv::range<decltype(z)>);
 
     for (uint i = 1; i < 32; ++i) {
         res += test_bin_ops<float, 1>(i);

@@ -8,7 +8,7 @@
 
 #define _AINLINE_ [[gnu::always_inline, clang::always_inline]] inline
 
-namespace pcx::simd {
+namespace pcxo::simd {
 
 constexpr auto swap_48 = [](cx_reg<float, false> reg) {
     auto real = avx2::unpacklo_128(reg.real, reg.imag);
@@ -53,16 +53,16 @@ _AINLINE_ static auto split(cx_reg<float, false, PackSize>... args) {
             auto imag = _mm256_shuffle_ps(reg.real, reg.imag, 0b11011101);
             return cx_reg<float, Conj, reg_size<float>>({real, imag});
         };
-        return pcx::detail_::apply_for_each(split, tup);
+        return pcxo::detail_::apply_for_each(split, tup);
     } else if constexpr (((PackSize == 2) && ...)) {
         auto split = []<bool Conj, uZ PackSize_>(cx_reg<float, Conj, PackSize_> reg) {
             auto real = avx2::unpacklo_pd(reg.real, reg.imag);
             auto imag = avx2::unpackhi_pd(reg.real, reg.imag);
             return cx_reg<float, Conj, reg_size<float>>({real, imag});
         };
-        return pcx::detail_::apply_for_each(split, tup);
+        return pcxo::detail_::apply_for_each(split, tup);
     } else if constexpr (((PackSize == 4) && ...)) {
-        return pcx::detail_::apply_for_each(swap_48, tup);
+        return pcxo::detail_::apply_for_each(swap_48, tup);
     } else {
         return tup;
     }
@@ -82,16 +82,16 @@ _AINLINE_ static auto combine(cx_reg<float, false, PackSize>... args) {
             auto imag = simd::avx2::unpackhi_ps(reg.real, reg.imag);
             return cx_reg<float, Conj, PackTo>({real, imag});
         };
-        return pcx::detail_::apply_for_each(combine, tup);
+        return pcxo::detail_::apply_for_each(combine, tup);
     } else if constexpr (PackTo == 2) {
         auto combine = []<bool Conj, uZ PackSize_>(cx_reg<float, Conj, PackSize_> reg) {
             auto real = avx2::unpacklo_pd(reg.real, reg.imag);
             auto imag = avx2::unpackhi_pd(reg.real, reg.imag);
             return cx_reg<float, Conj, PackTo>({real, imag});
         };
-        return pcx::detail_::apply_for_each(combine, tup);
+        return pcxo::detail_::apply_for_each(combine, tup);
     } else if constexpr (PackTo == 4) {
-        return pcx::detail_::apply_for_each(swap_48, tup);
+        return pcxo::detail_::apply_for_each(swap_48, tup);
     } else {
         return tup;
     }
@@ -227,7 +227,7 @@ _AINLINE_ auto unsorted_reverse(float*       dest,    //
     constexpr auto PLoad    = BitReversed ? PSrc : std::max(PSrc, reg_size);
 
     using source_type  = const float*;
-    constexpr bool Src = pcx::detail_::has_type<source_type, decltype(optional)...>;
+    constexpr bool Src = pcxo::detail_::has_type<source_type, decltype(optional)...>;
 
     auto scale = [](uZ size) {
         if constexpr (Scale) {
@@ -349,9 +349,9 @@ _AINLINE_ auto unsorted_reverse(float*       dest,    //
 
 template<typename T>
 inline void insert_unsorted(auto& twiddles, uZ n_blocks, uZ l_size, uZ i_group) {
-    using pcx::detail_::fft::log2i;
-    using pcx::detail_::fft::reverse_bit_order;
-    using pcx::detail_::fft::wnk;
+    using pcxo::detail_::fft::log2i;
+    using pcxo::detail_::fft::reverse_bit_order;
+    using pcxo::detail_::fft::wnk;
 
     for (uint i = 0; i < n_blocks; ++i) {
         uZ start = n_blocks * i_group + i;
@@ -451,7 +451,7 @@ _AINLINE_ static void tform_sort(float* data, uZ size, const auto& sort) {
     constexpr auto reg_size = reg<float>::size;
     using cx_reg            = cx_reg<float, false, reg_size>;
 
-    const auto sq2 = pcx::detail_::fft::wnk<float>(8, 1);
+    const auto sq2 = pcxo::detail_::fft::wnk<float>(8, 1);
     // auto       twsq2 = broadcast(sq2.real());
 
     auto* src0 = ra_addr<PSrc>(data, 0);
@@ -464,7 +464,7 @@ _AINLINE_ static void tform_sort(float* data, uZ size, const auto& sort) {
     auto* src7 = ra_addr<PSrc>(data, 7 * size / 8);
 
     uint i = 0;
-    for (; i < pcx::detail_::fft::n_reversals(size / 64); i += 2) {
+    for (; i < pcxo::detail_::fft::n_reversals(size / 64); i += 2) {
         auto offset1 = sort[i] * reg_size;
         auto offset2 = sort[i + 1] * reg_size;
 
@@ -752,7 +752,7 @@ _AINLINE_ static void tform_sort(float* dest, const float* source, uZ size, cons
     constexpr auto reg_size = reg<float>::size;
     using cx_reg            = cx_reg<float, false, reg_size>;
 
-    const auto sq2   = pcx::detail_::fft::wnk<float>(8, 1);
+    const auto sq2   = pcxo::detail_::fft::wnk<float>(8, 1);
     auto       twsq2 = broadcast(sq2.real());
 
     const auto* const src0 = source;
@@ -774,7 +774,7 @@ _AINLINE_ static void tform_sort(float* dest, const float* source, uZ size, cons
     auto* const dst7 = ra_addr<PTform>(dest, 7 * size / 8);
 
     uint i = 0;
-    for (; i < pcx::detail_::fft::n_reversals(size / 64); i += 2) {
+    for (; i < pcxo::detail_::fft::n_reversals(size / 64); i += 2) {
         auto offset_src  = sort[i] * reg_size;
         auto offset_dest = sort[i + 1] * reg_size;
 
@@ -947,7 +947,7 @@ _AINLINE_ static void tform_sort(float* dest, const float* source, uZ size, cons
 
 // NOLINTEND(*pointer-arithmetic*)
 
-}    // namespace pcx::simd
+}    // namespace pcxo::simd
 
 #undef _AINLINE_
 #endif

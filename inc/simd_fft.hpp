@@ -6,7 +6,7 @@
 
 #define _AINLINE_ [[gnu::always_inline, clang::always_inline]]
 
-namespace pcx::detail_ {
+namespace pcxo::detail_ {
 template<typename T, typename... U>
 concept has_type = (std::same_as<T, U> || ...);
 
@@ -19,9 +19,9 @@ template<typename T>
 inline auto wnk(std::size_t n, std::size_t k) -> std::complex<T>;
 
 }    // namespace fft
-}    // namespace pcx::detail_
+}    // namespace pcxo::detail_
 
-namespace pcx::simd {
+namespace pcxo::simd {
 
 /**
   * @brief Performs butterfly operation, then multiplies diff by imaginary unit RhsRotI times;
@@ -192,7 +192,7 @@ template<uZ PTform, uZ PSrc, bool Inverse, floating_point T>
 static inline void tform_sort(T* dest, const T* source, uZ size, const auto& sort);
 
 }    // namespace size_specific
-}    // namespace pcx::simd
+}    // namespace pcxo::simd
 
 #undef _AINLINE_
 

@@ -3,7 +3,7 @@
 
 #include "types.hpp"
 
-namespace pcx {
+namespace pcxo {
 
 template<uZ PackSize>
 constexpr auto pidx(uZ idx) -> uZ {
@@ -17,7 +17,7 @@ auto make_iterator(auto* data_ptr, iZ index) noexcept {
 };
 }    // namespace detail_
 
-template<typename T, bool Const = false, uZ PackSize = pcx::default_pack_size<T>>
+template<typename T, bool Const = false, uZ PackSize = pcxo::default_pack_size<T>>
 class iterator {
     template<typename VT, uZ VPackSize, typename>
         requires packed_floating_point<VT, VPackSize>
@@ -303,7 +303,7 @@ template<typename T, bool Const, uZ PackSize>
 }
 }    // namespace detail_
 
-template<typename T, bool Const = false, uZ PackSize = pcx::default_pack_size<T>>
+template<typename T, bool Const = false, uZ PackSize = pcxo::default_pack_size<T>>
 class cx_ref {
     template<typename VT, uZ VPackSize, typename>
         requires packed_floating_point<VT, VPackSize>

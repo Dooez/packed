@@ -7,7 +7,7 @@
 #include <algorithm>
 #include <tuple>
 
-namespace pcx::detail_ {
+namespace pcxo::detail_ {
 
 template<uZ I, typename... Tups>
 constexpr auto zip_tuple_element(Tups&&... tuples) {
@@ -217,6 +217,6 @@ constexpr auto mass_invoke(F&& f, Args&&... args) {
     };
     return iterate(std::make_index_sequence<count>{}, std::forward<F>(f), std::forward<Args>(args)...);
 }
-}    // namespace pcx::detail_
+}    // namespace pcxo::detail_
 
 #endif

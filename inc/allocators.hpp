@@ -6,7 +6,7 @@
 #include <cassert>
 #include <type_traits>
 
-namespace pcx {
+namespace pcxo {
 
 template<typename T, std::align_val_t Alignment = std::align_val_t{64}>
 class aligned_allocator {

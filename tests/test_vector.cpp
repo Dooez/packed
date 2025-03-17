@@ -40,7 +40,7 @@ int test_vector(const Vec& vector) {
     constexpr auto vals = std::make_tuple(13.1, 11U, 1131.3F, -.3, 1.3);
 
     auto allocator = vector.get_allocator();
-    using Alloc    = decltype(allocator);
+    // using Alloc    = decltype(allocator);
     auto vec_def   = Vec();
     auto vec_size  = Vec(size);
     auto vec_val   = Vec(size, std::get<0>(vals));
@@ -83,16 +83,16 @@ int test_subvector(const Vec& vector) {
     constexpr std::array<real_type, 2> vals{0.5533, 0.1313};
 
     auto allocator = vector.get_allocator();
-    using Alloc    = decltype(allocator);
+    // using Alloc    = decltype(allocator);
     auto vec_def   = Vec();
     auto vec_size  = Vec(size);
     auto vec_2     = Vec(size, vals[1]);
-    auto sub       = pcx::subrange(vec_size.begin(), size);
+    auto sub       = pcxo::subrange(vec_size.begin(), size);
     sub.fill(vals[0]);
     if (!check_val(vec_size, vals[0])) {
         return 1;
     }
-    auto sub2 = pcx::subrange(vec_2.begin(), size);
+    auto sub2 = pcxo::subrange(vec_2.begin(), size);
 
     sub.assign(sub2);
     if (!check_val(vec_size, vals[1])) {
@@ -106,14 +106,14 @@ template<typename T>
 constexpr void concept_test() {
     // NOLINTNEXTLINE(*using*)
     using namespace std::ranges;
-    using namespace pcx;
+    using namespace pcxo;
     constexpr std::size_t pack_size = 8;
 
     using vector_t         = vector<T, pack_size>;
     using iterator_t       = iterator<T, false, pack_size>;
     using const_iterator_t = iterator<T, true, pack_size>;
-    using subrange_t       = pcx::subrange<T, false, pack_size>;
-    using const_subrange_t = pcx::subrange<T, true, pack_size>;
+    using subrange_t       = pcxo::subrange<T, false, pack_size>;
+    using const_subrange_t = pcxo::subrange<T, true, pack_size>;
 
     static_assert(std::same_as<decltype(cbegin(std::declval<vector_t&>())), const_iterator_t>);
     /*static_assert(std::same_as<std::ranges::const_iterator_t<vector_t>, const_iterator_t>);*/
@@ -161,7 +161,7 @@ int main() {
 
     int res = 0;
     for (uint i = 0; i < 128; ++i) {
-        auto v_def = pcx::vector<float>(127);
+        auto v_def = pcxo::vector<float>(127);
 
         res += test_vector(v_def);
         res += test_subvector(v_def);

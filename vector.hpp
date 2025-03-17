@@ -13,7 +13,7 @@
 #include <type_traits>
 #include <vector>
 
-namespace pcx {
+namespace pcxo {
 /**
  * @brief Vector of complex floating point values.
  * Values are stored in packs. Inside pack continious real values
@@ -23,12 +23,12 @@ namespace pcx {
  * @tparam PackSize number of complex values in pack default is 32/16 for float/double
  * @tparam Allocator
  */
-template<typename T, uZ PackSize = pcx::default_pack_size<T>, typename Allocator = pcx::aligned_allocator<T>>
+template<typename T, uZ PackSize = default_pack_size<T>, typename Allocator = pcxo::aligned_allocator<T>>
     requires packed_floating_point<T, PackSize>
 class vector : public detail_::pack_aligned_base<true> {
     template<typename OT, uZ OPackSize, typename OAllocator>
         requires packed_floating_point<OT, OPackSize>
-    friend class pcx::vector;
+    friend class vector;
 
 private:
     using alloc_traits = std::allocator_traits<Allocator>;
@@ -44,8 +44,8 @@ public:
     using reference       = cx_ref<T, false, PackSize>;
     using const_reference = const cx_ref<T, true, PackSize>;
 
-    using iterator       = pcx::iterator<T, false, PackSize>;
-    using const_iterator = pcx::iterator<T, true, PackSize>;
+    using iterator       = pcxo::iterator<T, false, PackSize>;
+    using const_iterator = pcxo::iterator<T, true, PackSize>;
 
     static constexpr size_type pack_size = PackSize;
 
@@ -53,7 +53,7 @@ public:
 
     explicit vector(const allocator_type& allocator) noexcept
     : m_allocator(allocator)
-    , m_ptr(nullptr){};
+    , m_ptr(nullptr) {};
 
     explicit vector(size_type size, const allocator_type& allocator = allocator_type())
     : m_allocator(allocator)
@@ -122,7 +122,7 @@ public:
             return *this;
         }
         if constexpr (alloc_traits::propagate_on_container_copy_assignment::value) {
-            if (!alloc_traits::is_always_equal::value && (m_allocator != other.m_allocator) ||
+            if ((!alloc_traits::is_always_equal::value && m_allocator != other.m_allocator) ||
                 num_packs(m_size) != num_packs(other.m_size)) {
                 deallocate();
                 m_allocator = other.m_allocator;
@@ -232,8 +232,8 @@ public:
         first.swap(second);
     }
 
-    [[nodiscard]] auto get_allocator() const
-        noexcept(std::is_nothrow_copy_constructible_v<allocator_type>) -> allocator_type {
+    [[nodiscard]] auto get_allocator() const noexcept(std::is_nothrow_copy_constructible_v<allocator_type>)
+        -> allocator_type {
         return m_allocator;
     }
 
@@ -342,7 +342,7 @@ public:
             return;
         }
         m_ptr = alloc_traits::allocate(m_allocator, real_size(m_size));
-        *this = pcx::subrange(other.begin(), other.end());
+        *this = pcxo::subrange(other.begin(), other.end());
     }
 
     template<typename Allocator_, uZ PackSize_>
@@ -353,7 +353,7 @@ public:
             return;
         }
         m_ptr = alloc_traits::allocate(m_allocator, real_size(m_size));
-        *this = pcx::subrange(other.begin(), other.end());
+        *this = pcxo::subrange(other.begin(), other.end());
     }
 
 private:
@@ -382,7 +382,7 @@ private:
 };
 
 
-template<typename T, bool Const = false, uZ PackSize = pcx::default_pack_size<T>>
+template<typename T, bool Const = false, uZ PackSize = pcxo::default_pack_size<T>>
 class subrange
 : public rv::view_base
 , detail_::pack_aligned_base<PackSize == 1> {
@@ -395,8 +395,8 @@ public:
     using size_type       = uZ;
     using difference_type = std::ptrdiff_t;
 
-    using iterator       = pcx::iterator<T, Const, PackSize>;
-    using const_iterator = pcx::iterator<T, true, PackSize>;
+    using iterator       = pcxo::iterator<T, Const, PackSize>;
+    using const_iterator = pcxo::iterator<T, true, PackSize>;
 
     using reference = typename iterator::reference;
 
@@ -406,11 +406,11 @@ public:
 
     subrange(const iterator& begin, size_type size) noexcept
     : m_begin(begin)
-    , m_size(size){};
+    , m_size(size) {};
 
     subrange(const iterator& begin, const iterator& end) noexcept
     : m_begin(begin)
-    , m_size(end - begin){};
+    , m_size(end - begin) {};
 
     template<typename VAllocator>
     explicit subrange(vector<real_type, pack_size, VAllocator>& vector) noexcept
@@ -474,7 +474,7 @@ public:
     template<typename U>
         requires std::convertible_to<U, std::complex<T>>
     void fill(U value) {
-        pcx::fill(begin(), end(), value);
+        pcxo::fill(begin(), end(), value);
     };
 
     template<typename R>
@@ -505,14 +505,14 @@ public:
     };
 
 private:
-    size_type m_size{};
     iterator  m_begin{};
+    size_type m_size{};
 };
 
-}    // namespace pcx
+}    // namespace pcxo
 namespace std::ranges {
-template<typename T, pcx::uZ PackSize, bool Const>
-inline constexpr bool enable_borrowed_range<pcx::subrange<T, Const, PackSize>> = true;
+template<typename T, pcxo::uZ PackSize, bool Const>
+inline constexpr bool enable_borrowed_range<pcxo::subrange<T, Const, PackSize>> = true;
 }
 
 #endif

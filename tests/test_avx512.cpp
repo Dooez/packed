@@ -5,7 +5,7 @@
 #include <iostream>
 #include <vector>
 
-using namespace pcx;
+using namespace pcxo;
 
 template<uZ pack_from, uZ pack_to, bool detail = false>
 auto print(std::vector<std::complex<float>> src) {

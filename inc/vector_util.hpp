@@ -10,7 +10,7 @@
 #include <immintrin.h>
 #include <tuple>
 
-namespace pcx {
+namespace pcxo {
 
 constexpr const uZ dynamic_size = -1;
 
@@ -42,16 +42,16 @@ struct convert<float> {
                 auto imag = _mm256_shuffle_ps(reg.real, reg.imag, 0b11011101);
                 return cx_reg<float, Conj>({real, imag});
             };
-            return pcx::detail_::apply_for_each(split, tup);
+            return pcxo::detail_::apply_for_each(split, tup);
         } else if constexpr (PackFrom == 2) {
             auto split = []<bool Conj>(cx_reg<float, Conj> reg) {
                 auto real = avx2::unpacklo_pd(reg.real, reg.imag);
                 auto imag = avx2::unpackhi_pd(reg.real, reg.imag);
                 return cx_reg<float, Conj>({real, imag});
             };
-            return pcx::detail_::apply_for_each(split, tup);
+            return pcxo::detail_::apply_for_each(split, tup);
         } else if constexpr (PackFrom == 4) {
-            return pcx::detail_::apply_for_each(swap_48, tup);
+            return pcxo::detail_::apply_for_each(swap_48, tup);
         } else {
             return tup;
         }
@@ -66,16 +66,16 @@ struct convert<float> {
                 auto imag = simd::avx2::unpackhi_ps(reg.real, reg.imag);
                 return cx_reg<float, Conj>({real, imag});
             };
-            return pcx::detail_::apply_for_each(combine, tup);
+            return pcxo::detail_::apply_for_each(combine, tup);
         } else if constexpr (PackTo == 2) {
             auto combine = []<bool Conj>(cx_reg<float, Conj> reg) {
                 auto real = avx2::unpacklo_pd(reg.real, reg.imag);
                 auto imag = avx2::unpackhi_pd(reg.real, reg.imag);
                 return cx_reg<float, Conj>({real, imag});
             };
-            return pcx::detail_::apply_for_each(combine, tup);
+            return pcxo::detail_::apply_for_each(combine, tup);
         } else if constexpr (PackTo == 4) {
-            return pcx::detail_::apply_for_each(swap_48, tup);
+            return pcxo::detail_::apply_for_each(swap_48, tup);
         } else {
             return tup;
         }
@@ -142,5 +142,5 @@ inline void fill(iterator<T, false, PackSize> first, iterator<T, false, PackSize
     auto value_cx = std::complex<T>(value);
     fill(first, last, value_cx);
 };
-}    // namespace pcx
+}    // namespace pcxo
 #endif

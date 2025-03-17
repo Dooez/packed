@@ -5,7 +5,7 @@
 
 #include <type_traits>
 
-namespace pcx {
+namespace pcxo {
 
 namespace detail_ {
 template<auto... Vs>

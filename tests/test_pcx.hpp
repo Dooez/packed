@@ -3,12 +3,10 @@
 #include <concepts>
 
 template<typename T = double>
-    requires std::floating_point<T> bool
-equal_eps(T lhs, T rhs, std::size_t k_epsilon)
-{
+    requires std::floating_point<T>
+bool equal_eps(T lhs, T rhs, std::size_t k_epsilon) {
     T epsilon = k_epsilon * std::numeric_limits<T>::epsilon();
-    if (lhs == rhs)
-    {
+    if (lhs == rhs) {
         return true;
     }
 
@@ -17,12 +15,10 @@ equal_eps(T lhs, T rhs, std::size_t k_epsilon)
 }
 
 template<typename T = double>
-    requires std::floating_point<T> bool
-equal_eps(std::complex<T> lhs, std::complex<T> rhs, std::size_t k_epsilon)
-{
+    requires std::floating_point<T>
+bool equal_eps(std::complex<T> lhs, std::complex<T> rhs, std::size_t k_epsilon) {
     T epsilon = k_epsilon * std::numeric_limits<T>::epsilon();
-    if (lhs == rhs)
-    {
+    if (lhs == rhs) {
         return true;
     }
 
